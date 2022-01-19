@@ -10,7 +10,11 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }
 
 export -f sbatch
 
-Then you can run slurm jobs as usual. After you finish using ssbatch: 
+To confirm the sbatch overwrite the defult sbatch: 
+
+type sbatch
+
+Then you can run slurm jobs as usual. After you finish using ssbatch, run this command to disable it: 
 
 unset sbatch
 
