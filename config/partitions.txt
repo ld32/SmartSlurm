@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#set -x 
+set -e 
+
+# Genernal partions, ordered by maximum allowed run-time in hours 
+partition1Name=short
+partition2Name=medium
+partition3Name=long
+partition4Name=
+partition5Name=
+
+partition1TimeLimit=12
+partition2TimeLimit=120
+partition3TimeLimit=720
+partition4TimeLimit=
+partition5TimeLimit=
+
+# Special pertitions with special restrictions
+partition6Name=priority    # only allow two job running tha
+partition7Name=highmem     # special partision
+partition8Name=interactive
+partition9Name=
+partition10Name=
+
+partition6TimeLimit=720
+partition7TimeLimit=720  
+partition8TimeLimit=12
+partition9TimeLimit=
+partition10TimeLimit=
+
+adjustPartition() {
+    [ -z "$1" ] && { echo -e "Usage: $0 <hours> [partition (optional)]. \nReturn: adjustedPartition"; return; }
+    hours=$1
+    partitionO=$2
+    for i in {1..10}; do 
+        partition=partition${i}Name
+        [ -z ""${!partition}"" ] && continue
+        partitionTime=partition${i}TimeLimit  
+        if [ $hours -le  "${!partitionTime}" ]; then 
+            [ -z "$partitionN" ] && partitionN=${!partition}
+            [[ "$partitionO" == "${!partition}" ]] && partitionN=$partitionO && break
+        fi        
+    done    
+    echo ${partitionN}
+} 
+export -f adjustPartition
+
