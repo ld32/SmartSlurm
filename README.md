@@ -1,5 +1,18 @@
 # betterSlurm
 
+# How to use it:
+
+cd ~
+
+git clone git@github.com:ld32/smarterSlurm.git
+
+sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }
+
+export -f sbatch
+
+After you finish using it: 
+
+unset sbatch
 
 # features:
 
