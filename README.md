@@ -1,6 +1,6 @@
 # SmarterSlurm
 
-# How to use sbatchTop
+# How to use sbatchAndTop
 
 cd ~    
 git clone git@github.com:ld32/smarterSlurm.git  
