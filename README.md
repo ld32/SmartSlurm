@@ -87,3 +87,50 @@ sbatch -D /home/ld/workdir -p priority -t 0-0:0:10 myjob.sh
 For example, using default sbatch, this command fails if folder out or err does not exist
 
 sbatch -p priority -t 0-0:0:10 -o out/out -e err/myjob.sh 
+
+# How does it works
+
+config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
+
+# Genernal partions, ordered by maximum allowed run-time in hours 
+partition1Name=short   
+partition2Name=medium  
+partition3Name=long    
+partition4Name=
+partition5Name=
+
+partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours
+partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
+partition3TimeLimit=720 # run-time > 5 days and <= 30 days
+partition4TimeLimit=
+partition5TimeLimit=
+
+# Special pertitions with special restrictions
+partition6Name=priority    # only allow two job running at the same time
+partition7Name=highmem     # run-time <= 30 days, special partision
+partition8Name=interactive
+partition9Name=mpi
+partition10Name=
+
+partition6TimeLimit=720 # run-time <= 30 days 
+partition7TimeLimit=720 # run-time <= 30 days  
+partition8TimeLimit=12  # run-time <= 12 hours 
+partition9TimeLimit=720 # run-time <= 30 days 
+partition10TimeLimit=
+
+adjustPartition() {
+    [ -z "$1" ] && { echo -e "Usage: $0 <hours> [partition (optional)]. \nReturn: adjustedPartition"; return; }
+    hours=$1
+    partitionO=$2
+    for i in {1..10}; do 
+        partition=partition${i}Name
+        [ -z ""${!partition}"" ] && continue
+        partitionTime=partition${i}TimeLimit  
+        if [ $hours -le  "${!partitionTime}" ]; then 
+            [ -z "$partitionN" ] && partitionN=${!partition}
+            [[ "$partitionO" == "${!partition}" ]] && partitionN=$partitionO && break
+        fi        
+    done    
+    echo ${partitionN}
+} 
+export -f adjustPartition
