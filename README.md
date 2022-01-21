@@ -3,28 +3,21 @@
 # How to use sbatchTop
 
 cd ~    
-git clone git@github.com:ld32/smarterSlurm.git
+git clone git@github.com:ld32/smarterSlurm.git  
+export PATH=$HOME/smartSlurm/bin:$PATH    
+sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
 
-export PATH=$HOME/smartSlurm/bin:$PATH
+Such as:    
+sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.  
 
-sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
-
-Such as: 
-
-sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.
-
-or: 
-
-sbatchAndTop job.sh
+or:     
+sbatchAndTop job.sh 
 
 # How to use ssbatch:
 
-cd ~
-
-git clone git@github.com:ld32/smarterSlurm.git
-
-export PATH=$HOME/smartSlurm/bin:$PATH
-
+cd ~    
+git clone git@github.com:ld32/smarterSlurm.git  
+export PATH=$HOME/smartSlurm/bin:$PATH  
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
 
 Such as: 
