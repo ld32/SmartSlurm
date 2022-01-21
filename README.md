@@ -13,6 +13,10 @@ sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
 or:     
 sbatchAndTop job.sh 
 
+# sbatchAndTop features:
+
+1) Submit slurm job using ssbatch (scrool down to see ssbatch features) and run scontrol top on the job
+
 # How to use ssbatch:
 
 cd ~    
