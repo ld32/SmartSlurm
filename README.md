@@ -65,7 +65,7 @@ sbatch -p priority -t 0-0:0:10 -o out/out -e err/myjob.sh
 
 config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
-## Genernal partions, ordered by maximum allowed run-time in hours 
+\# Genernal partions, ordered by maximum allowed run-time in hours 
 partition1Name=short   
 partition2Name=medium  
 partition3Name=long        
@@ -77,7 +77,7 @@ partition3TimeLimit=720 # run-time > 5 days and <= 30 days
 partition4TimeLimit=    
 partition5TimeLimit=    
 
-## Special pertitions with special restrictions
+\# Special pertitions with special restrictions
 partition6Name=priority    # only allow two job running at the same time        
 partition7Name=highmem     # run-time <= 30 days, special partision     
 partition8Name=interactive      
@@ -90,6 +90,7 @@ partition8TimeLimit=12  # run-time <= 12 hours
 partition9TimeLimit=720 # run-time <= 30 days       
 partition10TimeLimit=       
 
+\#function 
 adjustPartition() {         
     ... # please open the file to see the content         
 }       
