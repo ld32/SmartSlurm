@@ -1,12 +1,30 @@
 # SmarterSlurm
 
-# How to use it:
+# How to use sbatchTop
 
 cd ~
 
 git clone git@github.com:ld32/smarterSlurm.git
 
-sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }
+export PATH=$HOME/smartSlurm/bin:$PATH
+
+sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
+
+Such as: 
+
+sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.
+
+or: 
+
+sbatchAndTop job.sh
+
+# How to use ssbatch:
+
+cd ~
+
+git clone git@github.com:ld32/smarterSlurm.git
+
+sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }  
 
 export -f sbatch
 
@@ -18,21 +36,41 @@ Then you can run slurm jobs as usual. After you finish using ssbatch, run this c
 
 unset sbatch
 
-# Features:
+Or if you would like to directly run ssbatch:
+
+export PATH=$HOME/smartSlurm/bin:$PATH
+
+ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
+
+Such as: 
+
+ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.
+
+or: 
+
+ssbatch job.sh
+
+# ssbatch features:
 
 1) Auto adjust partition according to run-time request if they does not match up
 
 For example, this command:
 
-sbatch -p medium -t 0-0:0:10 myjob.sh
+sbatch -p medium -t 0-0:0:10 myjob.sh.  # notice mediume partition only allows job longer than 12 hours. 
 
 becomes:
 
-sbatch -p short -t 0-0:0:10 myjob.sh
+sbatch -p short -t 0-0:0:10 myjob.sh.   # medium partition is replaced by short partition
+
+sbatch -t 0-0:0:10 --wrap hostname # notice there is no partition is given with the sbatch command
+
+becomes:
+
+sbatch -p short -t 0-0:0:10 --wrap hostname # notice short partition is chosen for this 10 minute job
 
 This command will be not changed:
 
-sbatch -p priority -t 0-0:0:10 myjob.sh
+sbatch -p priority -t 0-0:0:10 myjob.sh # because prioirty partition allow any time less than 30 days, we keep to use priority partion. 
 
 2) Auto check if slurm script exists
 

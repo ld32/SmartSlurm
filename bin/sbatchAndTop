@@ -11,7 +11,7 @@ set -e
 
 echoerr() { echo -e "$@" 1>&2; exit 1; }
 
-usage() { echoerr "Usage: \nsbatchTop <sbatch option1> <sbatch option 2> <sbatch option 3> ... \nSuch as: \nssbatchTop -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\" \nor: \nssbatchTop job.sh"; }
+usage() { echoerr "Usage: \nsbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> ... \nSuch as: \nsbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\" \nor: \nsbatchAndTop job.sh"; }
 
 [ -z "$1" ] || [[ "-h" == "$1" ]] && usage
 
