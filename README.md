@@ -24,20 +24,6 @@ cd ~
 
 git clone git@github.com:ld32/smarterSlurm.git
 
-sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }  
-
-export -f sbatch
-
-To confirm the sbatch overwrite the defult sbatch: 
-
-type sbatch
-
-Then you can run slurm jobs as usual. After you finish using ssbatch, run this command to disable it: 
-
-unset sbatch
-
-Or if you would like to directly run ssbatch:
-
 export PATH=$HOME/smartSlurm/bin:$PATH
 
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
@@ -49,6 +35,18 @@ ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # He
 or: 
 
 ssbatch job.sh
+
+Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline): 
+
+sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }  # define a bash function called sbatch 
+
+export -f sbatch                             # enable it
+
+type sbatch   # confirm the new sbatch function overwrites the regular sbatch command
+
+Then you can run slurm jobs as usual. After you finish using ssbatch, run this command to disable it: 
+
+unset sbatch
 
 # ssbatch features:
 
