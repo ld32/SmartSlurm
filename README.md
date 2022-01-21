@@ -2,7 +2,7 @@
 
 # How to use sbatchTop
 
-cd ~ 
+cd ~    
 git clone git@github.com:ld32/smarterSlurm.git
 
 export PATH=$HOME/smartSlurm/bin:$PATH
