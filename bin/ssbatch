@@ -106,6 +106,8 @@ fi
 
 [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
 
+[[ "$day$hour$min$sec" =~ ^[0-9]+$ ]] || { echoerr Time format is not right day: $day hour: $hour min: $min sec: $sec; }
+
 hours=$(($day * 24 + $hour + ($min + 59 + ($sec + 59) / 60 ) / 60))
 
 x=`realpath $0` 

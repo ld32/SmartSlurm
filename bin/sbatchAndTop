@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# features:
+# Run ssbatch and then scontrol top the job
+
+# todo:
+# 
+
+#set -vx 
+set -e 
+
+echoerr() { echo -e "$@" 1>&2; exit 1; }
+
+usage() { echoerr "Usage: \nsbatchTop <sbatch option1> <sbatch option 2> <sbatch option 3> ... \nSuch as: \nssbatchTop -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\" \nor: \nssbatchTop job.sh"; }
+
+[ -z "$1" ] || [[ "-h" == "$1" ]] && usage
+
+echo Running ssbatch --parsable "$@" 1>&2 
+
+jobID=`ssbatch --parsable "$@"`  
+
+[[ "$jobID" =~ ^[0-9]+$ ]] && echo Submitted batch job $jobID || echoerr sbatch failed to submit job
+
+scontrol top $jobID && echo Command succeed: scontrol top $jobID 1>&2 
