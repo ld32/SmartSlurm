@@ -2,8 +2,7 @@
 
 # How to use sbatchTop
 
-cd ~
-
+cd ~ 
 git clone git@github.com:ld32/smarterSlurm.git
 
 export PATH=$HOME/smartSlurm/bin:$PATH
@@ -96,8 +95,8 @@ config/partitions.txt contains partion time limit and bash function adjustPartit
 partition1Name=short   
 partition2Name=medium  
 partition3Name=long    
-partition4Name=
-partition5Name=
+partition4Name= 
+partition5Name= 
 
 partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours
 partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
