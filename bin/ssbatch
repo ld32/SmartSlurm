@@ -10,7 +10,7 @@
 # 
 #
 
-#set -vx 
+set -vx 
 set -e 
 
 echoerr() { echo -e "$@" 1>&2; exit 1; }
@@ -122,4 +122,4 @@ else
 	cmd="$cmd $CMDWithoutSlurmCMD $slurmScript $slurmScriptParas" 
 fi
 
-$cmd 
+eval "$cmd" 
