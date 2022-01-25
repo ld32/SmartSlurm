@@ -1,21 +1,6 @@
 # SmarterSlurm
 
-# How to use sbatchAndTop
-
-cd ~    
-git clone git@github.com:ld32/smarterSlurm.git  
-export PATH=$HOME/smartSlurm/bin:$PATH    
-sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
-
-Such as:    
-sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.  
-
-or:     
-sbatchAndTop job.sh 
-
-# sbatchAndTop features:
-
-1) Submit slurm job using ssbatch (scrool down to see ssbatch features) and run scontrol top on the job
+ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partions according local cluster settings. 
 
 # How to use ssbatch:
 
@@ -29,7 +14,7 @@ ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # He
 or:     
 ssbatch job.sh
 
-Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline):    
+Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline, such as https://github.com/ENCODE-DCC/atac-seq-pipeline):    
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }  # define a bash function called sbatch   
 export -f sbatch                  # enable the function it    
 type sbatch                       # confirm the new sbatch function overwrites the regular sbatch command
@@ -98,4 +83,21 @@ partition10TimeLimit=
 adjustPartition() {         
     ... # please open the file to see the content         
 }       
-export -f adjustPartition       
+export -f adjustPartition    
+
+# How to use sbatchAndTop
+
+cd ~    
+git clone git@github.com:ld32/smarterSlurm.git  
+export PATH=$HOME/smartSlurm/bin:$PATH    
+sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
+
+Such as:    
+sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.  
+
+or:     
+sbatchAndTop job.sh 
+
+# sbatchAndTop features:
+
+1) Submit slurm job using ssbatch (scrool down to see ssbatch features) and run scontrol top on the job
