@@ -30,7 +30,7 @@ or:
 ssbatch job.sh
 
 Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline):    
-sbatch() { $HOME/smartSlurm/bin/ssbatch $@; }  # define a bash function called sbatch   
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }  # define a bash function called sbatch   
 export -f sbatch                  # enable the function it    
 type sbatch                       # confirm the new sbatch function overwrites the regular sbatch command
 
