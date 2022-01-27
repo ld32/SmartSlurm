@@ -5,7 +5,7 @@ ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so t
 # How to use ssbatch:
 
 cd ~    
-git clone git@github.com:ld32/smarterSlurm.git  
+git clone git://github.com/ld32/smarterSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
 
