@@ -1,0 +1,44 @@
+#!/bin/sh
+
+usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; } 
+
+[[ -z "$1" ]] && usage
+
+
+IFS=$'\n'
+
+out=`squeue --noheader -u $USER -o "%.18i"`
+
+[ -z "$out" ] && { echo "User has no running jobs (all jobs are done)"; exit; } 
+
+declare -A nmap
+
+lines=`tail -n +1  $1`
+for line in $lines; do
+    if [ ! -z "${line/ /}" ]; then
+        id=${line%% *} #`echo $line | cut -d' ' -f1`
+        if [[ "$out" == *$id* ]]; then 
+            ids="$ids $id"
+	    nmap[$id]=`echo $line | cut -d' ' -f3`
+            notdone="$notdone $line\n"       
+        fi
+    fi    
+done 
+
+
+if [ ! -z "${ids/ /}" ]; then
+    IFS=' '
+    echo The following jobs are not finished yet:
+    echo -e "$notdone"
+    read -p "Do you want to stop(kill) them? (y)?:" x </dev/tty
+    if [[ "$x" == "y" ]]; then
+        for id in $ids; do 
+          scancel $id
+          echo touching flag/${nmap[$id]}.user.killed
+          touch flag/${nmap[$id]}.user.killed
+        done
+    else
+        exit 1
+    fi
+fi
+exit 0
