@@ -1,6 +1,6 @@
 #!/bin/sh
 
-Usage="Usage: $0 [jobRecordFile, optional, for example: flag/alljobs.jid.old]\nNote: this script will go through job name list in a file (eg: flag/alljobs), to see if the jobs finish successfully or not." 
+Usage="Usage: $0 [jobRecordFile, optional, for example: flag/allJobs.txt.old]\nNote: this script will go through job name list in a file (eg: flag/alljobs), to see if the jobs finish successfully or not." 
 
 if [ ! -z "$1" ]; then 
     [ -f "$1" ] || { echo $Usage; exit 1; }

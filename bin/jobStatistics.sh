@@ -7,21 +7,21 @@ echo $0 $@
 [[ -z "$1" || -z "$2" ]] && echo Usage: checkJobRecord.sh software reference && exit 1   
 
 # if not rsynced today, sync some jobRecords from other users 
-if [ ! -f ~/.rcbio/jobRecord.txt ]; then
-    echo File not exist:  ~/.rcbio/jobRecord.txt, sync some some data ...
-    cat /home/*/.rcbio/myJobRecord.txt > ~/.rcbio/jobRecord.txt
+if [ ! -f ~/.smartSlurm/jobRecord.txt ]; then
+    echo File not exist:  ~/.smartSlurm/jobRecord.txt, sync some some data ...
+    cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
 else
     # file modified in last 1 hours  
-    [ ! -z "`find ~/.rcbio/jobRecord.txt -mmin -60`" ] && echo jobRecord.txt synced within 1 hour. No need to re-sync || cat /home/*/.rcbio/myJobRecord.txt > ~/.rcbio/jobRecord.txt  
+    [ ! -z "`find ~/.smartSlurm/jobRecord.txt -mmin -60`" ] && echo jobRecord.txt synced within 1 hour. No need to re-sync || cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt  
 fi
 
 OUT="$(mktemp -d)"
 
 #filter by software and reference
-grep COMPLETED ~/.rcbio/jobRecord.txt | awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $12 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
-grep COMPLETED ~/.rcbio/jobRecord.txt | awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
+grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $12 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
+grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
 
-#awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' ~/.rcbio/jobRecord.txt ~/.rcbio/myJobRecord.txt | grep COMPLETED | uniq > $OUT/time.txt
+#awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' ~/.smartSlurm/jobRecord.txt ~/.smartSlurm/myJobRecord.txt | grep COMPLETED | uniq > $OUT/time.txt
 
 echo "Got mem data from jobRecord.txt (content of mem.txt):"
 cat $OUT/mem.txt 
@@ -44,38 +44,38 @@ gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Memor
 
 # after this file is created, don't need to calculate stats anymore 
 if [[ $(wc -l <mem.txt) -ge $3 ]]; then 
-  mv $OUT/mem.stat.txt ~/.rcbio/$1.$2.mem.stat.final 
-  mv $OUT/time.stat.txt ~/.rcbio/$1.$2.time.stat.final  
+  mv $OUT/mem.stat.txt ~/.smartSlurm/$1.$2.mem.stat.final 
+  mv $OUT/time.stat.txt ~/.smartSlurm/$1.$2.time.stat.final  
   echo There are more than $3 jobs already run for this software, statics is ready for current job: 
   echo Memeory statisics:
-  cat ~/.rcbio/$1.$2.mem.stat.final
+  cat ~/.smartSlurm/$1.$2.mem.stat.final
   echo
   echo Time statistics:
-  cat ~/.rcbio/$1.$2.time.stat.final
+  cat ~/.smartSlurm/$1.$2.time.stat.final
 else
-  mv $OUT/mem.stat.txt ~/.rcbio/$1.$2.mem.stat 
-  mv $OUT/time.stat.txt ~/.rcbio/$1.$2.time.stat
+  mv $OUT/mem.stat.txt ~/.smartSlurm/$1.$2.mem.stat 
+  mv $OUT/time.stat.txt ~/.smartSlurm/$1.$2.time.stat
   echo There are less than $3 jobs already run for this software, statics is not ready to use yet: 
   echo 
   echo Memeory statisics:
   echo "inputsize mem(M)"
-  cat ~/.rcbio/$1.$2.mem.stat
+  cat ~/.smartSlurm/$1.$2.mem.stat
   echo Time statistics:
   echo "inputsize time(minute)"
-  cat ~/.rcbio/$1.$2.time.stat
+  cat ~/.smartSlurm/$1.$2.time.stat
 fi  
 
-#mv $OUT/mem.pdf ~/.rcbio/$1.$2.mem.pdf 
-mv $OUT/mem.txt ~/.rcbio/tmp.mem.txt
-#mv $OUT/time.pdf ~/.rcbio/$1.$2.time.pdf 
-mv $OUT/time.txt ~/.rcbio/tmp.time.txt
+#mv $OUT/mem.pdf ~/.smartSlurm/$1.$2.mem.pdf 
+mv $OUT/mem.txt ~/.smartSlurm/tmp.mem.txt
+#mv $OUT/time.pdf ~/.smartSlurm/$1.$2.time.pdf 
+mv $OUT/time.txt ~/.smartSlurm/tmp.time.txt
 
-convert $OUT/mem.pdf -background White -flatten ~/.rcbio/$1.$2.mem.pdf
-convert $OUT/time.pdf -background White -flatten ~/.rcbio/$1.$2.time.pdf
+convert $OUT/mem.pdf -background White -flatten ~/.smartSlurm/$1.$2.mem.pdf
+convert $OUT/time.pdf -background White -flatten ~/.smartSlurm/$1.$2.time.pdf
 echo
 echo You can see the plot using commands:
-echo display ~/.rcbio/$1.$2.mem.pdf
-echo display ~/.rcbio/$1.$2.time.pdf
+echo display ~/.smartSlurm/$1.$2.mem.pdf
+echo display ~/.smartSlurm/$1.$2.time.pdf
 
 rm -r $OUT 2>/dev/null
 
@@ -86,5 +86,5 @@ rm -r $OUT 2>/dev/null
 # Maximum=300.0000
 # Median=250.0000
 #rm -r $OUT 
-echo got files in ~/.rcbio:  
-ls -lrt ~/.rcbio/
+echo got files in ~/.smartSlurm:  
+ls -lrt ~/.smartSlurm/

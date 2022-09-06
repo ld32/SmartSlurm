@@ -9,7 +9,7 @@ para="$USER $1 $2 $3 $4 $5 $6 $7 $8 $9";  out=flag/"${3}.out"; err=flag/"${3}.er
 
 
 # record job for future estimating mem and time
-jobStat=`grep "Job done. Summary:" -A 4 $out | tail -n 1`
+jobStat=`grep "Job done. Summary:" -A 6 $out | tail -n 1`
 
 #echo Running: $0  $@
 
@@ -48,7 +48,7 @@ esac
     
 #if [ ! -f ~/.rcbio/$1.$2.mem.stat.final ]; then 
    
-    [ ! -z "$record" ] && echo $record >> ~/.rcbio/myJobRecord.txt &&  echo -e "Added this line to ~/.rcbio/myJobRecord.txt:\n$record"
+    [ ! -z "$record" ] && echo $record >> ~/.smartSlurm/myJobRecord.txt &&  echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
 #else 
 #    echo "Job record:\n$record\n" 
 #    echo Did not add this record to ~/.rcbio/myJobRecord.txt
@@ -61,21 +61,21 @@ minimumsize=9000
 
 actualsize=`wc -c $out`
 
-[ -f $succFile ] && s="Subject: Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME\n" || s="Subject: Failed$failReason: job id:$SLURM_JOBID name:$SLURM_JOB_NAME\n" 
+[ -f $succFile ] && s="Subject: Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Subject: Failed$failReason: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    toSend=`echo Job script content:; cat $script;`
-   toSend="$s\n$toSend\nOutput is too big for email. Please find output in: $out"  
+   toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
    toSend="$toSend\n...\nLast 6 row of output:\n`tail -n 6 $out`"
 else
    toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
-   toSend="$s\n$toSend"
+   #toSend="$s\n$toSend"
 fi
 
 if [ -f "$err" ]; then 
     actualsize=`wc -c $err`
     if [ "${actualsize% *}" -ge "$minimumsize" ]; then
-        toSend="$s\n$toSend\nError file is too big for email. Please find output in: $err"  
+        toSend="$toSend\nError file is too big for email. Please find output in: $err"  
         toSend="$toSend\n...\nLast 6 rows of error file:\n`tail -n 6 $err`"
     else
         toSend="$toSend\n\nError output:\n`cat  $err`"
@@ -84,4 +84,5 @@ fi
 
 #echo -e "tosend:\n $toSend"
 echo "Sending email..."
-echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+#echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+echo -e "$toSend" | mail -s "$s" $USER
