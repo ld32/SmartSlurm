@@ -10,6 +10,10 @@ echo $0 $@
 if [ ! -f ~/.smartSlurm/jobRecord.txt ]; then
     echo File not exist:  ~/.smartSlurm/jobRecord.txt, sync some some data ...
     cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
+    if [ ! -f ~/.smartSlurm/jobRecord.txt ]; then
+      touch ~/.smartSlurm/jobRecord.txt 
+    fi  
+
 else
     # file modified in last 1 hours  
     [ ! -z "`find ~/.smartSlurm/jobRecord.txt -mmin -60`" ] && echo jobRecord.txt synced within 1 hour. No need to re-sync || cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt  

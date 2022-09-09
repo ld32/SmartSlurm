@@ -4,7 +4,7 @@
 # Auto adjust partition according to run-time request if they does not match up
 # Auto check if slurm script exists
 # Auto create output and erro folders if not exist
-# Auto adjust memory and run time
+# Auto adjust memory and run time based on earlier mem time usage 
 # Support re-run checking
 # Keep good log and send informative email
 
@@ -16,7 +16,7 @@
 
 echoerr() { echo "$@" 1>&2; }
 
-usage() { echoerr -e "Short Usage: \nsmartSbatch <-p projectDir>  <-s software> <-r reference> <-f uniqueJobFlag> <-i inputList> <sbatch ...> [run]\nDetail Usage:\nsmartSbatch <-d projectDir, such as: ./> <-s software, such as: bowtie2-4core> <-r reference, such as: hg19> <-f uniqueJobFlag> <-i inputFileOrFolderList: such as: read1.fq,read2.fq> <regular sbatch command, such as: sbath job.sh or sbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will not submit job]"; exit 1; }
+usage() { echoerr -e "Short Usage: \nsmartSbatch <-p projectDir>  <-s software> <-r reference> <-f uniqueJobFlag> <-i inputList> <sbatch ...> [run]\nDetail Usage:\nsmartSbatch <-d projectDir, such as: ./> <-s software, such as: bowtie2-4core> <-r reference, such as: hg19> <-f uniqueJobFlag such as 1.bowtie.s1.fa> <-i inputFileOrFolderList: such as: read1.fq;read2.fq> <regular sbatch command, such as: sbath job.sh or sbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will not submit job]"; exit 1; }
 
 [ -z "$1" ] && usage
 
@@ -41,6 +41,7 @@ echoerr
 
 array=( "$@" )
 
+deps=null
 
 # get the 5 parameters for ssbatch
 for (( i=0; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || echo $(($#))`; i++ )); do
@@ -54,18 +55,18 @@ for (( i=0; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || echo $(($#))`; i
   		"-r" 			)   echoerr Found -r && ref="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
   		--ref=* 		)   echoerr Found --ref= && ref="${array[$i]}" && ref="${ref/--ref=/}" && array[$i]="";;
   		"-f" 			)   echoerr Found -f && flag="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--flag=* 	)   echoerr Found --flag= && flag="${array[$i]}" && flag="${flag/--flag=/}" && array[$i]="";;
+  		--flag=* 	    )   echoerr Found --flag= && flag="${array[$i]}" && flag="${flag/--flag=/}" && array[$i]="";;
         "-i" 			)   echoerr Found -i && inputs="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
   		--inputs=* 	    )   echoerr Found --inputs= && inputs="${array[$i]}" && inputs="${inputs/--inputs=/}" && array[$i]="";;
-        "-A"            )  echoerr Found -A  && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-        "-d"            )  echoerr Found -d  && deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+        "-A"            )   echoerr Found -A  && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+        "-d"            )   echoerr Found -d  && deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
         "sbatch"        )   echoerr Found sbatch && sbatch=sbatch && sbatchLocation=$i && array[$i]="" && break
     esac
 done 
 
 [[ "$sbatch" == "sbatch" ]] || { echoerr Error: sbatch command is not found in your ssbatch command. Please check!; usage; }
 
-echoerr projectDir: $projectDir software: $software ref: $ref jobFlag: $flag inputs: $inputs
+echoerr slurmAcc: $slurmAcc projectDir: $projectDir software: $software ref: $ref jobFlag: $flag inputs: $inputs
 
 [ -z "$projectDir" ] && { echoerr projectDir is empty; usage; } 
 projectDir=${projectDir%/}
@@ -109,6 +110,7 @@ for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || ec
   		--output=* 		)   echoerr Found --output= && out="${array[$i]}" && out="${out/--oupput=/}" && array[$i]="";;
   		"-e" 			)   echoerr Found -o && err="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
   		--error=* 		)   echoerr Found --error= && err="${array[$i]}" && err="${err/--error=/}" && array[$i]="";;
+        "-A"            )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
         "-d" 			)   echoerr Found -d && dep="${array[$i+1]}";;
   		--dependency=* 	)   echoerr Found --dependency= && dep="${array[$i]}" && dep="${dep/--dependency=/}";;
   		
@@ -120,6 +122,7 @@ for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || ec
     [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
     [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
 done 
+
 
 echoerr 
 echoerr Parsing result from sbatch commandline: 
@@ -154,6 +157,7 @@ if [[ ! -z "$slurmScript" ]]; then
         arr=($line)
         if [[ ${arr[0]} == "#SBATCH" ]]; then 
             case "${arr[1]}" in 
+                "-A"   )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
                 "--mem" ) [ -z "$mem" ] && echoerr Found --mem && mem="${arr[2]}";;
                 --mem=* ) [ -z "$mem" ] && echoerr Found --mem= && mem="${arr[1]}" && mem="${mem/--mem=/}";;
                 "--mem-per-cpu") [ -z "$mem1" ] && echoerr Found --mem-per-cpu && mem1="${arr[2]}";;
@@ -207,9 +211,10 @@ else
     echo depend on multiple jobs >&2
     tmp=""
     for t in ${deps//\./ }; do
-       tmp="$tmp:$t"
+       echo working on $t >&2
+        tmp="$tmp:$t"
     done
-    [ ! -z "$tmp" ] && deps="--dependency=afterok$deps"
+    [ ! -z "$tmp" ] && deps="--dependency=afterok$tmp"
 fi
 
 # check job done before or not
@@ -255,11 +260,12 @@ rm $flagDir/$flag.*  2>/dev/null
 
 # original mem and time 
 memO=$mem; timeO=$time
+inputSize=0
 
 echoerr 
 echoerr Check if there input file list and this job does not depend on other jobs
 if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
-    inputSize=`{ du --apparent-size -c -L ${inputs//;/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
+    inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then 
         echoerr Some or all input files not exist: $inputs  && exit 1
@@ -362,6 +368,7 @@ echoerr Building new sbatch command ...
 echo "#!/bin/bash" > $job 
 if [ -z "$slurmScript" ]; then 
 	echo "touch $startFlag" >> $job
+    wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; form command
     echo "srun -n 1 $slurmAcc -t $timeN --mem $memN bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
 else 
 	grep "^#SBATCH" $slurmScript >> $job || echo >> $job
@@ -374,8 +381,11 @@ echo "echo Job done. Summary:" >> $job
 
 echo "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID" >> $job 
 #echo SLURM_JOBID=\$SLURM_JOBID >> $job
-echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
+
 echo "emailAndRecord.sh \"$software\" \"$ref\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
+
+echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
+
 echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
 
 #[ -z "$dir" ] && dir="./" || mkdir -p $dir
@@ -418,7 +428,7 @@ echo -e "#Sbatch command output:\n#Submitted batch job $jobID" >> $job
 echoerr -e "Sbatch command output:\nSubmitted batch job $jobID"
 
 # this is for the clalling softwar to get the job id
-echo  $jobID 
+echo  $jobID
 
 #dep=${dep#afterok}; dep=${dep//:/.}; [ -z "$dep" ] && dep=null 
 

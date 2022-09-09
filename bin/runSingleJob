@@ -1,0 +1,72 @@
+#!/bin/sh
+
+usage() { echo -e "Usage: \n${0##*/} <bashScript.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 123.]"; exit 1; } 
+
+[[ "$2" != sbatch* ]] && usage
+
+stamp=$(date -d "today" +"%Y%m%d%H%M")
+
+[ -d flag ]  && cp -rp flag flag.$stamp 
+
+[ -f output.log ] && cp output.log output.$stamp.log 
+
+mkdir -p flag
+
+run=flag/slurmPipeLine.$stamp.run.sh
+
+echo "#!/bin/sh" > $run  
+
+echo "echo Running \$0 \$@"  >> $run   
+
+echo module list >> $run 
+     
+echo "xsubd=\"$2\"" >> $run
+
+echo mkdir -p flag >> $run
+
+echo "if [ -f flag/allJobs.txt ]; then" >> $run
+
+echo "    cancelAllJobs  flag/allJobs.txt " >> $run
+
+echo "    [ \$? == 1 ] && exit 0;" >> $run
+
+echo "fi" >> $run
+
+echo "cwd=\`realpath ./flag\`" >> $run
+
+echo "[ -f flag/allJobs.txt ] && mv flag/allJobs.txt flag/allJobs.txt.old"  >> $run 
+
+# get slurm account from command line
+slurmAccount=""
+if [[ "$2" == *\ -A\ * ]]; then 
+    slurmAccount=${2#*-A }
+    slurmAccount="-A ${slurmAccount%% *}"
+elif [[ "$2" == *\ --account\ * ]]; then  
+    slurmAccount=${2#*--account }
+    slurmAccount="-A ${slurmAccount%% *}"
+elif [[ "$2" == *\ --account=* ]]; then  
+    slurmAccount=${2#*--account\=}
+    slurmAccount="-A ${slurmAccount%% *}"
+fi  
+
+[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echo Missing slurm account: $2; exit 1; }
+
+cmd="$1"
+
+cmd="{ set -e; $cmd; } && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
+
+echo "${space}flag=Job_"${1// /-}"" >> $run
+
+echo "${space}flag="\${flag//\//_}"" >> $run
+
+echo "${space}id=\$(sbatchRun \$xsubd -flag null \$cwd \$flag \"srun $slurmAccount -n 1 bash -e -c \\\"$cmd\\\"\")"   >> $run
+       
+echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > flag/allJobs.txt" >> $run        
+echo "${space}if [ -z \"\$id\" ]; then"  >> $run
+echo "${space}    echo Job \$flag is not submitted"  >> $run
+echo "${space}else"  >> $run
+echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id null \$flag >> \$cwd/allJobs.txt"  >> $run
+echo "${space}    echo " >> $run
+echo "${space}fi" >> $run 
+
+eval /bin/bash $run "${1#* }"

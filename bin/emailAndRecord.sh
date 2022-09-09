@@ -82,7 +82,7 @@ if [ -f "$err" ]; then
     fi
 fi    
 
-#echo -e "tosend:\n $toSend"
+echo -e "tosend:\n $toSend"
 echo "Sending email..."
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 echo -e "$toSend" | mail -s "$s" $USER
