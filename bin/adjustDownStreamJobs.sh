@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -x 
+#set -x 
 
 Usage="Usage: $0 full_path_to_flag_folder  flag(job name) \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 echo Running: $0  $@
@@ -128,7 +128,11 @@ for i in $idNames; do
                 echo Original slurm script: 
                 cat $path/$name.sh 
                 sed -i "s/srun -n 1 -t [0-9]*-[0-9]*:[0-9]*:[0-9]* --mem [0-9]*M/srun -n 1 -t $timeN --mem $memN/g" $path/$name.sh 
-                echo New slurm script: 
+
+                # todo: also need modify the noExist input parameter for emmai and record here 
+                sed -i "s/notExist/$inputSize/" $path/$name.sh 
+                
+                echo New slurm script:
                 cat $path/$name.sh 
                                
             fi

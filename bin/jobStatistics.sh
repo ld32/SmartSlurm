@@ -33,7 +33,7 @@ cat $OUT/mem.txt
 echo "Got time data from jobRecord.txt (content of time.txt):"
 cat $OUT/time.txt 
 
-if [[ $(wc -l <$OUT/mem.txt) -le 1 ]]; then
+if [[ $(wc -l <$OUT/mem.txt) -le 2 ]]; then
     echo There is less than $3 records. No way to fit a curve. Exiting...
     exit 
 fi

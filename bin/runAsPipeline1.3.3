@@ -2,9 +2,7 @@
 
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
 
-#set -x 
-
-[ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
+[ -e ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
 [[ "$2" != sbatch* ]] && usage
 
@@ -42,8 +40,6 @@ echo converting $1 to $run
 
 echo "#!/bin/sh" > $run  
 
-#echo "set -x" >> $run
-
 echo "echo Running \$0 \$@"  >> $run   
 
 echo module list >> $run 
@@ -52,23 +48,23 @@ echo "xsubd=\"$2\"" >> $run
     
 echo mkdir -p flag >> $run
 
-echo "if [ -f flag/allJobs.txt ]; then" >> $run
+echo "if [ -f flag/alljobs.jid ]; then" >> $run
 
-echo "    cancelAllJobs flag/allJobs.txt " >> $run
+echo "    cancelAllJobs flag/alljobs.jid " >> $run
 
 echo "    [ \$? == 1 ] && exit 0;" >> $run
 
 echo "fi" >> $run
 
-echo "cwd=\`realpath ./\`" >> $run
+echo "cwd=\`realpath ./flag\`" >> $run
 
 #echo "rm flag/*.failed flag/*.killed 2>/dev/null" >> $run
 
-echo "[ -f flag/allJobs.txt ] && mv flag/allJobs.txt flag/allJobs.txt.old"  >> $run 
+echo "[ -f flag/alljobs.jid ] && mv flag/alljobs.jid flag/alljobs.jid.old"  >> $run 
 
 echo "rm flag/skipAllSuccessJobs*.txt flag/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
 
-echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > flag/allJobs.txt" >> $run 
+echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > flag/alljobs.jid" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/rcUtils.sh" >> $run
@@ -114,10 +110,7 @@ for t in `cat ${1%% *}`; do
         echo $i
         
         findjob="yes"
-        x=${i#*\#@} 
-        # #@1,0,find1,u,input1;input2,sbatch -p short -c 1 -t 50:0
-        
-        # smartSbatch -d ./ -s bowtie2-4core -r dm3 -f bowtie.group1 -i group1/tumor1  sbatch -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
+        x=${i#*\#@}
         IFS=',' read -a arrIN <<< "$x"
         IFS=''
     
@@ -125,19 +118,10 @@ for t in `cat ${1%% *}`; do
         de=${arrIN[1]}   
         name=${arrIN[2]%%:*}
         ref=${arrIN[3]%%:*} # references files which need to rsync to tmp space
-	    inputs=${arrIN[4]}
-        xsuba=${arrIN[5]}  # sbatch options
+	    xsuba=${arrIN[4]}  # sbatch options
 	    
-        # if it is old format bash annotation without inputs
-        [[ "$inputs" == sbatch* ]] && xsuba="$inputs" && inputs=""  
-
-
 	    [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run 
 	    
-        # echo run content:
-        # tail $run
-        # exit
-
 	    [ -z "$ref" ] || ref=.$ref
         
         echo "$t" >> $run
@@ -160,7 +144,7 @@ for t in `cat ${1%% *}`; do
           continue
         fi
         space="$oldspace"
-        cmd="$cmd ${i%% #*}" # remove comments
+        cmd="$cmd ${i%%#*}" # remove comments
         cmd="${cmd# }"       # remove leading space
         
         #echo cmd1:$cmd
@@ -219,14 +203,11 @@ for t in `cat ${1%% *}`; do
         #echo "echo command is: bsubRun \$xsub -flag \$deps \$cwd \$flag \"$cmd\" " >> $run
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
-        #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
-        cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
+        cmd="{ set -e; $cmd; } && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
+        
+        # echo exit >> $run   # only test for one job
+        [[ "$4" == run ]] && echo "${space}id=\$(sbatchRun \$xsub -flag \$deps \$cwd \$flag \"srun $slurmAccount -n 1 bash -e -c \\\"$cmd\\\"\")"   >> $run || echo "${space}id=\$(sbatchRun \$xsub -flag \$deps \$cwd \$flag \"srun $slurmAccount -n 1 bash -c \\\"$cmd\\\"\" test)"   >> $run
        
-        [ -z "$inputs" ] && inputs=empty && echo empty=none >> $run
-
-        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i \$$inputs -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i \$$inputs -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\")"   >> $run
-
-
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
         #echo "echo id is: \$id ">> $run
         
@@ -237,12 +218,12 @@ for t in `cat ${1%% *}`; do
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
-        echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id \$deps \$flag >> \$cwd/flag/allJobs.txt"  >> $run 
+        echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id \$deps \$flag >> \$cwd/alljobs.jid"  >> $run 
         
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
-                     [ -z $sameloop ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run 
+                    [ -z $sameloop ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run 
                 done
         else    
                 [ -z $sameloop ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run 
@@ -274,11 +255,11 @@ for t in `cat ${1%% *}`; do
 done
 [ $? == 1 ] && exit 0;
 
-# go back to the original folder?
-#echo "cd \$cwd/.." >> $run
+# go back to the original folder
+echo "cd \$cwd/.." >> $run
 
 echo "echo; echo All submitted jobs: " >> $run
-echo "cat flag/allJobs.txt" >> $run 
+echo "cat flag/alljobs.jid" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
 
