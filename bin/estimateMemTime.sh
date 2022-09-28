@@ -9,7 +9,7 @@ echoerr Running: estimateMemTime.sh $@
 
 software=$1
 ref=$2 
-inputs=$3
+inputSize=$3
 
 
 #echoerr content of .rcbio
@@ -40,7 +40,7 @@ fi
 echoerr
 echoerr Estimating time: 
 
-.  ~/.rcbio/$software.$ref.time.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  ~/.smartSlurm/$software.$ref.time.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.time.stat.final:
 

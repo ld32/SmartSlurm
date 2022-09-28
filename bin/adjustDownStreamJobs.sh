@@ -60,12 +60,12 @@ for i in $idNames; do
         softwareRef=${output#* };  softwareRef=${softwareRef% *}
         justRunStats=""
         mem="" 
-        if [ ! -f ~/.rcbio/${softwareRef/ /.}.mem.stat.final ]; then    
+        if [ ! -f ~/.smartSlurm/${softwareRef/ /.}.mem.stat.final ]; then    
             echo Do not have a formula. Let us build one...
-            jobStatistics.sh $softwareRef 5
+            jobStatistics.sh $softwareRef 4
             justRunStats=yes
         fi
-        if [  -f ~/.rcbio/${softwareRef/ /.}.mem.stat.final ]; then
+        if [  -f ~/.smartSlurm/${softwareRef/ /.}.mem.stat.final ]; then
             echo estimating here
             inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
@@ -81,9 +81,9 @@ for i in $idNames; do
                     echo Input size is too big for the curve to estimate!
                     if [ -z "$justRunStats" ]; then 
                         echo Delete the curve and try to re-run the statistics.
-                        rm ~/.rcbio/$software.$ref.mem.stat.final ~/.rcbio/$software.$ref.time.stat.final ~/.rcbio/jobRecord.txt
-                        jobStatistics.sh $softwareRef 5 
-                        if [ -f ~/.rcbio/${softwareRef/ /.}.mem.stat.final ]; then    
+                        rm ~/.smartSlurm/$software.$ref.mem.stat.final ~/.smartSlurm/$software.$ref.time.stat.final ~/.smartSlurm/jobRecord.txt
+                        jobStatistics.sh $softwareRef 4 
+                        if [ -f ~/.smartSlurm/${softwareRef/ /.}.mem.stat.final ]; then    
                             output=`estimateMemTime.sh $softwareRef $inputSize`
                             if [[ "$output" == "outOfRange" ]]; then 
                                 echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.

@@ -275,22 +275,22 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
         #rm ~/.rcbio/$software.$ref.mem.stat.final # for testing 
         # there is a job record curve fit already?    
         
-        if [ ! -f ~/.smartSlurm/$software.$ref.mem.stat.final ]; then   
+        if [ ! -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then   
             mkdir -p ~/.smartSlurm
             echoerr Do not have a formula. Let us build one...
-            jobStatistics.sh $software $ref 5 1>&2
+            jobStatistics.sh $software ${ref//\//-} 4 1>&2
             justRunStats=yes
         fi
-        if [ -f ~/.smartSlurm/$software.$ref.mem.stat.final ]; then    
-            output=`estimateMemTime.sh $software $ref $inputSize`
+        if [ -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then    
+            output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
             if [[ "$output" == "outOfRange" ]]; then 
                 echoerr Input size is too big for the curve to estimate!
                 if [ -z "$justRunStats" ]; then 
                     echoerr Delete the curve and try to re-run the statistics.
-                    rm ~/.smartSlurm/$software.$ref.mem.stat.final ~/.smartSlurm/$software.$ref.time.stat.final ~/.smartSlurm/jobRecord.txt
-                    jobStatistics.sh $software $ref 5 1>&2 
-                    if [ -f ~/.smartSlurm/$software.$ref.mem.stat.final ]; then    
-                        output=`estimateMemTime.sh $software $ref $inputSize`
+                    rm ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ~/.smartSlurm/$software.${ref//\//-}.time.stat.final ~/.smartSlurm/jobRecord.txt
+                    jobStatistics.sh $software ${ref//\//-} 4 1>&2 
+                    if [ -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then    
+                        output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
                         if [[ "$output" == "outOfRange" ]]; then 
                             echoerr Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
                         else
@@ -382,7 +382,7 @@ echo "echo Job done. Summary:" >> $job
 echo "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID" >> $job 
 #echo SLURM_JOBID=\$SLURM_JOBID >> $job
 
-echo "emailAndRecord.sh \"$software\" \"$ref\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
+echo "emailAndRecord.sh \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
 
 echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
 
