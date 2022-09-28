@@ -398,7 +398,7 @@ echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --parsable -p $partition --mem $mem -t $time -o $outFlag -e $errFlag -J $flag --mail-type=FAIL $deps $slurmAcc" 
+cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time -o $outFlag -e $errFlag -J $flag --mail-type=FAIL $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 
