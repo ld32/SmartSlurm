@@ -22,7 +22,6 @@ usage() { echoerr -e "Short Usage: \nsmartSbatch <-p projectDir>  <-s software> 
 
 [[ "-h" == "$1" ]] && usage
 
-#set -x 
 echoerr -e "Running:"
 
 cmd="smartSbatch"
@@ -339,54 +338,55 @@ x=`realpath $0`
 partition=`adjustPartition $hours $partition`
 
 # 10 minutes less than the time in sbatch command
-seconds=$(($day * 24 * 60 * 60 + $hour * 60 * 60  + $min * 60 + $sec - 600))
+#seconds=$(($day * 24 * 60 * 60 + $hour * 60 * 60  + $min * 60 + $sec - 600))
 
-[ $seconds -le 60 ] && time=11:0 && seconds=60
+#[ $seconds -le 60 ] && time=11:0 && seconds=60
 
-echoerr srun seconds: $seconds
+#echoerr srun seconds: $seconds
 
-timeN=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
+#timeN=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
-echoerr New time for srun: $timeN
+#echoerr New time for srun: $timeN
 
-echoerr 
+#echoerr 
 
 # mem for srun is 10M less than sbatch command
-[[ "$mem" == *G ]] && memN=$(( 1024 * ${mem%G} -10 ))M || memN=$(( ${mem%M} -10 ))M
+#[[ "$mem" == *G ]] && memN=$(( 1024 * ${mem%G} -10 ))M || memN=$(( ${mem%M} -10 ))M
 
 #[ ${memN%M} -le 1 ] && { echoerr Error: --mem for sbatch command should bigger than 11M; usage; }
-[ ${memN%M} -le 1 ] && mem=11M && memN=10M
+#[ ${memN%M} -le 1 ] && mem=11M && memN=10M
 
-
-echoerr Mew mem for srun: $memN
+#echoerr Mew mem for srun: $memN
 
 #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
 #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
 
 echoerr 
 echoerr Building new sbatch command ...
-echo "#!/bin/bash" > $job 
+#echo "#!/bin/bash" > $job 
+echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \"$projectDir\" \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"; }\" EXIT" > $job
+
 if [ -z "$slurmScript" ]; then 
 	echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; form command
-    echo "srun -n 1 $slurmAcc -t $timeN --mem $memN bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
 else 
 	grep "^#SBATCH" $slurmScript >> $job || echo >> $job
 	echo "touch $startFlag" >> $job
-    echo "srun -n 1 $slurmAcc -t $timeN --mem $memN bash -e -c \"{ sh $slurmScript; } && touch $succFlag\"" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -c \"{ sh $slurmScript; } && touch $succFlag\"" >> $job 
 fi
-echo "sleep 15 # wait slurm get the job status into its database" >> $job 
+#echo "sleep 15 # wait slurm get the job status into its database" >> $job 
 
-echo "echo Job done. Summary:" >> $job 
+#echo "echo Job done. Summary:" >> $job 
 
-echo "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID" >> $job 
-#echo SLURM_JOBID=\$SLURM_JOBID >> $job
+# echo "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID" >> $job 
+# #echo SLURM_JOBID=\$SLURM_JOBID >> $job
 
-echo "emailAndRecord.sh \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
+# echo "emailAndRecord.sh \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
 
-echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
+# echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
 
-echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
+# echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
 
 #[ -z "$dir" ] && dir="./" || mkdir -p $dir
 [ -z "$out" ] || ( [[ "$out" == /* ]] && mkdir -p $(dirname $out) || mkdir -p $dir/$(dirname $out) )
@@ -398,7 +398,7 @@ echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time -o $outFlag -e $errFlag -J $flag --mail-type=FAIL $deps $slurmAcc" 
+cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time -o $outFlag -e $errFlag -J $flag --mail-type=ALL $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 
@@ -422,7 +422,7 @@ else
 fi    
 
 # add this to the job script
-echo -e "#Sbatch command output:\n#Submitted batch job $jobID" >> $job 
+echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job 
 
 # print out on screen
 echoerr -e "Sbatch command output:\nSubmitted batch job $jobID"

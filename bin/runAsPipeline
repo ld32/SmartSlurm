@@ -278,7 +278,7 @@ done
 #echo "cd \$cwd/.." >> $run
 
 echo "echo; echo All submitted jobs: " >> $run
-echo "cat flag/allJobs.txt" >> $run 
+echo "cat \$cwd/flag/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
 
