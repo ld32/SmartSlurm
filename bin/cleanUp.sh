@@ -1,23 +1,22 @@
 #!/bin/bash
 
-set -x 
+#set -x 
 
 # to call this:  0     1           2           3       4         5          6      7        8       9  10   11
 #emailAndRecord.sh "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core $memO  $timeO  $mem  $time  partition
+
+
+echo Running $0 $@
                 
-para="$USER $2 $3 $4 $5 $6 $7 $8 $9 $10";  out=$1/flag/"${4}.out"; err=$1/flag/"${4}.err"; script=$1/flag/"${4}.sh"; succFile=$1/flag/"${4}.success";   
+para="$USER $2 $3 $4 $5 $6 $7 $8 $9 $10";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
 echo -e "\nJob summary:\n$sacct"
 # echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
 
-
-
 # record job for future estimating mem and time
 jobStat=`echo -e "$sacct" | tail -n 1`
-
-#echo Running: $0  $@
 
 echo -e  "Last row of job summary: $jobStat" 
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID" 
@@ -39,7 +38,7 @@ mem=`echo $jobStat | cut -d" " -f5`
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
-#echo start: $START finish: $FINISH mem: $mem mins: $mins
+echo start: $START finish: $FINISH mem: $mem mins: $mins
 
 failReason=""
 
@@ -53,15 +52,17 @@ case "$jobStat" in
 *CANCELLED*	)  grep "Exceeded job memory limit" $out $err 2>&1 >/dev/null && failReason="(needMoreMem)" && record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} needMoreMem $flag.out `date`" || record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} UnknowReason $errFlag `date`";;
 
 esac
+
+echo failReason: $failReason
     
-if [[ "$5" != "0" && -z "$failReason" && "$mem" != "0" && ! -z "$record" && ! -f ~/.rcbio/$1.$2.mem.stat.final ]; then 
+if [[ "$5" != "0" && -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" && ! -f ~/.smartSlurm/$2.$3.mem.stat.final ]]; then 
     echo $record >> ~/.smartSlurm/myJobRecord.txt
     echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
     
 else 
 #    echo "Job record:\n$record\n" 
-    echo Did not add this record to ~/.rcbio/myJobRecord.txt
-#    echo Because we already have ~/.rcbio/$1.$2.mem.stat.final
+    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+#    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
 fi
 
 # do we need calculate stats here???
@@ -105,43 +106,54 @@ echo -e "$toSend" | mail -s "$s" $USER && echo email sent || echo email not sent
 
 touch $failFile
 
-scontrol requeue $SLURM_JOBID 
+scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
 
 #todo: check if out of time? or out of memory
 
 if [[ "$failReason" == "(needMoreTime)" ]]; then
  
-    time=$10
-    [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
+    # time=${10}
+    # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
 
-    [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
+    # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
 
-    echoerr $day $day,  $hour hour,  $min min,  $sec sec
+    # echo $day $day,  $hour hour,  $min min,  $sec sec
 
-    # how many hours for sbatch command if we double the time
-    hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
+    # # how many hours for sbatch command if we double the time
+    # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
-    #echoerr looking partition for hour: $hours 
+    hours=$((($mins * 2 + 59) / 60))
+
+    #echo looking partition for hour: $hours 
     x=`realpath $0` 
-    . ${x%\/bin\/smartSbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
+    . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
     partition=`adjustPartition $hours $partition`
 
-    timeN=...
+    seconds=$(($mins * 2 * 60))
+
+    #[ $seconds -le 60 ] && time=11:0 && seconds=60
+
+    #echo srun seconds: $seconds
+
+    time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
     if [[ "$partition" != "$11" ]]; then 
-        scontrol update jobid=$SLURM_JOBID Partition=$partition
+        scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
+    else 
+        scontrol update jobid=$SLURM_JOBID TimeLimit=$time
     fi 
 
-
+    echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
 
 elif [[ "$failReason" == "(needMoreMem)" ]]; then
-    
+    mem=$(( $9 * 2 ))
+    scontrol update jobid=$SLURM_JOBID MinMemoryNode=$mem
 
-
-scontrol update jobid=$SLURM_JOBID TimeLimit=0:10:0 MinMemoryNode=40
-
-echo job resubmitted: $SLURM_JOBID 
+    echo job resubmitted: $SLURM_JOBID with mem: $mem
+else 
+    echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
+fi
 
 exit 1; 
 

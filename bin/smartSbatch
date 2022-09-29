@@ -337,6 +337,8 @@ x=`realpath $0`
 
 partition=`adjustPartition $hours $partition`
 
+time=$day-$hour:$min:$sec
+
 # 10 minutes less than the time in sbatch command
 #seconds=$(($day * 24 * 60 * 60 + $hour * 60 * 60  + $min * 60 + $sec - 600))
 
@@ -398,7 +400,7 @@ fi
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time -o $outFlag -e $errFlag -J $flag --mail-type=ALL $deps $slurmAcc" 
+cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag --mail-type=ALL $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 
