@@ -65,6 +65,59 @@ else
 #    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
 fi
 
+if [ ! -f $succFile ]; then
+    touch $failFile
+
+    scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
+
+    #todo: check if out of time? or out of memory
+
+    if [[ "$failReason" == "(needMoreTime)" ]]; then
+    
+        # time=${10}
+        # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
+
+        # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
+
+        # echo $day $day,  $hour hour,  $min min,  $sec sec
+
+        # # how many hours for sbatch command if we double the time
+        # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
+
+        hours=$((($mins * 2 + 59) / 60))
+
+        #echo looking partition for hour: $hours 
+        x=`realpath $0` 
+        . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
+
+        partition=`adjustPartition $hours $partition`
+
+        seconds=$(($mins * 2 * 60))
+
+        #[ $seconds -le 60 ] && time=11:0 && seconds=60
+
+        #echo srun seconds: $seconds
+
+        time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
+
+        if [[ "$partition" != "$11" ]]; then 
+            scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
+        else 
+            scontrol update jobid=$SLURM_JOBID TimeLimit=$time
+        fi 
+
+        echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
+
+    elif [[ "$failReason" == "(needMoreMem)" ]]; then
+        mem=$(( $9 * 2 ))
+        scontrol update jobid=$SLURM_JOBID MinMemoryNode=$mem
+
+        echo job resubmitted: $SLURM_JOBID with mem: $mem
+    else 
+        echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
+    fi
+fi
+
 # do we need calculate stats here???
 
 minimumsize=9000
@@ -97,63 +150,14 @@ echo "Sending email..."
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 echo -e "$toSend" | mail -s "$s" $USER && echo email sent || echo email not sent
 
+echo 
+
 #to=`cat ~/.forward`
 #echo -e "$s\n$toSend" | sendmail $to && echo email sent || echo email not sent
 
 #adjustDownStreamJobs.sh $1/flag $4 
 
 [ -f $succFile ] && exit 0  
-
-touch $failFile
-
-scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
-
-#todo: check if out of time? or out of memory
-
-if [[ "$failReason" == "(needMoreTime)" ]]; then
- 
-    # time=${10}
-    # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
-
-    # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
-
-    # echo $day $day,  $hour hour,  $min min,  $sec sec
-
-    # # how many hours for sbatch command if we double the time
-    # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
-
-    hours=$((($mins * 2 + 59) / 60))
-
-    #echo looking partition for hour: $hours 
-    x=`realpath $0` 
-    . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
-
-    partition=`adjustPartition $hours $partition`
-
-    seconds=$(($mins * 2 * 60))
-
-    #[ $seconds -le 60 ] && time=11:0 && seconds=60
-
-    #echo srun seconds: $seconds
-
-    time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-
-    if [[ "$partition" != "$11" ]]; then 
-        scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
-    else 
-        scontrol update jobid=$SLURM_JOBID TimeLimit=$time
-    fi 
-
-    echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
-
-elif [[ "$failReason" == "(needMoreMem)" ]]; then
-    mem=$(( $9 * 2 ))
-    scontrol update jobid=$SLURM_JOBID MinMemoryNode=$mem
-
-    echo job resubmitted: $SLURM_JOBID with mem: $mem
-else 
-    echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
-fi
 
 exit 1; 
 
