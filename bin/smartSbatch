@@ -6,6 +6,8 @@
 # Auto create output and erro folders if not exist
 # Auto adjust memory and run time based on earlier mem time usage 
 # Support re-run checking
+# Auto requeue when out of time
+# Auto requeue when out of memory
 # Keep good log and send informative email
 
 # todo:
@@ -400,7 +402,7 @@ fi
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag --mail-type=ALL $deps $slurmAcc" 
+cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 

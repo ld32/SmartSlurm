@@ -71,7 +71,7 @@ echo "rm flag/skipAllSuccessJobs*.txt flag/reRunAllSuccessJobs*.txt 2>/dev/null"
 echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > flag/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 
-[ "$3" == "useTmp" ] && echo ". $(dirname $0)/rcUtils.sh" >> $run
+[ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
 
 # get slurm account from command line
 slurmAccount=""
@@ -139,6 +139,7 @@ for t in `cat ${1%% *}`; do
         # exit
 
 	    [ -z "$ref" ] || ref=.$ref
+        [ -z "$inputs" ] || inputs=.$inputs
         
         echo "$t" >> $run
     
@@ -222,9 +223,10 @@ for t in `cat ${1%% *}`; do
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
         cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
        
-        [ -z "$inputs" ] && inputs=empty && echo empty=none >> $run
+        [ -z "$inputs" ] && inputs=none
+        [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i \$$inputs -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i \$$inputs -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\")"   >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r ${ref//./$} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\")"   >> $run
 
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 

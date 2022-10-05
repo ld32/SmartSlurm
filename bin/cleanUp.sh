@@ -2,13 +2,12 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6      7        8       9  10   11
-#emailAndRecord.sh "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core $memO  $timeO  $mem  $time  partition
-
+# to call this:  0     1           2           3       4         5          6       7        8       9    10      11
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition
 
 echo Running $0 $@
                 
-para="$USER $2 $3 $4 $5 $6 $7 $8 $9 $10";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
+para="$USER $2 $3 $4 $5 $6 $7 $8 $9 ${10}";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -18,7 +17,7 @@ echo -e "\nJob summary:\n$sacct"
 # record job for future estimating mem and time
 jobStat=`echo -e "$sacct" | tail -n 1`
 
-echo -e  "Last row of job summary: $jobStat" 
+
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID" 
 
 START=`echo $jobStat | cut -d" " -f3`
@@ -38,8 +37,6 @@ mem=`echo $jobStat | cut -d" " -f5`
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
-echo start: $START finish: $FINISH mem: $mem mins: $mins
-
 failReason=""
 
 case "$jobStat" in
@@ -48,11 +45,15 @@ case "$jobStat" in
 *COMPLETED* )  record="$para $SLURM_JOB_ID  ${mem%M} ${mins} ${node} COMPLETED `date`" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
 
 *TIMEOUT*   )  record="$para $SLURM_JOB_ID  ${mem%M} ${mins} ${node} needMoreTime $errFlag `date`" && failReason="(needMoreTime)";;
+
+*OUT_OF_ME*   ) record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} needMoreMem $errFlag `date`" && failReason="(needMoreMem)";;
         
-*CANCELLED*	)  grep "Exceeded job memory limit" $out $err 2>&1 >/dev/null && failReason="(needMoreMem)" && record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} needMoreMem $flag.out `date`" || record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} UnknowReason $errFlag `date`";;
+*CANCELLED*	) record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} Cancelled $errFlag `date`" && failReason="(cancelled)";;
 
 esac
 
+echo -e  "Last row of job summary: $jobStat" 
+echo start: $START finish: $FINISH mem: $mem mins: $mins
 echo failReason: $failReason
     
 if [[ "$5" != "0" && -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" && ! -f ~/.smartSlurm/$2.$3.mem.stat.final ]]; then 
@@ -68,11 +69,10 @@ fi
 if [ ! -f $succFile ]; then
     touch $failFile
 
-    scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
-
-    #todo: check if out of time? or out of memory
-
     if [[ "$failReason" == "(needMoreTime)" ]]; then
+
+
+        scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
     
         # time=${10}
         # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
@@ -100,25 +100,60 @@ if [ ! -f $succFile ]; then
 
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
-        if [[ "$partition" != "$11" ]]; then 
+        if [[ "$partition" != "${11}" ]]; then 
             scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
         else 
             scontrol update jobid=$SLURM_JOBID TimeLimit=$time
+            
         fi 
 
         echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
 
     elif [[ "$failReason" == "(needMoreMem)" ]]; then
-        mem=$(( $9 * 2 ))
-        scontrol update jobid=$SLURM_JOBID MinMemoryNode=$mem
 
-        echo job resubmitted: $SLURM_JOBID with mem: $mem
+        jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
+
+        mem=${jobStat#*mem=}; mem=${mem%M*}
+
+        if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
+            echo Submitting a job to re-queue the job. 
+            mem=$(( $mem * 2 ))
+            echo sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=$mem;"
+            sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=$mem;"
+        else
+            echo Could not find the original mem value.
+            echo Job failed of out-of-memory. Please resubmit with more memory check youself.
+        fi
+
+        
+        #
+
+    
+        #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
+        #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
+
+        # sleep 5 45937
+        #scontrol hold $SLURM_JOBID
+        #scontrol hold 45937
+        #sleep 5
+        # this doe not work due to cgroup out memory error 
+        #sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=50000;" 
+        # sleep 5; scontrol release $SLURM_JOBID; "
+        #which sbatch 
+
+        #sbatch -p priority -t 5 -A rccg --wrap "hostname"
+
+        #scontrol update JobId=$SLURM_JOBID MinMemoryCPU=8000
+        # todo: submit new job and adjust down steam jobs' dependency
+
+        #echo job resubmitted: $SLURM_JOBID with mem: $mem
+        
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
+else
+    adjustDownStreamJobs.sh $1/flag $4     
 fi
-
-# do we need calculate stats here???
 
 minimumsize=9000
 
@@ -152,10 +187,8 @@ echo -e "$toSend" | mail -s "$s" $USER && echo email sent || echo email not sent
 
 echo 
 
-#to=`cat ~/.forward`
-#echo -e "$s\n$toSend" | sendmail $to && echo email sent || echo email not sent
-
-#adjustDownStreamJobs.sh $1/flag $4 
+# wait for email to be sent
+sleep 20
 
 [ -f $succFile ] && exit 0  
 
