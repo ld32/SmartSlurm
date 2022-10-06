@@ -368,7 +368,7 @@ time=$day-$hour:$min:$sec
 echoerr 
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job 
-echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \"$projectDir\" \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"; }\" EXIT" > $job
+echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \"$projectDir\" \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\"; }\" EXIT" > $job
 
 if [ -z "$slurmScript" ]; then 
 	echo "touch $startFlag" >> $job

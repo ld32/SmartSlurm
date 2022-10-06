@@ -2,8 +2,8 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6       7        8       9    10      11
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition
+# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc
 
 echo Running $0 $@
                 
@@ -118,15 +118,14 @@ if [ ! -f $succFile ]; then
         if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
             echo Submitting a job to re-queue the job. 
             mem=$(( $mem * 2 ))
-            echo sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=$mem;"
-            sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=$mem;"
+            p=`adjustPartition 1 short`
+            echo sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
+            jobID=`sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
+            scontrol top $jobID   
         else
             echo Could not find the original mem value.
             echo Job failed of out-of-memory. Please resubmit with more memory check youself.
         fi
-
-        
-        #
 
     
         #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.

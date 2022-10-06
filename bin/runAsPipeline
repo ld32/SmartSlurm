@@ -226,7 +226,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r ${ref//./$} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r \$${ref#.} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\")"   >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r ${ref//./$} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -p \$cwd -s $name -r ${ref//./$} -f \$flag -i ${inputs//./,$} -d \$deps $slurmAccount \$xsub  --wrap \"$cmd\")"   >> $run
 
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
