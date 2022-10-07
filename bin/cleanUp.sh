@@ -69,9 +69,11 @@ fi
 if [ ! -f $succFile ]; then
     touch $failFile
 
+    #echo looking partition for hour: $hours 
+    x=`realpath $0` 
+    . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
+
     if [[ "$failReason" == "(needMoreTime)" ]]; then
-
-
         scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
     
         # time=${10}
@@ -85,10 +87,6 @@ if [ ! -f $succFile ]; then
         # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
         hours=$((($mins * 2 + 59) / 60))
-
-        #echo looking partition for hour: $hours 
-        x=`realpath $0` 
-        . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
         partition=`adjustPartition $hours $partition`
 
@@ -120,8 +118,8 @@ if [ ! -f $succFile ]; then
             mem=$(( $mem * 2 ))
             p=`adjustPartition 1 short`
             echo sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
-            jobID=`sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
-            scontrol top $jobID   
+            jobID=`sbatch --parsable --mail-type=ALL -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
+            #scontrol top $jobID   
         else
             echo Could not find the original mem value.
             echo Job failed of out-of-memory. Please resubmit with more memory check youself.

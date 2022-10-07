@@ -239,7 +239,7 @@ for t in `cat ${1%% *}`; do
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
-        echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id \$deps \$flag >> \$cwd/flag/allJobs.txt"  >> $run 
+        #echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id \$deps \$flag >> \$cwd/flag/allJobs.txt"  >> $run 
         
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         if [[ "$de" == *\.* ]]; then

@@ -10,6 +10,12 @@
 # Auto requeue when out of memory
 # Keep good log and send informative email
 
+# Auto adjust partition according to run-time request if they does not match up
+# Auto adjust memory and run time based on earlier mem time usage
+# Support re-run from breaking-point
+# Auto requeue job with double time when out of time
+# Auto requeue job with double memory when out of memory
+
 # todo:
 # 
 #
@@ -67,7 +73,9 @@ done
 
 [[ "$sbatch" == "sbatch" ]] || { echoerr Error: sbatch command is not found in your ssbatch command. Please check!; usage; }
 
-echoerr slurmAcc: $slurmAcc projectDir: $projectDir software: $software ref: $ref jobFlag: $flag inputs: $inputs
+echoerr options before sbatch: slurmAcc: $slurmAcc projectDir: $projectDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
+
+depsO=$deps 
 
 [ -z "$projectDir" ] && { echoerr projectDir is empty; usage; } 
 projectDir=${projectDir%/}
@@ -402,7 +410,7 @@ fi
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" 
+cmd="sbatch --mail-type=ALL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 
@@ -438,3 +446,5 @@ echo  $jobID
 
 # for check dependency, rerun, kill downstream jobs, estimate memmory and run time
 #[[ "$jobID" =~ ^[0-9]+$ ]]  &&  echo $jobID $dep $flag $software $ref $inputs >> $flagDir/allJobs.txt
+
+printf "%-10s  %-20s  %-10s\n" $jobID $depsO $flag >> $flagDir/allJobs.txt  
