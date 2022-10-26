@@ -1,0 +1,127 @@
+#!/bin/sh
+
+usage() { echo -e "Usage: \nsbatchRun <default sbatch parameters, for example: sbatch -p priority -c 1 -t 2:0:0 > <Other parameters, for example: -flag   <depend_job_ids>    <absolute_path_to_flag_folder>   <my_job>  <\"my_application para1   para2\"> [test]>\nThis script will submit a sbatch job named \"my_job\", run commands in \"my_job.sh\", output to \"my_job.out\"."; exit 1; } 
+
+#set -x 
+# to call this:     1                 2                                3          4         5  
+# parameter 5 (test is for testing, not really submit job), it is optional.           
+# sbatchRun sbatch -p priority -c 1 -t 2:0:0 -flag   <depend_job_ids>    <absolute_path_to_flag_folder>   <my_job>  <"my_application para1   para2"> [test]
+
+# This script will submit a sbatch job named "my_job", run commands in "my_job.sh", output to "my_job.out".
+# When the job runs, it creates "my_job.start", "my_job.failed" if fails, "my_job.success" if successes. 
+
+# features:
+# Ask if should run this job
+# Auto rerun job if has depencency jobs
+# Send email after job done
+
+# todo:
+# 
+#
+
+[ $# -le 5 ] && usage
+
+para=( "$@" )
+
+for i in "${!para[@]}"; do 
+    #echo -e "$i ${para[$i]}" >&2
+    if [ "${para[$i]}" == "-flag" ]; then
+        xsub="${para[@]:0:$i}"
+        dep=${para[$i+1]}    # dependency string
+        wp=${para[$i+2]}     # working path
+        flag=${para[$i+3]}   # flag base
+        cm="${para[$i+4]}"   # command
+        te="${para[$i+5]}"   # test
+        # check the application is available (module is loaded)
+        #type "${para[$i+2]}"  >/dev/null 2>&1 || { echo >&2 "Error: command '${para[$i+2]}' could not be found, did you forget to load the module? Aborting."; exit 1; }
+    fi
+done
+
+
+#echo b: $xsub  >&2
+#echo d: $dep   >&2
+#echo w: $wp  >&2
+#echo f: $flag  >&2
+#echo c: $cm  >&2
+#echo x: $te  >&2
+
+# escape back slash
+cm=${cm//\\/\\\\}
+#echo c: $cm >&2
+
+dep=${dep#.}
+
+#echo d1 ${d/\./} >&2
+if [[ $dep == null ]]; then
+    deps=""
+    echo depend on no job >&2
+elif [[ $dep == ${d/\./} ]]; then
+    echo depend on single job >&2
+    deps="--dependency=afterok:${d/\./}"
+else
+    echo depend on multiple jobs >&2
+    for t in ${dep//\./ }; do
+       deps="$deps:$t"
+    done
+    [ ! -z "$deps" ] && deps="--dependency=afterok$deps"
+fi
+
+#echo checking file: $wp/$flag.success  >&2
+
+#echo deps is .$deps. >&2
+
+if [ -f $wp/$flag.success ]; then 
+    stepID=${flag%%.*}
+    if ([ -f $wp/skipAllSuccessJobs.txt ] || [ -f $wp/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then 
+        exit    
+    elif [[ "$te"  != test ]] && [ ! -f $wp/reRunAllSuccessJobs.txt ] && [ ! -f $wp/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ]; then
+        stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
+        echo $flag was done before, do you want to re-run it? >&2
+        echo -e "y:        To re-run this job, press y, then enter key." >&2
+        echo -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key." >&2
+        echo -e "yall:     To re-run all jobs, type yall, then press enter key." >&2
+        echo -e "enter:    To not re-run this job, directly press enter key." >&2
+        echo -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key." >&2
+        echo -e "nall:     To not re-run all successful jobs, type nall, then press enter key." >&2
+        read -p "" x </dev/tty
+
+        if [[ "$x" == "y" ]]; then
+            echo Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70). >&2 
+        elif [[ "$x" == "ystep" ]]; then 
+            touch $wp/reRunAllSuccessJobs$stepID.txt
+        elif [[ "$x" == "nstep" ]]; then
+            touch $wp/skipAllSuccessJobs$stepID.txt
+            exit
+        elif [[ "$x" == "yall" ]]; then 
+            touch $wp/reRunAllSuccessJobs.txt
+        elif [[ "$x" == "nall" ]]; then
+            touch $wp/skipAllSuccessJobs.txt
+            exit    
+        else
+            exit
+        fi  
+    fi
+fi 
+ 
+rm -f $wp/$flag.start $wp/$flag.failed $wp/$flag.killed $wp/$flag.success  2>/dev/null 
+
+echo -e "#!/bin/bash\n#Commands:\ntrap \"{ cleanUp.sh  $wp/$flag; }\" EXIT
+$cm" > $wp/$flag.sh
+
+cmd="$xsub --requeue --nodes=1 $deps -J $flag -o $wp/$flag.out -e $wp/$flag.out $wp/$flag.sh" 
+
+echo -e "\n#sbatch command:\n#$cmd" >> $wp/$flag.sh
+
+if [[ "$te"  == test ]]; then 
+    output="This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $(date +"%4N")"   
+else 
+    [[ "$deps" != *&&* ]] && output="$($cmd)" || output="$(eval $cmd)"
+fi 
+
+echo ${output##* }
+
+#cat $flag.sh >&2
+
+echo -e "$cmd \n# $output" >&2
+
+echo -e "\n# $output" >> $wp/$flag.sh
