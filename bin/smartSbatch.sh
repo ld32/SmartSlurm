@@ -48,7 +48,7 @@ echoerr
 
 array=( "$@" )
 
-deps=null
+
 
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
@@ -132,7 +132,7 @@ else
 fi
 echoerr test or run: $testRun
 
-stamp=`date -d "today" +"%Y.%m.%d.%H.%M-%N"`
+#stamp=`date -d "today" +"%Y.%m.%d.%H.%M-%N"`
 
 if [ ! -z "$slurmScript" ]; then 
   echoerr Validating slurmScript: 
@@ -188,7 +188,7 @@ fi
 if [ -z "$projectDir$software$ref$flag$inputs$deps" ]; then 
     projectDir=~/.smartSlurm
     software=regularSbatch
-    [ -z "$wrapCMD" ] && ref=${wrapCMD// /} || ref=${slurmScript// /}
+    [ ! -z "$wrapCMD" ] && ref=${wrapCMD// /.} || ref=${slurmScript// /.}
     tm=`mktemp XXXXXXXX`
     [ -z "$wrapCMD" ] && flag=$ref.$tm || flag=$ref.$tm
 fi    
@@ -198,6 +198,7 @@ projectDir=${projectDir%/}
 [ -z "$software" ] && { echoerr software is emtpty; usage; }
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
+[ -z "$deps" ] && deps=null
 
 [ -d "$projectDir" ] || { echoerr Directory not exist: $projectDir; usage; }
 
