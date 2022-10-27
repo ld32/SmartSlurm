@@ -20,7 +20,7 @@
 # 
 #
 
-set -x 
+#set -x 
 
 echoerr() { echo "$@" 1>&2; }
 
@@ -188,7 +188,7 @@ fi
 if [ -z "$projectDir$software$ref$flag$inputs$deps" ]; then 
     projectDir=~/.smartSlurm
     software=regularSbatch
-    [ ! -z "$wrapCMD" ] && ref=${wrapCMD// /.} || ref=${slurmScript// /.}
+    [ ! -z "$wrapCMD" ] && ref=${wrapCMD// /_} || ref=${slurmScript// /_}
     tm=`mktemp XXXXXXXX`
     [ -z "$wrapCMD" ] && flag=$ref.$tm || flag=$ref.$tm
 fi    
@@ -343,15 +343,15 @@ elif [[ "$inputs" == "none" ]]; then
     
         cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt 
         #filter by software and reference
-        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$software -v b=$ref '{ if($2 == a && $3 == b) {print $12 }}' | sort -fn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
+        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$software -v b=$ref '{ if($2 == a && $3 == b) {print $12 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
         grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$software -v b=$ref '{ if($2 == a && $3 == b) {print $13 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
 
     fi
     if [ -f ~/.smartSlurm/$software.$ref.mem.stat.noInput ]; then 
-        totalRow =`wc -l ~/.smartSlurm/$software.$ref.mem.stat.noInput`
-        if [ ! -z "$totalRow" && $totalRow -ge 5 ]; then 
-            cutoffRow=$(( totalRow*20/100 ))
-            mem=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.mem.stat.noInput | tail -n 1`M
+        totalRow=`wc -l < ~/.smartSlurm/$software.$ref.mem.stat.noInput`
+        if [[ ! -z "$totalRow" && $totalRow -ge 5 ]]; then 
+            cutoffRow=$(( totalRow*10/100 ))
+            mem=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.mem.stat.noInput | tail -n 1`; mem=${mem/\.*/}M
             time=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.time.stat.noInput | tail -n 1`        
         else 
             echo There is less than 5 records. No way to fit a curve. Exiting...
@@ -446,7 +446,7 @@ fi
 echoerr New slurmScirpt is ready. The content is:
 cat $job 1>&2
 
-cmd="sbatch --mail-type=ALL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" 
+cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" 
 if [ -z "$slurmScript" ]; then 
 	cmd="$cmd $CMDWithoutWrap $job" 
 else 

@@ -55,13 +55,16 @@ echo -e  "Last row of job summary: $jobStat"
 echo start: $START finish: $FINISH mem: $mem mins: $mins
 echo failReason: $failReason
     
-if [[ "$5" != "0" && -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" && ! -f ~/.smartSlurm/$2.$3.mem.stat.final ]]; then 
-    echo $record >> ~/.smartSlurm/myJobRecord.txt
-    echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
-    
+if [[ -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" ]]; then
+    if [[ ! -f ~/.smartSlurm/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
+        echo $record >> ~/.smartSlurm/myJobRecord.txt
+        echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
+    else 
+        echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+    fi
 else 
 #    echo "Job record:\n$record\n" 
-    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt1
 #    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
 fi
 

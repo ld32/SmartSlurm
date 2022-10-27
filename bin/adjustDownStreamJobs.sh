@@ -22,7 +22,7 @@ IFS=$' ';
 id=`echo $text | awk '{if ($3 ~ /'"$job/"') print $1;}' | tail -n 1`
 
 echo -e "Find current job id (flag: $2):\n$id"
-[ -z "$id" ] && { echo -e "job id for job name $job not found!\n$Usage"; exit; }
+[ -z "$id" ] && { echo -e "job id for job name $job not found in $path/allJobs.txt!"; exit; }
 
 echo 
 

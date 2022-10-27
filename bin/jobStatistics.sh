@@ -1,3 +1,4 @@
+#!/bin/bash
 
 echo Running
 echo $0 $@ 
