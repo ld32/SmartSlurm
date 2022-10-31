@@ -17,7 +17,6 @@ echo -e "\nJob summary:\n$sacct"
 # record job for future estimating mem and time
 jobStat=`echo -e "$sacct" | tail -n 1`
 
-
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID" 
 
 START=`echo $jobStat | cut -d" " -f3`
@@ -56,13 +55,16 @@ echo -e  "Last row of job summary: $jobStat"
 echo start: $START finish: $FINISH mem: $mem mins: $mins
 echo failReason: $failReason
     
-if [[ "$5" != "0" && -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" && ! -f ~/.smartSlurm/$2.$3.mem.stat.final ]]; then 
-    echo $record >> ~/.smartSlurm/myJobRecord.txt
-    echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
-    
+if [[ -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" ]]; then
+    if [[ ! -f ~/.smartSlurm/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
+        echo $record >> ~/.smartSlurm/myJobRecord.txt
+        echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
+    else 
+        echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+    fi
 else 
 #    echo "Job record:\n$record\n" 
-    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt1
 #    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
 fi
 

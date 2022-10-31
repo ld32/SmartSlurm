@@ -1,3 +1,4 @@
+#!/bin/bash
 
 echo Running
 echo $0 $@ 
@@ -92,3 +93,5 @@ rm -r $OUT 2>/dev/null
 #rm -r $OUT 
 echo got files in ~/.smartSlurm:  
 ls -lrt ~/.smartSlurm/
+
+
