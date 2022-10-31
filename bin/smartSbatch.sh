@@ -24,7 +24,7 @@
 
 echoerr() { echo "$@" 1>&2; }
 
-usage() { echoerr -e "Short Usage: \nsmartSbatch <-p projectDir>  <-s software> <-r reference> <-f uniqueJobFlag> <-i inputList> <sbatch ...> [run]\nDetail Usage:\nsmartSbatch <-d projectDir, such as: ./> <-s software, such as: bowtie2-4core> <-r reference, such as: hg19> <-f uniqueJobFlag such as 1.bowtie.s1.fa> <-i inputFileOrFolderList: such as: read1.fq;read2.fq> <regular sbatch command, such as: sbath job.sh or sbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will not submit job]"; exit 1; }
+usage() { echoerr -e "Short Usage: \n${0##*/} <-P projectDir>  <-S software> <-R reference> <-F uniqueJobFlag> <-I inputList> <result sbatch options> [run]\nDetail Detail Usage:\n${0##*/} <-P projectDir, such as: ./> <-S software, such as: bowtie2-4core> <-R reference, such as: hg19> <-F uniqueJobFlag such as 1.bowtie.s1.fa> <-I inputFileOrFolderList: such as: read1.fq,read2.fq> <regular sbatch options job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
 [ -z "$1" ] && usage
 
@@ -45,10 +45,7 @@ echoerr $cmd
 testRun=${@: -1} 
 
 echoerr 
-
 array=( "$@" )
-
-
 
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do

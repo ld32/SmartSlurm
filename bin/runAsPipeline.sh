@@ -2,7 +2,7 @@
 
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
 
-set -x 
+set -x
 
 [ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
