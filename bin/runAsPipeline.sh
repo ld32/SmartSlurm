@@ -2,7 +2,7 @@
 
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
 
-set -x
+#set -x
 
 [ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
@@ -271,6 +271,13 @@ for t in `cat ${1%% *}`; do
             #echo a is .$a.
             loper="$loper.\$$a"
             #echo new loper: $loper
+        elif [[ "$i" == while* ]]; then
+            echo; echo find loop start: $i
+            #a=`echo $i | xargs`  # remove leading space and tailing space
+            a=whiele #${a#* }; a=${a%% *}
+            #echo a is .$a.
+            loper="$loper.$a"
+            #echo new loper: $loper    
         fi    
     fi   
 done

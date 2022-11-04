@@ -351,7 +351,7 @@ elif [[ "$inputs" == "none" ]]; then
             mem=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.mem.stat.noInput | tail -n 1`; mem=${mem/\.*/}M
             time=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.time.stat.noInput | tail -n 1`        
         else 
-            echo There is less than 5 records. No way to fit a curve. Exiting...
+            echoerr There is less than 5 records. No way to fit a curve. Exiting...
 
         fi
     fi
