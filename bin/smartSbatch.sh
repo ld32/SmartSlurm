@@ -20,7 +20,7 @@
 # 
 #
 
-#set -x 
+set -x 
 
 echoerr() { echo "$@" 1>&2; }
 
@@ -186,7 +186,7 @@ if [ -z "$projectDir$software$ref$flag$inputs$deps" ]; then
     projectDir=~/.smartSlurm
     software=regularSbatch
     [ ! -z "$wrapCMD" ] && ref=${wrapCMD// /_} || ref=${slurmScript// /_}
-    tm=`mktemp XXXXXXXX`
+    tm=`mktemp XXXXXXXX --dry-run`
     [ -z "$wrapCMD" ] && flag=$ref.$tm || flag=$ref.$tm
 fi    
 
@@ -338,10 +338,15 @@ elif [[ "$inputs" == "none" ]]; then
     ref=${ref//\//-}
     if [ ! -f ~/.smartSlurm/$software.$ref.mem.stat.noInput ] || [ -z "`find ~/.smartSlurm/$software.$ref.mem.stat.noInput -mmin -60`" ]; then  
     
-        cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt 
+        #cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt 
+        cat $HOME/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
         #filter by software and reference
-        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$software -v b=$ref '{ if($2 == a && $3 == b) {print $12 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
-        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -v a=$software -v b=$ref '{ if($2 == a && $3 == b) {print $13 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
+        # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
+        # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
+        
+         grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $0 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
+        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $0 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
+        
 
     fi
     if [ -f ~/.smartSlurm/$software.$ref.mem.stat.noInput ]; then 
@@ -409,7 +414,7 @@ time=$day-$hour:$min:$sec
 echoerr 
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job 
-echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \"$projectDir\" \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\"; }\" EXIT" > $job
+echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \"$projectDir\" \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\" \\\"$0 $@\\\"; }\" EXIT" > $job
 
 if [ -z "$slurmScript" ]; then 
 	#echo "touch $startFlag" >> $job

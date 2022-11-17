@@ -14,7 +14,7 @@ def cluster_text(text):
     X = vectorizer.fit_transform(text)
 
     Sum_of_squared_distances = []
-    K = range(2,6)
+    K = range(1,3) #text.shape[0])
     # for k in K:
     #    print(k)
     #    km = KMeans(n_clusters=k, max_iter=200, n_init=10)
@@ -66,7 +66,7 @@ def cluster_text(text):
         
     print("predict:")    
         
-    print(model.predict(vectorizer.transform(["My data read from the"])))
+    print(model.score(vectorizer.transform(["rccg"])))
     
     return
 
@@ -75,16 +75,23 @@ def main():
     print(sys.argv[0]) # this is alwys the name/path? of the python file
     # some_function_in_your_code(sys.argv[0])
 
-    df = pd.read_csv(sys.argv[1], sep=" ")
+    df = pd.read_csv(sys.argv[1], sep=",")
+    print('df0')
     print(df)
     
-    data = df.iloc[:,2]
+    df=df[df.iloc[:,2].str.contains('regularSbatch')]
     
+    print('df')
+    print(df)
+    
+    data = df.iloc[:,0]
+    
+    print('data')
     print(data)
     
     #data = ["My data read from the Web", "Test here", "test again", "test yet again","Test here", "test again", "test yet again"]
 
-    print(data)
+    #print(data)
 
     cluster_text(data)
 

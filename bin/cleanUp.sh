@@ -2,12 +2,12 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc
+# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13 
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
 
 echo Running $0 $@
                 
-para="$USER $2 $3 $4 $5 $6 $7 $8 $9 ${10}";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
+para="\"${13}\",$USER,$2,$3,$4,$5,$6,$7,$8,$9,${10}";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -41,13 +41,13 @@ failReason=""
 case "$jobStat" in
 # jobRecord.txt header
 #1user 2software 3ref 4inputName 5inputSizeInK 6CPUNumber 7memoryO 8timeO 9readMem 10RequestedTime 11jobID 12memoryM 13minRun 14Node 15 finalStatus    
-*COMPLETED* )  record="$para $SLURM_JOB_ID  ${mem%M} ${mins} ${node} COMPLETED `date`" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
+*COMPLETED* )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},COMPLETED,$err,`date`" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
 
-*TIMEOUT*   )  record="$para $SLURM_JOB_ID  ${mem%M} ${mins} ${node} needMoreTime $errFlag `date`" && failReason="(needMoreTime)";;
+*TIMEOUT*   )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreTime,$err,`date`" && failReason="(needMoreTime)";;
 
-*OUT_OF_ME*   ) record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} needMoreMem $errFlag `date`" && failReason="(needMoreMem)";;
+*OUT_OF_ME*   ) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreMem,$err,`date`" && failReason="(needMoreMem)";;
         
-*CANCELLED*	) record="$para $SLURM_JOB_ID ${mem%M} ${mins} ${node} Cancelled $errFlag `date`" && failReason="(cancelled)";;
+*CANCELLED*	) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},Cancelled,$err,`date`" && failReason="(cancelled)";;
 
 esac
 
