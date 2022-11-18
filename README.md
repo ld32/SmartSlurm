@@ -11,24 +11,27 @@ ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so t
 
 ## How to use ssbatch:
 
+``` bash
 cd  
 git clone git://github.com/ld32/smarterSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
 
-Such as:     
+#Such as:     
 ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
-\# Here '-p short' is optional, because ssbatch chooses partition according to run time.   
+# Notice above, '-p short' is optional because ssbatch can automatically choose partition according to run time.   
+
 or:     
 ssbatch job.sh
 
-Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline, such as https://github.com/ENCODE-DCC/atac-seq-pipeline):    
+#Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you don't have to modify your pipeline, such as https://github.com/ENCODE-DCC/atac-seq-pipeline). Please run these two commands before submitting sbatch jobs:
+
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }  # define a bash function called sbatch   
 export -f sbatch                  # enable the function it    
-type sbatch                       # confirm the new sbatch function overwrites the regular sbatch command
 
-Then you can run slurm jobs as usual. After you finish using ssbatch, run this command to disable it:    
+#Then you can run sbatch jobs as usual. After you finish using ssbatch, run this command to disable it:    
 unset sbatch
+```
 
 ## ssbatch features:
 
