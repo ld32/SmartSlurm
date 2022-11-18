@@ -17,7 +17,7 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
 
 Such as:     
-ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" 
+ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
 \# Here '-p short' is optional, because ssbatch chooses partition according to run time.   
 or:     
 ssbatch job.sh
