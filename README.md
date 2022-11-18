@@ -2,18 +2,7 @@
 # SmarterSlurm
 
 - [ssbatch](#ssbatch)
-
-
-- [Titles](#titles)
-- [Paragraph](#paragraph)
-- [List](#list)
-	- [List CheckBox](#list-checkbox)
-- [Link](#link)
-	- [Anchor links](#anchor-links)
-- [Blockquote](#blockquote)
-- [Image | GIF](#image--gif)
-- [Style Text](#style-text)
-
+- [sbatchAndTop](#sbatchAndTop)
 
 
 # ssbatch
@@ -22,13 +11,14 @@ ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so t
 
 ## How to use ssbatch:
 
-cd ~    
+cd  
 git clone git://github.com/ld32/smarterSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
 
 Such as:     
-ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" # Here -p short is optional, because ssbatch chooses partition according to run time.   
+ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" 
+\# Here '-p short' is optional, because ssbatch chooses partition according to run time.   
 or:     
 ssbatch job.sh
 
