@@ -1,7 +1,7 @@
 =============================
 # SmarterSlurm
 
-- [ssbath](#ssbath)
+- [ssbatch](#ssbatch)
 
 
 - [Titles](#titles)
