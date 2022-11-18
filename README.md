@@ -1,4 +1,22 @@
+=============================
 # SmarterSlurm
+
+- [ssbath](#ssbath)
+
+
+- [Titles](#titles)
+- [Paragraph](#paragraph)
+- [List](#list)
+	- [List CheckBox](#list-checkbox)
+- [Link](#link)
+	- [Anchor links](#anchor-links)
+- [Blockquote](#blockquote)
+- [Image | GIF](#image--gif)
+- [Style Text](#style-text)
+
+
+
+#ssbatch
 
 ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. 
 
