@@ -344,7 +344,7 @@ elif [[ "$inputs" == "none" ]]; then
         # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
         # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
         
-         grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $0 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
+        grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $0 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
         grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $0 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
         
 
