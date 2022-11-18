@@ -20,7 +20,7 @@
 
 ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. 
 
-# How to use ssbatch:
+## How to use ssbatch:
 
 cd ~    
 git clone git://github.com/ld32/smarterSlurm.git  
@@ -40,7 +40,7 @@ type sbatch                       # confirm the new sbatch function overwrites t
 Then you can run slurm jobs as usual. After you finish using ssbatch, run this command to disable it:    
 unset sbatch
 
-# ssbatch features:
+## ssbatch features:
 
 1) Auto adjust partition according to run-time request if they does not match up
 
@@ -68,7 +68,7 @@ ssbatch -D /home/ld/workdir -p priority -t 0-0:0:10 myjob.sh
 For example, using default sbatch, this command fails if folder out or err does not exist       
 ssbatch -p priority -t 0-0:0:10 -o out/out -e err/myjob.sh 
 
-# How does it works
+## How does it works
 
 config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
@@ -103,7 +103,9 @@ adjustPartition() {
 }       
 export -f adjustPartition    
 
-# How to use sbatchAndTop
+# sbatchAndTop
+
+## How to use sbatchAndTop
 
 cd ~    
 git clone git@github.com:ld32/smarterSlurm.git  
@@ -116,6 +118,6 @@ sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
 or:     
 sbatchAndTop job.sh 
 
-# sbatchAndTop features:
+## sbatchAndTop features:
 
 1) Submit slurm job using ssbatch (scrool down to see ssbatch features) and run scontrol top on the job
