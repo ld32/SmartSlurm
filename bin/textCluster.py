@@ -116,6 +116,16 @@ def main():
         print(cluster.iloc[:,2].quantile(q=0.9))
         
         print(cluster.iloc[:,1].loc[cluster.index[0]])
+        
+        firstCommand = cluster.iloc[:,1].loc[cluster.index[0]]
+  
+        ratio = len(firstCommand)/len(toSearch)
+    
+        if(ratio > 0.8 and ratio < 1.25): 
+             print(cluster.iloc[:,2].quantile(q=0.9), cluster.iloc[:,3].quantile(q=0.9))
+        else: 
+            print('noMatch noMatch')
+            
     else: 
         vectorizer = TfidfVectorizer(stop_words={'english'})
         print(sys.argv) # this object will have all of your arguments in it
@@ -204,12 +214,25 @@ def main():
         #print(findID)
 
         cluster = clusters[clusters['cluster'] == findID[0]]
+        print(cluster)
         
         print(cluster.iloc[:,1].quantile(q=0.9))
+        
+        
+            
+  
         
         print(type(cluster))
         print(cluster.iloc[:,0].loc[cluster.index[0]])
 
+        firstCommand = cluster.iloc[:,0].loc[cluster.index[0]]
+  
+        ratio = len(firstCommand)/len(toSearch)
+        if(ratio > 0.8 and ratio < 1.25): 
+             print(cluster.iloc[:,1].quantile(q=0.9), cluster.iloc[:,2].quantile(q=0.9))
+        else: 
+            print('noMatch noMatch')
+            
     return
     
 if __name__ == "__main__":
