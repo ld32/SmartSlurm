@@ -6,8 +6,12 @@
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
 
 echo Running $0 $@
-                
-out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
+
+if [ -z "$1"]; then 
+    out=${$1% *}; out=${out/\%j/$SLURM_JOB_ID}; err=${1#* }; err=${err/\%j/$SLURM_JOB_ID}; script=$out.sh; succFile=$out.success; failFile=$out.failed; 
+else 
+    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
+fi 
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
