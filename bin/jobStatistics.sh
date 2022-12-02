@@ -10,7 +10,7 @@ echo $0 $@
 # if not rsynced today, sync some jobRecords from other users 
 if [ ! -f ~/.smartSlurm/jobRecord.txt ]; then
     echo File not exist:  ~/.smartSlurm/jobRecord.txt, sync some some data ...
-    cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
+    cat ~/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
     if [ ! -f ~/.smartSlurm/jobRecord.txt ]; then
       touch ~/.smartSlurm/jobRecord.txt 
     fi  
@@ -23,8 +23,8 @@ fi
 OUT="$(mktemp -d)"
 
 #filter by software and reference
-grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk OFS="," -v a=$1 -v b=$2 '{ if($3 == a && $4 == b) {print $6, $13 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
-grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk OFS="," -v a=$1 -v b=$2 '{ if($3 == a && $4 == b) {print $6, $14 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
+grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk OFS="," -v a=$1 -v b=$2 '{ if($11 == a && $12 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
+grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk OFS="," -v a=$1 -v b=$2 '{ if($11 == a && $12 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
 
 #awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' ~/.smartSlurm/jobRecord.txt ~/.smartSlurm/myJobRecord.txt | grep COMPLETED | uniq > $OUT/time.txt
 

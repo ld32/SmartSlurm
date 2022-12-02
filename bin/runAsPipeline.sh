@@ -18,15 +18,15 @@ echo Running: $0 $@
 
 module list 
 
-[ -d flag ] && [[ "$4" == run ]] && cp -rp flag flag.$(stat -c %y flag | tr " " ".") 
+[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c %y log | tr " " ".") 
 
-mkdir -p flag
+mkdir -p log
 
 checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
 
-run=flag/slurmPipeLine.$checkSum.sh
+run=log/slurmPipeLine.$checkSum.sh
 
-[[ "$4" == run ]] && run=flag/slurmPipeLine.$checkSum.run.sh
+[[ "$4" == run ]] && run=log/slurmPipeLine.$checkSum.run.sh
 
 if [ -f "$run" ]; then  
     thisCmd="#cmd: $0 $@"
@@ -50,11 +50,11 @@ echo module list >> $run
      
 echo "xsubd=\"$2\"" >> $run
     
-echo mkdir -p flag >> $run
+echo mkdir -p log >> $run
 
-echo "if [ -f flag/allJobs.txt ]; then" >> $run
+echo "if [ -f log/allJobs.txt ]; then" >> $run
 
-echo "    cancelAllJobs flag/allJobs.txt " >> $run
+echo "    cancelAllJobs log/allJobs.txt " >> $run
 
 echo "    [ \$? == 1 ] && exit 0;" >> $run
 
@@ -62,13 +62,13 @@ echo "fi" >> $run
 
 echo "cwd=\`realpath ./\`" >> $run
 
-#echo "rm flag/*.failed flag/*.killed 2>/dev/null" >> $run
+#echo "rm log/*.failed log/*.killed 2>/dev/null" >> $run
 
-echo "[ -f flag/allJobs.txt ] && mv flag/allJobs.txt flag/allJobs.txt.old"  >> $run 
+echo "[ -f log/allJobs.txt ] && mv log/allJobs.txt log/allJobs.txt.old"  >> $run 
 
-echo "rm flag/skipAllSuccessJobs*.txt flag/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
+echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
 
-echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > flag/allJobs.txt" >> $run 
+echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > log/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
@@ -117,7 +117,7 @@ for t in `cat ${1%% *}`; do
         x=${i#*\#@} 
         # #@1,0,find1,u,input1;input2,sbatch -p short -c 1 -t 50:0
         
-        # smartSbatch -P ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
+        # smartSbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
         IFS=''
     
@@ -226,8 +226,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -P \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -P \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
-
+        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
         #echo "echo id is: \$id ">> $run
@@ -287,7 +286,7 @@ done
 #echo "cd \$cwd/.." >> $run
 
 echo "echo; echo All submitted jobs: " >> $run
-echo "cat \$cwd/flag/allJobs.txt" >> $run 
+echo "cat \$cwd/log/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
 

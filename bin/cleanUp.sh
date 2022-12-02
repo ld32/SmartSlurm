@@ -7,7 +7,7 @@
 
 echo Running $0 $@
                 
-para="\"${13}\",$USER,$2,$3,$4,$5,$6,$7,$8,$9,${10}";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
+out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -36,35 +36,41 @@ mem=`echo $jobStat | cut -d" " -f5`
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
+para=
+
 failReason=""
 
 case "$jobStat" in
 # jobRecord.txt header
 #1user 2software 3ref 4inputName 5inputSizeInK 6CPUNumber 7memoryO 8timeO 9readMem 10RequestedTime 11jobID 12memoryM 13minRun 14Node 15 finalStatus    
-*COMPLETED* )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},COMPLETED,$err,`date`" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
+*COMPLETED* )  failReason="COMPLETED" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
 
-*TIMEOUT*   )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreTime,$err,`date`" && failReason="(needMoreTime)";;
+*TIMEOUT*   )  failReason="NeedMoreTime";;
 
-*OUT_OF_ME*   ) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreMem,$err,`date`" && failReason="(needMoreMem)";;
+*OUT_OF_ME*   ) failReason="NeedMoreMem";;
         
-*CANCELLED*	) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},Cancelled,$err,`date`" && failReason="(cancelled)";;
+*CANCELLED*	) failReason="Cancelled";;
+
+*          )  failReason="Unknown";;
+
 
 esac
+record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$failReason,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
 
 echo -e  "Last row of job summary: $jobStat" 
 echo start: $START finish: $FINISH mem: $mem mins: $mins
 echo failReason: $failReason
     
-if [[ -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" ]]; then
-    if [[ ! -f ~/.smartSlurm/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
+if [[ "${mem%M}" != "0" && ! -z "$record" ]]; then
+#    if [[ ! -f ~/.smartSlurm/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
         echo $record >> ~/.smartSlurm/myJobRecord.txt
         echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
-    else 
-        echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
-    fi
-else 
+#    else 
+#        echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
+#    fi
+#else 
 #    echo "Job record:\n$record\n" 
-    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt1
+#    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt1
 #    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
 fi
 
@@ -75,7 +81,7 @@ if [ ! -f $succFile ]; then
     x=`realpath $0` 
     . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
-    if [[ "$failReason" == "(needMoreTime)" ]]; then
+    if [[ "$failReason" == "NeedMoreTime" ]]; then
         scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
     
         # time=${10}
@@ -108,8 +114,11 @@ if [ ! -f $succFile ]; then
         fi 
 
         echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
+        
+        rm ~/.smartSlurm/$2.$3.mem.stat.final* ~/.smartSlurm/$2.$3.time.stat.final* 2>/dev/null
+#        [ -f ~/.smartSlurm/$2.$3.mem.stat.final ] && rm ~/.smartSlurm/$2.$3.mem.stat.final ~/.smartSlurm/$2.$3.time.stat.final  
 
-    elif [[ "$failReason" == "(needMoreMem)" ]]; then
+    elif [[ "$failReason" == "NeedMoreMem" ]]; then
 
         jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
 
@@ -119,15 +128,17 @@ if [ ! -f $succFile ]; then
             echo Submitting a job to re-queue the job. 
             mem=$(( $mem * 2 ))
             p=`adjustPartition 1 short`
-            echo sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
-            jobID=`sbatch --parsable --mail-type=ALL -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
+            echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
+            jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=ALL -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
             #scontrol top $jobID   
         else
             echo Could not find the original mem value.
             echo Job failed of out-of-memory. Please resubmit with more memory check youself.
         fi
 
-    
+#        [ -f ~/.smartSlurm/$2.$3.mem.stat.final ] && rm ~/.smartSlurm/$2.$3.mem.stat.final ~/.smartSlurm/$2.$3.time.stat.final  
+        
+        rm ~/.smartSlurm/$2.$3.mem.stat.final* ~/.smartSlurm/$2.$3.time.stat.final* 2>/dev/null
         #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
         #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
 
@@ -151,14 +162,14 @@ if [ ! -f $succFile ]; then
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 else
-    adjustDownStreamJobs.sh $1/flag $4     
+    adjustDownStreamJobs.sh $1/log $4     
 fi
 
 minimumsize=9000
 
 actualsize=`wc -c $out`
 
-[ -f $succFile ] && s="Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Failed$failReason: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
+[ -f $succFile ] && s="Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Failed($failReason): job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    toSend=`echo Job script content:; cat $script;`
