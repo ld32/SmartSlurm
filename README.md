@@ -7,64 +7,52 @@
     - [How does It Works]($how-does-it-works)
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
-ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. 
+ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
 ## ssbatch features:
-1) Auto adjust partition according to run-time request if they does not match up
+1) Auto adjust memory and run-time according to the input size based on statistics from earlier jobs
 2) Auto adjust partition according to run-time request if they does not match up
 3) Auto re-run OOM (out of memory) and OOT (out of run-time) jobs
-4) Get good emails
-5) Auto adjust partition according to run-time request if they does not match up
-For example, this command:  
-ssbatch -p medium -t 0-0:0:10 myjob.sh.     # notice mediume partition only allows job longer than 12 hours.    
-becomes:    
-sbatch -p short -t 0-0:0:10 myjob.sh.       # medium partition is replaced by short partition
-
-ssbatch -t 0-0:0:10 --wrap hostname         # notice there is no partition is given with the sbatch command  
-becomes:    
-sbatch -p short -t 0-0:0:10 --wrap hostname # notice short partition is chosen for this 10 minute job
-
-This command will be not change the partition:   
-ssbatch -p priority -t 0-0:0:10 myjob.sh    # because prioirty partition allow any time less than 30 days, we keep to use priority partion. 
-
-
-
+4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches as email content the content of the sbatch script, the output and error log
 ## Quick Start
 ``` bash
 # Install and setup
-cd  
+cd $HOME 
 git clone git://github.com/ld32/smarterSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; } 
-export -f sbatch                                 
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
 # Create some text files for testing
 createBigTextFiles.sh
 
+# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 5 jobs to get memory and run-time statistics
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeWithInput.sh bigText$i.txt $i"
+    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
-# Auto ajust memory and run-time according input file size
+# Auto adjust memory and run-time according input file size
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
 sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeWithInput.sh bigText1.txt bigText$2.txt 3"
 
+# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 3 jobs to get memory and run-time statistics
+unset SSBATCH_I
 for i in {1..3}; do
     sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh $i $i"
 done
 
-# Auto ajust memory and run-time so that 90% jobs can finish successfully
+# Auto adjust memory and run-time so that 90% jobs can finish successfully
 sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh bigText1.txt 1 2"
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
+unset SSBATCH_I
 ```
 
 ## How to use ssbatch in details
 ``` bash
-cd  
+cd $HOME 
 git clone git://github.com/ld32/smarterSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
 ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
