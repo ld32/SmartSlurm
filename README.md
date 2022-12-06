@@ -2,40 +2,16 @@
 # SmarterSlurm
 
 - [ssbatch](#ssbatch)
+    - [ssbatch features](#ssbatch-features)
     - [Quick Start](#quick-start)
-    - [Details]($details) 
-    - [Features](#features)
+    - [How to Use ssbatch in Details]($how-to-use-ssbatch-in-details) 
+    - [How does It Works]($how-does-it-works)
+   
 - [sbatchAndTop](#sbatchAndTop)
 
 
 # ssbatch
 ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. 
-
-## Quick Start
-
-## How to use ssbatch:
-``` bash
-cd  
-git clone git://github.com/ld32/smarterSlurm.git  
-export PATH=$HOME/smartSlurm/bin:$PATH  
-ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
-
-# Such as:     
-ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
-# Notice above, '-p short' is optional because ssbatch can automatically choose partition according to run time.   
-
-or:     
-ssbatch job.sh
-
-# Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you 
-# don't have to modify your pipeline, such as https://github.com/ENCODE-DCC/atac-seq-pipeline). 
-# Please run these two commands before submitting sbatch jobs:
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }  # define a bash function called sbatch   
-export -f sbatch                                 # enable the function it    
-
-#Then you can run sbatch jobs as usual. After you finish using ssbatch, run this command to disable it:    
-unset sbatch
-```
 
 ## ssbatch features:
 1) Auto adjust partition according to run-time request if they does not match up
@@ -63,6 +39,66 @@ ssbatch -D /home/ld/workdir -p priority -t 0-0:0:10 myjob.sh
 3) Auto create output and erro folders if not exist     
 For example, using default sbatch, this command fails if folder out or err does not exist       
 ssbatch -p priority -t 0-0:0:10 -o out/out -e err/myjob.sh 
+
+## Quick Start
+``` bash
+# Install and setup
+cd  
+git clone git://github.com/ld32/smarterSlurm.git  
+export PATH=$HOME/smartSlurm/bin:$PATH  
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; } 
+export -f sbatch                                 
+
+# Create some text files for testing
+createBigTextFiles.sh
+
+# Run 5 jobs to get memory and run-time statistics
+for i in {1..5}; do
+    export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
+    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeWithInput.sh bigText$i.txt $i"
+done
+
+# Auto ajust memory and run-time according input file size
+export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
+sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeWithInput.sh bigText1.txt bigText$2.txt 3"
+
+# Run 3 jobs to get memory and run-time statistics
+for i in {1..3}; do
+    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh $i $i"
+done
+
+# Auto ajust memory and run-time so that 90% jobs can finish successfully
+sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh bigText1.txt 1 2"
+
+# After you finish using ssbatch, run this command to disable it:    
+unset sbatch
+```
+
+## How to use ssbatch in details
+``` bash
+cd  
+git clone git://github.com/ld32/smarterSlurm.git  
+export PATH=$HOME/smartSlurm/bin:$PATH  
+ssbatch <sbatch option1> <sbatch option 2> <sbatch option 3> <...>
+
+# Such as:     
+ssbatch -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
+# Notice above, '-p short' is optional because ssbatch can automatically choose partition according to run time.   
+
+#or:     
+ssbatch job.sh
+
+# Or if you would like to use this ssbatch command to replace the regular sbatch command (so that you 
+# don't have to modify your pipeline, such as https://github.com/ENCODE-DCC/atac-seq-pipeline). 
+# Please run these two commands before submitting sbatch jobs:
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }  # define a bash function called sbatch   
+export -f sbatch                                 # enable the function it    
+
+#Then you can run sbatch jobs as usual. After you finish using ssbatch, run this command to disable it:    
+unset sbatch
+```
+
+
 
 ## How does it works
 config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
