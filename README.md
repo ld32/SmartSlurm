@@ -1,28 +1,19 @@
 =============================
 # SmarterSlurm
-
 - [ssbatch](#ssbatch)
     - [ssbatch features](#ssbatch-features)
     - [Quick Start](#quick-start)
     - [How to Use ssbatch in Details]($how-to-use-ssbatch-in-details) 
     - [How does It Works]($how-does-it-works)
-   
 - [sbatchAndTop](#sbatchAndTop)
-
-
 # ssbatch
 ssbath was designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. 
-
 ## ssbatch features:
 1) Auto adjust partition according to run-time request if they does not match up
 2) Auto adjust partition according to run-time request if they does not match up
 3) Auto re-run OOM (out of memory) and OOT (out of run-time) jobs
-
 4) Get good emails
-
-
 5) Auto adjust partition according to run-time request if they does not match up
-
 For example, this command:  
 ssbatch -p medium -t 0-0:0:10 myjob.sh.     # notice mediume partition only allows job longer than 12 hours.    
 becomes:    
@@ -35,17 +26,7 @@ sbatch -p short -t 0-0:0:10 --wrap hostname # notice short partition is chosen f
 This command will be not change the partition:   
 ssbatch -p priority -t 0-0:0:10 myjob.sh    # because prioirty partition allow any time less than 30 days, we keep to use priority partion. 
 
-6) Auto check if slurm script exists    
-For example, using defaut sbatch, this command will fail witout eror if myjob.sh does not exist:    
-ssbatch -p priority -t 0-0:0:10 myjob.sh 
 
-7) Auto create workding directory if not exist  
-For example, using default sbatch, this command fails if /home/ld/workdir does not exist    
-ssbatch -D /home/ld/workdir -p priority -t 0-0:0:10 myjob.sh 
-
-8) Auto create output and erro folders if not exist     
-For example, using default sbatch, this command fails if folder out or err does not exist       
-ssbatch -p priority -t 0-0:0:10 -o out/out -e err/myjob.sh 
 
 ## Quick Start
 ``` bash
@@ -139,7 +120,9 @@ partition10TimeLimit=
 adjustPartition() {         
     ... # please open the file to see the content         
 }       
-export -f adjustPartition    
+export -f adjustPartition 
+
+
 
 # sbatchAndTop
 ## How to use sbatchAndTop
