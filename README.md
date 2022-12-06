@@ -2,7 +2,7 @@
 # SmarterSlurm
 
 - [ssbatch](#ssbatch)
-    - [Quick Start](#quick_start)
+    - [Quick Start](#Quick_Start)
     - [Details]($details) 
     - [Features](#features)
 - [sbatchAndTop](#sbatchAndTop)
