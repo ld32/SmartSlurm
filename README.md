@@ -28,22 +28,22 @@ createBigTextFiles.sh
 # Run 5 jobs to get memory and run-time statistics
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
+    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
 # Auto adjust memory and run-time according input file size
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
-sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeWithInput.sh bigText1.txt bigText$2.txt 3"
+sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt 3"
 
 # Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 3 jobs to get memory and run-time statistics
 unset SSBATCH_I
 for i in {1..3}; do
-    sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh $i $i"
+    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh $i"
 done
 
 # Auto adjust memory and run-time so that 90% jobs can finish successfully
-sbatch -t 0:30:0 --mem 2000M --wrap="~/smartSlurm/bin/useSomeMemTimeNoInput.sh bigText1.txt 1 2"
+sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
