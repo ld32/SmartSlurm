@@ -28,12 +28,12 @@ createBigTextFiles.sh
 # Run 5 jobs to get memory and run-time statistics
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
+    sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
 # Auto adjust memory and run-time according input file size
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
-sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt 3"
+sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
 # Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 3 jobs to get memory and run-time statistics
