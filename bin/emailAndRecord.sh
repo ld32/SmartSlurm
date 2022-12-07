@@ -49,7 +49,7 @@ if [[ "$4" != "0" ]]; then
         
     #if [ ! -f ~/.rcbio/$1.$2.mem.stat.final ]; then 
     
-        [ ! -z "$record" ] && echo $record >> ~/.smartSlurm/myJobRecord.txt &&  echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
+        [ ! -z "$record" ] && echo $record >> ~/smartSlurm/myJobRecord.txt &&  echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
     #else 
     #    echo "Job record:\n$record\n" 
     #    echo Did not add this record to ~/.rcbio/myJobRecord.txt

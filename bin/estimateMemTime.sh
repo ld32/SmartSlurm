@@ -17,7 +17,7 @@ inputSize=$3
 
 echoerr Estimating mem:
         
-.  ~/.smartSlurm/$software.$ref.mem.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  ~/smartSlurm/stats/$software.$ref.mem.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.mem.stat.final:
 
@@ -28,10 +28,10 @@ Finalb=`printf "%.15f\n" $Finalb`
 Maximum=`printf "%.15f\n" $Maximum`
 echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
-echoerr "mem formula: ( $Finala x $inputSize + $Finalb ) x 1.5 + 10"
+echoerr "mem formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
 
-if (( $(echo "$Maximum > $inputSize" |bc -l) )); then 
-    mem=`echo "( $Finala * $inputSize + $Finalb ) * 1.5 + 10" |bc ` # at least 10M
+if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
+    mem=`echo "( $Finala * $inputSize + $Finalb ) * 1.0" |bc `
 else
     echoerr outOfRange 
     echo outOfRange
@@ -40,7 +40,7 @@ fi
 echoerr
 echoerr Estimating time: 
 
-.  ~/.smartSlurm/$software.$ref.time.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  ~/smartSlurm/stats/$software.$ref.time.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.time.stat.final:
 
@@ -51,9 +51,9 @@ Finalb=`printf "%.15f\n" $Finalb`
 Maximum=`printf "%.15f\n" $Maximum`
 echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
-time=`echo "( $Finala * $inputSize + $Finalb ) * 1.5 + 10" |bc` # at least 10 minutes 
+time=`echo "( $Finala * $inputSize + $Finalb ) * 1.0" |bc`
 
-echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.5 + 10"
+echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
 
 echoerr Got  $mem $time
 

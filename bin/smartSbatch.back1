@@ -45,7 +45,7 @@ usage() { echoerr -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-
 
 echoerr -e "Running:"
 
-cmd="ssbatch"
+cmd="smartSbatch"
 whitespace="[[:space:]]"
 for i in "$@"; do
     if [[ $i =~ $whitespace ]]; then
@@ -159,18 +159,18 @@ if [[ ! -z "$slurmScript" ]]; then
         arr=($line)
         if [[ ${arr[0]} == *SBATCH ]]; then 
             case "${arr[1]}" in 
-                "-L"            )   echoerr found -L && [ -z "$logDir" ] && logDir=${arr[2]};; 
-                --LogDir=*  )   echoerr found --LogDir && [ -z "$logDir" ] && logDir="${arr[1]}" && logDir="${logDir/--LogDir=/}";;
-                "-S" 			)   echoerr found -S && [ -z "$software" ] && software=${arr[2]};;
-                --Software=* 	)   echoerr Found --Software= && [ -z "$software" ] && software="${arr[1]}" && software="${software/--Software=/}";;
-                "-R" 			)   echoerr Found -R && [ -z "$ref" ] && ref=${arr[2]};;
-                --Ref=* 		)   echoerr Found --Ref= && [ -z "$ref" ] && ref="${arr[1]}" && ref="${ref/--Ref=/}";;
-                "-F" 			)   echoerr Found -F && [ -z "$flag" ] && flag=${arr[2]};;
-                --Flag=* 	    )   echoerr Found --Flag= && [ -z "$flag" ] &&  flag="${arr[1]}" && flag="${flag/--Flag=/}";;
-                "-I" 			)   echoerr Found -I &&  [ -z "$inputs" ] && inputs=${arr[2]};;
-                --Inputs=* 	    )   echoerr Found --Inputs= &&  [ -z "$inputs" ] && inputs="${arr[1]}" && inputs="${inputs/--Inputs=/}";;
-                "-D"            )   echoerr Found -D  &&  [ -z "$deps" ] &&deps=${arr[2]};;
-                "--Dependency"  )   echoerr Found -D  &&  [ -z "$deps" ] &&deps="${arr[1]}" && deps="${deps/--Dependency/}";;
+                "-L"            )   echoerr found -L && logDir=${arr[2]};; 
+                --LogDir=*  )   echoerr found --LogDir && logDir="${arr[1]}" && logDir="${logDir/--LogDir=/}";;
+                "-S" 			)   echoerr found -S && software=${arr[2]};;
+                --Software=* 	)   echoerr Found --Software= && software="${arr[1]}" && software="${software/--Software=/}";;
+                "-R" 			)   echoerr Found -R && ref=${arr[2]};;
+                --Ref=* 		)   echoerr Found --Ref= && ref="${arr[1]}" && ref="${ref/--Ref=/}";;
+                "-F" 			)   echoerr Found -F && flag=${arr[2]};;
+                --Flag=* 	    )   echoerr Found --Flag= && flag="${arr[1]}" && flag="${flag/--Flag=/}";;
+                "-I" 			)   echoerr Found -I && inputs=${arr[2]};;
+                --Inputs=* 	    )   echoerr Found --Inputs= && inputs="${arr[1]}" && inputs="${inputs/--Inputs=/}";;
+                "-D"            )   echoerr Found -D  && deps=${arr[2]};;
+                "--Dependency"  )   echoerr Found -D  && deps="${arr[1]}" && deps="${deps/--Dependency/}";;
                 
                 "-A"   )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
                 "--mem" ) [ -z "$mem" ] && echoerr Found --mem && mem="${arr[2]}";;
@@ -184,7 +184,12 @@ if [[ ! -z "$slurmScript" ]]; then
                 "-N"    ) [ -z "$node" ] && echoerr Found -N && node="${arr[2]}";;
                 --nodes=*   ) [ -z "$node" ] && echoerr Found --nodes= && node="${arr[1]}" && node="${node/--nodes=/}";;
                 "-t"    ) [ -z "$time" ] && echoerr Found -t && time="${arr[2]}";;
-                --time=* ) [ -z "$time" ] && echoerr Found --time= && time="${arr[1]}" && time="${time/--time=/}";;    
+                --time=* ) [ -z "$time" ] && echoerr Found --time= && time="${arr[1]}" && time="${time/--time=/}";;
+                # "-o"    ) [ -z "$out" ] && echoerr Found -o && out="${arr[2]}" && out=${out/\%j/\$\{SLURM_JOBID\}} && out=${out/\%A/\$\{SLURM_ARRAY_JOB_ID\}} && out=${out/\%a/\$\{SLURM_ARRAY_TASK_ID\}};;
+                # --output=* ) [ -z "$out" ] && echoerr Found --output= && out="${arr[1]}" && out="${out/--output=/}" && out=${out/\%j/\$\{SLURM_JOBID\}} && out=${out/\%A/\$\{SLURM_ARRAY_JOB_ID\}} && out=${out/\%a/\$\{SLURM_ARRAY_TASK_ID\}};;
+                # "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}" && err=${err/\%j/\$\{SLURM_JOBID\}} && err=${err/\%A/\$\{SLURM_ARRAY_JOB_ID\}} && err=${err/\%a/\$\{SLURM_ARRAY_TASK_ID\}};;
+                # --error=* ) [ -z "$err" ] && echoerr Found --error= && err="${arr[1]}" && err="${err/--error=/}" && err=${err/\%j/\$\{SLURM_JOBID\}}  && err=${err/\%A/\$\{SLURM_ARRAY_JOB_ID\}} && err=${err/\%a/\$\{SLURM_ARRAY_TASK_ID\}};;
+                
                 "-o"    ) [ -z "$out" ] && echoerr Found -o && out="${arr[2]}";;
                 --output=* ) [ -z "$out" ] && echoerr Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
                 "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}";;
@@ -206,10 +211,6 @@ if [[ ! -z "$slurmScript" ]]; then
     echoerr slurmScriptParas: $slurmScriptParas
 fi
 
-[ -z "$SSBATCH_S" ] || software="$SSBATCH_S"
-[ -z "$SSBATCH_R" ] || ref="$SSBATCH_R"
-[ -z "$SSBATCH_I" ] || inputs="$SSBATCH_I"
-[ -z "$SSBATCH_D" ] || deps="$SSBATCH_D"
 
 [ -z "$out" ] && out=slurm-%j.out  
 [ -z "$err" ] && err=slurm-%j.err
@@ -237,7 +238,7 @@ if [ -z "$logDir" ]; then
     succFlag=${out/\%j\.out/$tm}.success
     flag="$out $job $err"
     
-    #echo -e "#!/bin/bash\n\n" > $job 
+    echo -e "#!/bin/bash\n\n" > $job 
     ##SBATCH -e $err\n#SBATCH -o $out\n" > $job
 else 
     [ -d "$logDir" ] || { echoerr Directory not exist: $logDir; usage; }
@@ -247,7 +248,7 @@ else
     flagDir=$logDir/log
     [ ! -d $flagDir ] && mkdir $flagDir 
     job=$flagDir/$flag.sh
-    #echo -e "#!/bin/bash\n\n" > $job
+    echo -e "#!/bin/bash\n\n" > $job
     #submitFlag=$flagDir/$flag.submitted
     succFlag=$flagDir/$flag.success
     failFlag=$flagDir/$flag.failed
@@ -327,6 +328,8 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     rm $flagDir/$flag.*  2>/dev/null 
 fi
 
+
+
 # original mem and time 
 memO=$mem; timeO=$time
 inputSize=0
@@ -341,26 +344,26 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
     if [[ "$inputSize" == "notExist" ]]; then 
         echoerr Some or all input files not exist: $inputs  && exit 1
     else 
-        #inputSize=$(($inputSize/1024)); # convert to M      
+        inputSize=$(($inputSize/1024)); # convert to M      
         echoerr inputSize: $inputSize 
         #rm ~/.rcbio/$software.$ref.mem.stat.final # for testing 
         # there is a job record curve fit already?    
         
-        if [ ! -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ]; then   
-            mkdir -p ~/smartSlurm/stats/
+        if [ ! -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then   
+            mkdir -p ~/.smartSlurm
             echoerr Do not have a formula. Let us build one...
             jobStatistics.sh $software ${ref//\//-} 4 1>&2
             justRunStats=yes
         fi
-        if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ]; then    
+        if [ -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then    
             output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
             if [[ "$output" == "outOfRange" ]]; then 
                 echoerr Input size is too big for the curve to estimate!
                 if [ -z "$justRunStats" ]; then 
                     echoerr Delete the curve and try to re-run the statistics.
-                    rm ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ~/smartSlurm/stats/$software.${ref//\//-}.time.stat.final
+                    rm ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ~/.smartSlurm/$software.${ref//\//-}.time.stat.final
                     jobStatistics.sh $software ${ref//\//-} 4 1>&2 
-                    if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ]; then    
+                    if [ -f ~/.smartSlurm/$software.${ref//\//-}.mem.stat.final ]; then    
                         output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
                         if [[ "$output" == "outOfRange" ]]; then 
                             echoerr Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
@@ -385,48 +388,48 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
 # do not have input file list    #todo: we can try to figure out the input from the software parameters here
 elif [[ "$inputs" == "none" ]]; then
     ref=${ref//\//-}
-    txt=(`cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput`)
+    txt=(`cat ~/.smartSlurm/$software.$ref.mem.stat.noInput`)
     
     # empty or more than 5 minutes but less than 3 records
     if [[ ${#txt[@]} -eq 0 || ( $(($(date +%s) - ${txt[-1]})) -ge 300 && ${#txt[@]} -le 3 ) ]]; then  
-        mkdir -p ~/smartSlurm/stats/
-    #if [ ! -f ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ] && [ -z "`find ~/smartSlurm/stats/jobRecord.txt -mmin -5`" ]; then  
+        mkdir -p ~/.smartSlurm
+    #if [ ! -f ~/.smartSlurm/$software.$ref.mem.stat.noInput ] && [ -z "`find ~/.smartSlurm/jobRecord.txt -mmin -5`" ]; then  
     
-        #cat /home/*/smartSlurm/stats/myJobRecord.txt > ~/smartSlurm/stats/jobRecord.txt 
-        cat $HOME/smartSlurm/myJobRecord.txt > ~/smartSlurm/jobRecord.txt
+        #cat /home/*/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt 
+        cat $HOME/.smartSlurm/myJobRecord.txt > ~/.smartSlurm/jobRecord.txt
 
-        #if [ -s ~/smartSlurm/stats/jobRecord.txt ]; then 
+        #if [ -s ~/.smartSlurm/jobRecord.txt ]; then 
           #filter by software and reference
-            # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput
-            # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
+            # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/.smartSlurm/$software.$ref.mem.stat.noInput
+            # grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
         
-            txt=($({ grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
+            txt=($({ grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/.smartSlurm/$software.$ref.mem.stat.noInput))
  
-            grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
-         #   [ -s ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput        
-         #   [ -s ~/smartSlurm/stats/$software.$ref.time.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.time.stat.noInput
+            grep COMPLETED ~/.smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | sort -rn > ~/.smartSlurm/$software.$ref.time.stat.noInput
+         #   [ -s ~/.smartSlurm/$software.$ref.mem.stat.noInput ] || rm ~/.smartSlurm/$software.$ref.mem.stat.noInput        
+         #   [ -s ~/.smartSlurm/$software.$ref.time.stat.noInput ] || rm ~/.smartSlurm/$software.$ref.time.stat.noInput
         #else
-        #    rm ~/smartSlurm/stats/jobRecord.txt
-        cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput   
-        cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput     
+        #    rm ~/.smartSlurm/jobRecord.txt
+        cat ~/.smartSlurm/$software.$ref.mem.stat.noInput   
+        cat ~/.smartSlurm/$software.$ref.time.stat.noInput     
         #fi
     fi
 
     # more than 3 records
     if [ ${#txt[@]} -ge 4 ]; then
 
-    #if [ -f ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ]; then 
-        #totalRow=`wc -l < ~/smartSlurm/stats/$software.$ref.mem.stat.noInput`
+    #if [ -f ~/.smartSlurm/$software.$ref.mem.stat.noInput ]; then 
+        #totalRow=`wc -l < ~/.smartSlurm/$software.$ref.mem.stat.noInput`
         #if [[ ! -z "$totalRow" && $totalRow -ge 3 ]]; then 
             cutoffRow=$(( (${#txt[@]} - 1)  / 10 )) # top 10
             
             [[ $cutoffRow == 0 ]] && cutoffRow=1
             
             mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + 5))M
-            time=`head -n $cutoffRow ~/smartSlurm/stats/$software.$ref.time.stat.noInput | tail -n 1`        
+            time=`head -n $cutoffRow ~/.smartSlurm/$software.$ref.time.stat.noInput | tail -n 1`        
         else 
             echoerr There is less than 3 records. Exiting...
-          #  rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ~/smartSlurm/stats/$software.$ref.time.stat.noInput   
+          #  rm ~/.smartSlurm/$software.$ref.mem.stat.noInput ~/.smartSlurm/$software.$ref.time.stat.noInput   
         #fi
     fi
 fi
@@ -450,7 +453,7 @@ hours=$(($day * 24 + $hour + ($min + 59 + ($sec + 59) / 60 ) / 60))
 
 #echoerr looking partition for hour: $hours 
 x=`realpath $0` 
-. ${x%\/bin\/ssbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
+. ${x%\/bin\/smartSbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
 
 partition=`adjustPartition $hours $partition`
 
@@ -484,7 +487,8 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job 
 
-echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\" \\\"$0 $@\\\"; }\" EXIT" >> $job
+
+echo -e "trap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\" \\\"$0 $@\\\"; }\" EXIT" >> $job
 
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job

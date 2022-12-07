@@ -1,13 +1,21 @@
 #!/bin/bash
 
-#set -x 
+set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
 
 echo Running $0 $@
-                
-para="\"${13}\",$USER,$2,$3,$4,$5,$6,$7,$8,$9,${10}";  out=$1/flag/"${4}.out"; err=$1/flag/${4}.err; script=$1/flag/${4}.sh; succFile=$1/flag/${4}.success; failFile=$1/flag/${4}.failed;   
+
+if [ -z "$1" ]; then 
+
+    out=${4%% *}; out=${out/\%j/$SLURM_JOB_ID}; err=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success; failFile=${script/\.sh/}.failed; 
+    
+else 
+    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
+fi 
+
+sleep 5
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -36,36 +44,38 @@ mem=`echo $jobStat | cut -d" " -f5`
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
-failReason=""
-
 case "$jobStat" in
 # jobRecord.txt header
 #1user 2software 3ref 4inputName 5inputSizeInK 6CPUNumber 7memoryO 8timeO 9readMem 10RequestedTime 11jobID 12memoryM 13minRun 14Node 15 finalStatus    
-*COMPLETED* )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},COMPLETED,$err,`date`" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
+*COMPLETED* )  jobStatus="COMPLETED" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
 
-*TIMEOUT*   )  record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreTime,$err,`date`" && failReason="(needMoreTime)";;
+*TIMEOUT*   )  jobStatus="OOT";;
 
-*OUT_OF_ME*   ) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},needMoreMem,$err,`date`" && failReason="(needMoreMem)";;
+*OUT_OF_ME*   ) jobStatus="OOM";;
         
-*CANCELLED*	) record="$para,$SLURM_JOB_ID,${mem%M},${mins},${node},Cancelled,$err,`date`" && failReason="(cancelled)";;
+*CANCELLED*	) jobStatus="Cancelled";;
+
+*          )  jobStatus="Unknown";;
+
 
 esac
+record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
 
 echo -e  "Last row of job summary: $jobStat" 
 echo start: $START finish: $FINISH mem: $mem mins: $mins
-echo failReason: $failReason
+echo jobStatus: $jobStatus
     
-if [[ -z "$failReason" && "${mem%M}" != "0" && ! -z "$record" ]]; then
-    if [[ ! -f ~/.smartSlurm/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
-        echo $record >> ~/.smartSlurm/myJobRecord.txt
-        echo -e "Added this line to ~/.smartSlurm/myJobRecord.txt:\n$record"
-    else 
-        echo Did not add this record to ~/.smartSlurm/myJobRecord.txt
-    fi
-else 
+if [ ! -z "$record" ]; then
+#    if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
+        echo $record >> ~/smartSlurm/myJobRecord.txt
+        echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
+#    else 
+#        echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+#    fi
+#else 
 #    echo "Job record:\n$record\n" 
-    echo Did not add this record to ~/.smartSlurm/myJobRecord.txt1
-#    echo Because we already have ~/.smartSlurm/$1.$2.mem.stat.final
+#    echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt1
+#    echo Because we already have ~/smartSlurm/stats/$1.$2.mem.stat.final
 fi
 
 if [ ! -f $succFile ]; then
@@ -75,7 +85,50 @@ if [ ! -f $succFile ]; then
     x=`realpath $0` 
     . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
-    if [[ "$failReason" == "(needMoreTime)" ]]; then
+    if [[ "$jobStatus" == "OOM" ]]; then
+
+        jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
+
+        mem=${jobStat#*mem=}; mem=${mem%M*}
+
+        if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
+            echo Submitting a job to re-queue the job. 
+            mem=$(( $mem * 2 ))
+            p=`adjustPartition 1 short`
+            echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
+            jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
+            #scontrol top $jobID   
+        else
+            echo Could not find the original mem value.
+            echo Job failed of out-of-memory. Please resubmit with more memory check youself.
+        fi
+
+#        [ -f ~/smartSlurm/stats/$2.$3.mem.stat.final ] && rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final  
+        if [ "$5" == 0 ]; then
+            rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
+        else 
+            rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final 2>/dev/null
+        fi 
+        #rm ~/smartSlurm/stats/$2.$3.mem.stat* ~/smartSlurm/stats/$2.$3.time.stat* 2>/dev/null
+        #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
+        #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
+
+        # sleep 5 45937
+        #scontrol hold $SLURM_JOBID
+        #scontrol hold 45937
+        #sleep 5
+        # this doe not work due to cgroup out memory error 
+        #sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=50000;" 
+        # sleep 5; scontrol release $SLURM_JOBID; "
+        #which sbatch 
+
+        #sbatch -p priority -t 5 -A rccg --wrap "hostname"
+
+        #scontrol update JobId=$SLURM_JOBID MinMemoryCPU=8000
+        # todo: submit new job and adjust down steam jobs' dependency
+
+        #echo job resubmitted: $SLURM_JOBID with mem: $mem
+    elif [[ "$jobStatus" == "OOT" ]]; then
         scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
     
         # time=${10}
@@ -108,57 +161,26 @@ if [ ! -f $succFile ]; then
         fi 
 
         echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
-
-    elif [[ "$failReason" == "(needMoreMem)" ]]; then
-
-        jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
-
-        mem=${jobStat#*mem=}; mem=${mem%M*}
-
-        if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
-            echo Submitting a job to re-queue the job. 
-            mem=$(( $mem * 2 ))
-            p=`adjustPartition 1 short`
-            echo sbatch --parsable -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
-            jobID=`sbatch --parsable --mail-type=ALL -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
-            #scontrol top $jobID   
-        else
-            echo Could not find the original mem value.
-            echo Job failed of out-of-memory. Please resubmit with more memory check youself.
-        fi
-
-    
-        #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
-        #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
-
-        # sleep 5 45937
-        #scontrol hold $SLURM_JOBID
-        #scontrol hold 45937
-        #sleep 5
-        # this doe not work due to cgroup out memory error 
-        #sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=50000;" 
-        # sleep 5; scontrol release $SLURM_JOBID; "
-        #which sbatch 
-
-        #sbatch -p priority -t 5 -A rccg --wrap "hostname"
-
-        #scontrol update JobId=$SLURM_JOBID MinMemoryCPU=8000
-        # todo: submit new job and adjust down steam jobs' dependency
-
-        #echo job resubmitted: $SLURM_JOBID with mem: $mem
+        
+        if [ "$5" == 0 ]; then
+            rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
+        else 
+            rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final 2>/dev/null
+        fi    
+#        [ -f ~/smartSlurm/stats/$2.$3.mem.stat.final ] && rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final      
         
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
-else
-    adjustDownStreamJobs.sh $1/flag $4     
+elif [ ! -z "$1" ]; then
+    adjustDownStreamJobs.sh $1/log $4     
 fi
 
 minimumsize=9000
 
 actualsize=`wc -c $out`
 
-[ -f $succFile ] && s="Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Failed$failReason: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
+[ -f $succFile ] && s="Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Failed($jobStatus): job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    toSend=`echo Job script content:; cat $script;`
@@ -189,8 +211,8 @@ echo
 # wait for email to be sent
 sleep 20
 
-[ -f $succFile ] && exit 0  
+#[ -f $succFile ] && exit 0  
 
-exit 1; 
+#exit 1; 
 
 
