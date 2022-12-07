@@ -108,23 +108,27 @@ unset SSBATCH_I
 ## How does it works
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
+2) 
 ~/smartSlurm/jobRecord.txt contains job memory and run-time records. There are three important columns: 
+   
    1 2rd colume is input size,
+   
    2 7th column is final memory usage
+   
    3 8th column is final time usage
+   
 The data from the three columns are plotted and static  
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-a-16-21,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -I bigText1.txt -p short -t 2:0:0 --mem=4G --wrap ~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-a-16-21,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -I bigText2.txt -p short -t 2:0:0 --mem=4G --wrap ~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -I bigText3.txt -p short -t 2:0:0 --mem=4G --wrap ~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
-46533,5860,4G,2:0:0,4G,0-2:0:0,12.10,5,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-lQT1aVfL.sh slurm-%j.err,1,compute-a-16-21,slurm-46533.err,Tue Dec 6 15:33:36 EST 2022,"ssbatch -I bigText4.txt -p short -t 2:0:0 --mem=4G --wrap ~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText4.txt run"
-46532,7325,4G,2:0:0,4G,0-2:0:0,14.96,7,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-EEUX5I3f.sh slurm-%j.err,1,compute-a-16-21,slurm-46532.err,Tue Dec 6 15:35:32 EST 2022,"ssbatch -I bigText5.txt -p short -t 2:0:0 --mem=4G --wrap ~/smartSlurm/bin/useSomeMemTimeAccordingInputSize.sh bigText5.txt run"
-46558,0,2000M,0:30:0,2000M,0-0:30:0,10.93,1,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none,slurm-%j.out slurm-i7dRLp6e.sh slurm-%j.err,1,compute-dev05,slurm-46558.err,Wed Dec 7 15:16:43 EST 2022,"ssbatch -t 0:30:0 --mem 2000M --wrap=useSomeMemTimeNoInput.sh 1 run"
-46559,0,2000M,0:30:0,2000M,0-0:30:0,13.22,1,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none,slurm-%j.out slurm-pX9RmOgq.sh slurm-%j.err,1,compute-a-16-21,slurm-46559.err,Wed Dec 7 15:17:14 EST 2022,"ssbatch -t 0:30:0 --mem 2000M --wrap=useSomeMemTimeNoInput.sh 2 run"
-46560,0,2000M,0:30:0,2000M,0-0:30:0,16.66,2,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none,slurm-%j.out slurm-8TENPVLL.sh slurm-%j.err,1,compute-a-16-21,slurm-46560.err,Wed Dec 7 15:17:46 EST 2022,"ssbatch -t 0:30:0 --mem 2000M --wrap=useSomeMemTimeNoInput.sh 3 run"
+46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-a-16-21,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
+
+46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-a-16-21,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
+
+46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
+
 
 3) Auto choose partition according to run-time request
+
 ~/smartSlurm/config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
 \# Genernal partions, ordered by maximum allowed run-time in hours 
