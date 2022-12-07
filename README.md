@@ -127,7 +127,7 @@ export -f adjustPartition
 ## How to use sbatchAndTop
 ```
 cd ~    
-git clone git@github.com:ld32/smarterSlurm.git  
+git clone git@github.com:ld32/smartSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH    
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
 
