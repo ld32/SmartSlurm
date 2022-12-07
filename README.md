@@ -39,22 +39,8 @@ done
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
-# Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
-# Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Notice 2: Slurm will submit five jobs to short partition, each reserves 2G memory and 2 hour run-time 
-for i in {1..5}; do
-    export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
-done
-
-# Auto adjust memory and run-time according input file size
-# Notice: Slurm will submit one job to short partition, and reserves 21M memory and 13 minute run-time 
-export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
-sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
-
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
-unset SSBATCH_I
 ```
 
 ## How to use ssbatch
