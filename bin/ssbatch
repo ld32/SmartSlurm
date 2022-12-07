@@ -55,6 +55,8 @@ for i in "$@"; do
 done
 echoerr $cmd
 
+#comment="${SSBATCH_I}${SSBATCH_R}${SSBATCH_S}${SSBATCH_D}"
+
 testRun=${@: -1} 
 
 echoerr 
@@ -65,6 +67,7 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
   	echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
+        --comment=*    )   echoerr found --comment && comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
   	    "-L"            )   echoerr found -L && logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; 
   		--LogDir=*  )   echoerr found --LogDir && logDir="${array[$i]}" && logDir=${logDir/--LogDir=/} && array[$i]="";;
   		"-S" 			)   echoerr found -S && software="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
@@ -157,20 +160,21 @@ if [[ ! -z "$slurmScript" ]]; then
     while IFS=$'\n' read line; do
         echoerr Got line: $line
         arr=($line)
-        if [[ ${arr[0]} == *SBATCH ]]; then 
+        if [[ ${arr[0]} == "#SBATCH" ]]; then 
             case "${arr[1]}" in 
-                "-L"            )   echoerr found -L && [ -z "$logDir" ] && logDir=${arr[2]};; 
-                --LogDir=*  )   echoerr found --LogDir && [ -z "$logDir" ] && logDir="${arr[1]}" && logDir="${logDir/--LogDir=/}";;
-                "-S" 			)   echoerr found -S && [ -z "$software" ] && software=${arr[2]};;
-                --Software=* 	)   echoerr Found --Software= && [ -z "$software" ] && software="${arr[1]}" && software="${software/--Software=/}";;
-                "-R" 			)   echoerr Found -R && [ -z "$ref" ] && ref=${arr[2]};;
-                --Ref=* 		)   echoerr Found --Ref= && [ -z "$ref" ] && ref="${arr[1]}" && ref="${ref/--Ref=/}";;
-                "-F" 			)   echoerr Found -F && [ -z "$flag" ] && flag=${arr[2]};;
-                --Flag=* 	    )   echoerr Found --Flag= && [ -z "$flag" ] &&  flag="${arr[1]}" && flag="${flag/--Flag=/}";;
-                "-I" 			)   echoerr Found -I &&  [ -z "$inputs" ] && inputs=${arr[2]};;
-                --Inputs=* 	    )   echoerr Found --Inputs= &&  [ -z "$inputs" ] && inputs="${arr[1]}" && inputs="${inputs/--Inputs=/}";;
-                "-D"            )   echoerr Found -D  &&  [ -z "$deps" ] &&deps=${arr[2]};;
-                "--Dependency"  )   echoerr Found -D  &&  [ -z "$deps" ] &&deps="${arr[1]}" && deps="${deps/--Dependency/}";;
+                # "-L"            )   echoerr found -L && [ -z "$logDir" ] && logDir=${arr[2]};; 
+                # --LogDir=*  )   echoerr found --LogDir && [ -z "$logDir" ] && logDir="${arr[1]}" && logDir="${logDir/--LogDir=/}";;
+                # "-S" 			)   echoerr found -S && [ -z "$software" ] && software=${arr[2]};;
+                # --Software=* 	)   echoerr Found --Software= && [ -z "$software" ] && software="${arr[1]}" && software="${software/--Software=/}";;
+                # "-R" 			)   echoerr Found -R && [ -z "$ref" ] && ref=${arr[2]};;
+                # --Ref=* 		)   echoerr Found --Ref= && [ -z "$ref" ] && ref="${arr[1]}" && ref="${ref/--Ref=/}";;
+                # "-F" 			)   echoerr Found -F && [ -z "$flag" ] && flag=${arr[2]};;
+                # --Flag=* 	    )   echoerr Found --Flag= && [ -z "$flag" ] &&  flag="${arr[1]}" && flag="${flag/--Flag=/}";;
+                # "-I" 			)   echoerr Found -I &&  [ -z "$inputs" ] && inputs=${arr[2]};;
+                # --Inputs=* 	    )   echoerr Found --Inputs= &&  [ -z "$inputs" ] && inputs="${arr[1]}" && inputs="${inputs/--Inputs=/}";;
+                # "-D"            )   echoerr Found -D  &&  [ -z "$deps" ] &&deps=${arr[2]};;
+                # "--Dependency"  )   echoerr Found -D  &&  [ -z "$deps" ] &&deps="${arr[1]}" && deps="${deps/--Dependency/}";;
+                --comment=*    )   echoerr found --comment && comment="${arr[1]}" && ar=(${comment/--comment=/}) && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
                 
                 "-A"   )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
                 "--mem" ) [ -z "$mem" ] && echoerr Found --mem && mem="${arr[2]}";;
@@ -484,7 +488,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job 
 
-echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\" \\\"$0 $@\\\"; }\" EXIT" >> $job
+echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \\\"$0 $@\\\"; }\" EXIT" >> $job
 
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
