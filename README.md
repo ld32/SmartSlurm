@@ -17,7 +17,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 ``` bash
 # Install and setup
 cd $HOME 
-git clone git://github.com/ld32/smarterSlurm.git  
+git clone git://github.com/ld32/smartSlurm.git  
 export PATH=$HOME/smartSlurm/bin:$PATH  
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
