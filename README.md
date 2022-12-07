@@ -28,7 +28,7 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 # Create some text files for testing
 createBigTextFiles.sh
 
-# Run 3 jobs to get memory and run-time statistics
+# Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit three jobs to short partition, each reserves 2G memory and 2 hour run-time 
 for i in {1..3}; do
@@ -39,7 +39,7 @@ done
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
-# Run 5 jobs to get memory and run-time statistics
+# Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit five jobs to short partition, each reserves 2G memory and 2 hour run-time 
 for i in {1..5}; do
@@ -72,7 +72,7 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 # Create some text files for testing
 createBigTextFiles.sh
 
-# Run 3 jobs to get memory and run-time statistics
+# Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit three jobs to short partition, each reserves 2G memory and 2 hour run-time 
 for i in {1..3}; do
@@ -83,7 +83,7 @@ done
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
-# Run 5 jobs to get memory and run-time statistics
+# Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit five jobs to short partition, each reserves 2G memory and 2 hour run-time 
 for i in {1..5}; do
