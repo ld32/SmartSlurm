@@ -37,7 +37,7 @@ sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeAccordingInputSize.sh bigText
 
 # Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 3 jobs to get memory and run-time statistics
-unset SSBATCH_I
+unset SSBATCH_I    # tell sshare there is on inputs for the following jobs
 for i in {1..3}; do
     sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh $i"
 done
