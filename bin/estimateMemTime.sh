@@ -11,11 +11,10 @@ software=$1
 ref=$2 
 inputSize=$3
 
-
 #echoerr content of .rcbio
 #ls -l ~/.rcbio 1>&2  
 
-echoerr Estimating mem:
+echoerr Estimating mem: 
         
 .  ~/smartSlurm/stats/$software.$ref.mem.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
