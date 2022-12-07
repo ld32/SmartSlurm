@@ -15,14 +15,28 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 ## Quick Start
 ``` bash
-# Install and setup
+# Download
 cd $HOME 
 git clone git://github.com/ld32/smartSlurm.git  
+
+# Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
+
+# Set up a function so that ssbatch is called when running sbatch
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
 # Create some text files for testing
 createBigTextFiles.sh
+
+# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
+# Run 3 jobs to get memory and run-time statistics
+unset SSBATCH_I    # tell sshare there is on inputs for the following jobs
+for i in {1..3}; do
+    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh $i"
+done
+
+# Auto adjust memory and run-time so that 90% jobs can finish successfully
+sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
 # Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 5 jobs to get memory and run-time statistics
@@ -34,16 +48,6 @@ done
 # Auto adjust memory and run-time according input file size
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
 sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
-
-# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Run 3 jobs to get memory and run-time statistics
-unset SSBATCH_I    # tell sshare there is on inputs for the following jobs
-for i in {1..3}; do
-    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh $i"
-done
-
-# Auto adjust memory and run-time so that 90% jobs can finish successfully
-sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
