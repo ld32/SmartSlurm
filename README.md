@@ -1,5 +1,5 @@
 =============================
-# SmarterSlurm
+# SmartSlurm
 - [ssbatch](#ssbatch)
     - [ssbatch features](#ssbatch-features)
     - [Quick Start](#quick-start)
@@ -10,9 +10,9 @@
 ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
 ## ssbatch features:
 1) Auto adjust memory and run-time according to the input size based on statistics from earlier jobs
-2) Auto adjust partition according to run-time request if they does not match up
-3) Auto re-run OOM (out of memory) and OOT (out of run-time) jobs
-4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches as email content the content of the sbatch script, the output and error log
+2) Auto choose partition according to run-time request
+3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
+4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 ## Quick Start
 ``` bash
 # Install and setup
