@@ -28,26 +28,29 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 # Create some text files for testing
 createBigTextFiles.sh
 
-# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 3 jobs to get memory and run-time statistics
-unset SSBATCH_I    # tell sshare there is on inputs for the following jobs
+# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 for i in {1..3}; do
-    sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh $i"
+    sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
 done
+# Notice above Slurm submitted three jobs to short partition, each reserved 2G memory and 2 hour run time 
 
 # Auto adjust memory and run-time so that 90% jobs can finish successfully
-sbatch -t 0:30:0 --mem 2000M --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
+sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
+# Notice above Slurm submitted one jobs to short partition, and reserved 19M memory and 7 minute run-time 
 
-# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Run 5 jobs to get memory and run-time statistics
+# Notice, you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
     sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
+# Notice above Slurm submitted five jobs to short partition, each reserved 2G memory and 2 hour run time 
 
 # Auto adjust memory and run-time according input file size
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
 sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+# Notice above Slurm submitted one jobs to short partition, and reserved 21M memory and 13 minute run-time 
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
