@@ -488,7 +488,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job 
 
-echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \"${slurmAcc#*-A }\" \\\"$0 $@\\\"; }\" EXIT" >> $job
+echo -e "#!/bin/bash\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \\\"$0 $@\\\"; }\" EXIT" >> $job
 
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
