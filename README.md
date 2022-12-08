@@ -2,9 +2,9 @@
 # SmartSlurm
 - [ssbatch](#ssbatch)
     - [ssbatch features](#ssbatch-features)
-    - [Quick Start](#quick-start)
-    - [How to Use ssbatch]($how-to-use-ssbatch) 
-    - [How does It Works]($how-does-it-works)
+    - [Quick start](#quick-start)
+    - [How to use ssbatch]($how-to-use-ssbatch) 
+    - [How does it Work]($how-does-it-work)
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
 ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
@@ -105,7 +105,7 @@ unset SSBATCH_S
 unset SSBATCH_I
 ```
 
-## How does it works
+## How does it work
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) 
