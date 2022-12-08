@@ -3,7 +3,7 @@
 - [ssbatch](#ssbatch)
     - [ssbatch features](#ssbatch-features)
     - [Quick Start](#quick-start)
-    - [How to Use ssbatch in Details]($how-to-use-ssbatch-in-details) 
+    - [How to Use ssbatch in Details]($how-to-use-ssbatch) 
     - [How does It Works]($how-does-it-works)
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
@@ -38,7 +38,7 @@ done
 
 # After the 3 jobs finish, auto adjust memory and run-time so that 90% jobs can finish successfully
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
+sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt"
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
@@ -70,7 +70,7 @@ done
 
 # After the 3 jobs finish, auto adjust memory and run-time so that 90% jobs can finish successfully
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt 1"
+sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh bigText1.txt"
 
 # Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
