@@ -4,6 +4,7 @@
     - [ssbatch features](#ssbatch-features)
     - [Quick start](#quick-start)
     - [How to use ssbatch]($how-to-use-ssbatch) 
+    - [How to use ssbatch]($how-to-use-ssbatch) 
     - [How does it Work]($how-does-it-work)
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
