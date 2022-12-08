@@ -3,7 +3,7 @@
 - [ssbatch](#ssbatch)
     - [ssbatch features](#ssbatch-features)
     - [Quick Start](#quick-start)
-    - [How to Use ssbatch in Details]($how-to-use-ssbatch) 
+    - [How to Use ssbatch]($how-to-use-ssbatch) 
     - [How does It Works]($how-does-it-works)
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
