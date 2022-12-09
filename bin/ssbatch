@@ -404,9 +404,9 @@ elif [[ "$inputs" == "none" ]]; then
             # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput
             # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
         
-            txt=($({ grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
+            txt=($({ grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
  
-            grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
+            grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
          #   [ -s ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput        
          #   [ -s ~/smartSlurm/stats/$software.$ref.time.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.time.stat.noInput
         #else
