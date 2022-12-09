@@ -1,20 +1,6 @@
 #!/bin/sh
 
-## notes: to estimate resource, need aat least three jobs if no input size, and 5 jobs if there is input size
-
-## features with smartPipeline
-# Auto adjust partition according to run-time request if they does not match up
-# Auto check if slurm script exists
-# Auto create output and erro folders if not exist
-# Auto adjust partition according to run-time request if they does not match up
-# Auto adjust memory and run time based on earlier mem time usage
-# Support re-run from breaking-point
-# Auto requeue job with double time when out of time
-# Auto requeue job with double memory when out of memory
-# Keep good log and send informative email
-
-# todo:
-
+## notes: to estimate resource, need at least three jobs if no input size is given, and 5 jobs if there is input size given
 
 ## features for regular sbatch (when calling without -L)
 # Auto adjust partition according to run-time request if they does not match up
@@ -32,6 +18,20 @@
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
 
 # todo:
+
+## features with smartPipeline
+# Auto adjust partition according to run-time request if they does not match up
+# Auto check if slurm script exists
+# Auto create output and erro folders if not exist
+# Auto adjust partition according to run-time request if they does not match up
+# Auto adjust memory and run time based on earlier mem time usage
+# Support re-run from breaking-point
+# Auto requeue job with double time when out of time
+# Auto requeue job with double memory when out of memory
+# Keep good log and send informative email
+
+# todo:
+
 
 set -x 
 
