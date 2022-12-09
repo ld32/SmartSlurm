@@ -424,10 +424,10 @@ elif [[ "$inputs" == "none" ]]; then
         #if [[ ! -z "$totalRow" && $totalRow -ge 3 ]]; then 
             cutoffRow=$(( (${#txt[@]} - 1)  / 10 )) # top 10
             
-            [[ $cutoffRow == 0 ]] && cutoffRow=1
-            
             mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + 5))M
-            time=`head -n $cutoffRow ~/smartSlurm/stats/$software.$ref.time.stat.noInput | tail -n 1`        
+            
+            time=`head -n $((cutoffRow+1)) ~/smartSlurm/stats/$software.$ref.time.stat.noInput | tail -n 1`        
+            time=$((time + 5))
         else 
             echoerr There is less than 3 records. Exiting...
           #  rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ~/smartSlurm/stats/$software.$ref.time.stat.noInput   
