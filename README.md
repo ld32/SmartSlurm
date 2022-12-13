@@ -119,15 +119,15 @@ ________________________________________________________________________________
 
 \#Here is the input size vs memory plot for useSomeMemTimeAccordingInputSize.sh: 
 
-https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.pdf
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.png)
 
 \#Here is the input size vs run-time plot for useSomeMemTimeAccordingInputSize.sh: 
 
-https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.pdf
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.png)
 
 \#Here is the run-time vs memory plot for useSomeMemTimeNoInput.sh: 
 
-https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeNoInput.sh.none.stat.noInput.pdf
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeNoInput.sh.none.stat.noInput.png)
 
 2) Auto choose partition according to run-time request
 
