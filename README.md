@@ -117,6 +117,15 @@ ________________________________________________________________________________
 
 46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
 
+\#Here is the input size vs memory plot for useSomeMemTimeAccordingInputSize.sh: 
+
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.pdf)
+
+\#Here is the input size vs run-time plot for useSomeMemTimeAccordingInputSize.sh: 
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.pdf)
+
+\#Here is the run-time vs memory plot for useSomeMemTimeNoInput.sh: 
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeNoInput.sh.none.stat.noInput.pdf)
 
 2) Auto choose partition according to run-time request
 
