@@ -77,6 +77,9 @@ mv $OUT/time.txt ~/smartSlurm/stats/$1.$2.time.txt
 
 convert $OUT/mem.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.mem.pdf
 convert $OUT/time.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.time.pdf
+pdftoppm ~/smartSlurm/stats/$1.$2.mem.pdf  -png > ~/smartSlurm/stats/$1.$2.mem.png
+pdftoppm ~/smartSlurm/stats/$1.$2.time.pdf  -png > ~/smartSlurm/stats/$1.$2.time.png
+
 echo
 echo You can see the plot using commands:
 echo display ~/smartSlurm/stats/$1.$2.mem.pdf
