@@ -42,10 +42,10 @@ fi
 cd $OUT
 
 # make plot and calculate statistics
-gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Run Time" font "Helvetica Bold,18"; set xlabel "Input Size(M)"; set ylabel "Run Time(Minute)"; f(x)=a*x+b; fit f(x) "mem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "mem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "mem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > mem.stat.txt
+gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Run Time" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Run Time(Min)"; f(x)=a*x+b; fit f(x) "mem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "mem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "mem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > mem.stat.txt
 
 # make plot and calculate statistics
-gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Input Size(M)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt
+gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt
 
 # after this file is created, don't need to calculate stats anymore 
 if [[ $(wc -l <mem.txt) -ge $3 ]]; then 
@@ -71,9 +71,9 @@ else
 fi  
 
 #mv $OUT/mem.pdf ~/smartSlurm/stats/$1.$2.mem.pdf 
-mv $OUT/mem.txt ~/smartSlurm/stats/tmp.mem.txt
+mv $OUT/mem.txt ~/smartSlurm/stats/$1.$2.mem.txt
 #mv $OUT/time.pdf ~/smartSlurm/stats/$1.$2.time.pdf 
-mv $OUT/time.txt ~/smartSlurm/stats/tmp.time.txt
+mv $OUT/time.txt ~/smartSlurm/stats/$1.$2.time.txt
 
 convert $OUT/mem.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.mem.pdf
 convert $OUT/time.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.time.pdf
