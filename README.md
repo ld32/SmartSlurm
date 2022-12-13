@@ -59,7 +59,7 @@ for i in {1..3}; do
     sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
 done
 
-# After the 3 jobs finish, auto adjust memory and run-time so that 90% jobs can finish successfully
+# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time so that 90% jobs can finish successfully
 # Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 
@@ -72,7 +72,7 @@ for i in {1..5}; do
     sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
-# After the 5 jobs finish, auto adjust memory and run-time according input file size
+# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: Slurm will submit one job to short partition, and reserves 21M memory and 13 minute run-time 
 export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the script
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
@@ -99,16 +99,16 @@ unset SSBATCH_I
 ## How does it work
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
-2) 
+
 ~/smartSlurm/jobRecord.txt contains job memory and run-time records. There are three important columns: 
    
-   1 2rd colume is input size,
+   2rd colume is input size,
    
-   2 7th column is final memory usage
+   7th column is final memory usage
    
-   3 8th column is final time usage
+   8th column is final time usage
    
-The data from the three columns are plotted and static  
+The data from the three columns are plotted and statistics  
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
 46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-a-16-21,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
@@ -118,48 +118,49 @@ ________________________________________________________________________________
 46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
 
 
-3) Auto choose partition according to run-time request
+2) Auto choose partition according to run-time request
 
 ~/smartSlurm/config/partitions.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
 \# Genernal partions, ordered by maximum allowed run-time in hours 
+
 partition1Name=short   
+partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
 partition2Name=medium  
+partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
 partition3Name=long        
+partition3TimeLimit=720 # run-time > 5 days and <= 30 days
 partition4Name=      
+partition4TimeLimit=  
 partition5Name=     
-partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours    
-partition2TimeLimit=120 # run-time > 12 hours and <= 5 days     
-partition3TimeLimit=720 # run-time > 5 days and <= 30 days  
-partition4TimeLimit=    
 partition5TimeLimit=    
 
 \# Special pertitions with special restrictions
-partition6Name=priority    # only allow two job running at the same time        
-partition7Name=highmem     # run-time <= 30 days, special partision     
-partition8Name=interactive      
-partition9Name=mpi      
-partition10Name=        
 
-partition6TimeLimit=720 # run-time <= 30 days   
-partition7TimeLimit=720 # run-time <= 30 days   
-partition8TimeLimit=12  # run-time <= 12 hours      
-partition9TimeLimit=720 # run-time <= 30 days       
+partition6Name=priority    # only allow two job running at the same time        
+partition6TimeLimit=720 # run-time <= 30 days
+partition7Name=highmem     # run-time <= 30 days, special partision     
+partition7TimeLimit=720 # run-time <= 30 days 
+partition8Name=interactive      
+partition8TimeLimit=12  # run-time <= 12 hours
+partition9Name=mpi      
+partition9TimeLimit=720 # run-time <= 30 days 
+partition10Name=        
 partition10TimeLimit=       
 
 \#function 
+
 adjustPartition() {         
     ... # please open the file to see the content         
-}       
-export -f adjustPartition 
+} ; export -f adjustPartition 
 
-4) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
-
+3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
+    
+    At end of the job, ~/smartSlurm/bin/cleanUp.sh checkes memory and time usage, save the data in to log ~/smartSlurm/myJobRecord.txt. If job fails, ssbatch re-submit with double memory or double time, clear up the statistic fomular, so that later jobs will re-caculate statistics, 
 
 6) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 
-
-
+    ~/smartSlurm/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
 
 
 # sbatchAndTop
