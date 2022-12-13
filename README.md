@@ -8,6 +8,9 @@
 - [sbatchAndTop](#sbatchAndTop)
 # ssbatch
 ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
+
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.png)
+
 ## ssbatch features:
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
@@ -119,7 +122,7 @@ ________________________________________________________________________________
 
 \#Here is the input size vs memory plot for useSomeMemTimeAccordingInputSize.sh: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.mem.png)
 
 \#Here is the input size vs run-time plot for useSomeMemTimeAccordingInputSize.sh: 
 
