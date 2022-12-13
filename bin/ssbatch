@@ -33,7 +33,7 @@
 # todo:
 
 
-set -x 
+#set -x 
 
 echoerr() { echo "$@" 1>&2; }
 
@@ -399,6 +399,7 @@ elif [[ "$inputs" == "none" ]]; then
         #cat /home/*/smartSlurm/stats/myJobRecord.txt > ~/smartSlurm/stats/jobRecord.txt 
         cat $HOME/smartSlurm/myJobRecord.txt > ~/smartSlurm/jobRecord.txt
 
+        OUT="$(mktemp -d)"
         #if [ -s ~/smartSlurm/stats/jobRecord.txt ]; then 
           #filter by software and reference
             # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput
@@ -411,12 +412,25 @@ elif [[ "$inputs" == "none" ]]; then
          #   [ -s ~/smartSlurm/stats/$software.$ref.time.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.time.stat.noInput
         #else
         #    rm ~/smartSlurm/stats/jobRecord.txt
+        
+        
         cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput   
-        cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput     
+        cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput  
+        
+        paste ~/smartSlurm/stats/$software.$ref.time.stat.noInput ~/smartSlurm/stats/$software.$ref.mem.stat.noInput | column -s $'\t' -t | sed '$ d' > ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt
+        
+        cp ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt $OUT/timeMem.txt
+        cd $OUT
+        # make plot and calculate statistics
+gnuplot -e 'set term pdf; set output "timeMem.pdf"; set title "Time vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "timeMem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "timeMem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "timeMem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $software.$ref.timeMem.stat.noInput.txt
+
+        cd - 
+        convert $OUT/timeMem.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf
+        
         #fi
     fi
 
-    # more than 3 records
+    # at least 3 records
     if [ ${#txt[@]} -ge 4 ]; then
 
     #if [ -f ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ]; then 
