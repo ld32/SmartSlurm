@@ -426,6 +426,7 @@ gnuplot -e 'set term pdf; set output "timeMem.pdf"; set title "Time vs. Memory U
 
         cd - 
         convert $OUT/timeMem.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf
+        pdftoppm ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf  -png > ~/smartSlurm/stats/$software.$ref.stat.noInput.png
         
         #fi
     fi
