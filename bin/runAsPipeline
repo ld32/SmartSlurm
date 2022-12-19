@@ -173,6 +173,8 @@ for t in `cat ${1%% *}`; do
         #echo cmd2 is $cmd
         cmd=${cmd//\"/\\\"} # escape double quotes
         
+        [ -z "$name" ] && name=${cmd%% *}
+        
         #echo cmd3 is $cmd
         
         cloper[$step]=$loper
