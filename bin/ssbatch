@@ -65,7 +65,7 @@ array=( "$@" )
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
-  	echoerr $i " / " $(($#)) " : " ${array[$i]}
+#  	echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
         --comment=*    )   echoerr found --comment && comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
   	    "-L"            )   echoerr found -L && logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; 
@@ -97,7 +97,7 @@ echoerr Parsing sbatch command...
 for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || echo $(($#))`; i++ )); do
 #for (( i=$sbatchLocation; i< $(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
-  	echoerr $i " / " $(($#)) " : " ${array[$i]}
+#  	echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
   	    "-p"            )   echoerr Found -p && partition="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; # will set partition later
   		--partition=*   )   echoerr Found --partition && partition="${array[$i]}" && partition=${partition/--partition=/} && array[$i]="";;
@@ -270,7 +270,7 @@ fi
 
 if [ -z "$mem" ]; then
     if [ -z "$mem1" ]; then
-        mem=1G
+        mem=2G
     else
         [[ "$mem1" == *G ]] && mem=$(( ${mem1%G} * $core ))G || mem=$(( ${mem1%M} * $core ))M
     fi
@@ -330,6 +330,8 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     fi    
     rm $flagDir/$flag.*  2>/dev/null 
 fi
+
+[ -z "$time" ] && time=2:0:0
 
 # original mem and time 
 memO=$mem; timeO=$time
