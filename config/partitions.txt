@@ -33,7 +33,17 @@ adjustPartition() {
     [ -z "$1" ] && { echo -e "Usage: $0 <hours> [partition (optional)]. \nReturn: adjustedPartition"; return; }
     hours=$1
     partitionO=$2
-    for i in {1..10}; do 
+    for i in {6..10}; do 
+        partition=partition${i}Name
+        [ -z ""${!partition}"" ] && continue
+        #partitionTime=partition${i}TimeLimit  
+        if [ "$partition" ==  "$partitionO" ]; then 
+            echo $partition
+            exit
+        fi        
+    done 
+    
+    for i in {1..5}; do 
         partition=partition${i}Name
         [ -z ""${!partition}"" ] && continue
         partitionTime=partition${i}TimeLimit  
