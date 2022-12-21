@@ -665,43 +665,70 @@ job_id       depend_on              job_flag
 Monitoring the jobs
 
 You can use the command:
-O2squeue -u $USER
+squeue -u $USER --Format=jobid:10,username:6,partition:14,name:35,state:14,timeused:10,timeleft:10,timelimit:180,starttime:18,nodelist:18,numcpus:8,minmemory:30
 
 To see the job status (running, pending, etc.). You also get two emails for each step, one at the start of the step, one at the end of the step.
 Successful job email
-Email subject: Success: job id:41208893 name:1.0.find1.A
+Email subject: Success: job id:46631 name:1.0.useSomeMemTimeAccordingInputSize.sh.1
 
 Email content:
 
 Job script content:
 #!/bin/bash
-#Commands:
-trap "{ cleanup.sh /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A; }” EXIT
-touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.start
-srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityA.txt; grep -H John /tmp/rcbio/universityA.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityA.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.failed"
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
-#sbatch command:
-#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+#Command used to submit the job:
+#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1  -A rccg    -c 1   -A rccg  /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 
-# Submitted batch job 41208893
+#Sbatch command output:
+#Submitted batch job 46631
+
 Job output:
-Working to copy: /tmp/rcbio/universityA.txt, waiting lock...
-Got lock: /tmp/-tmp-rcbio-universityA.txt. Copying data to: /tmp/rcbio/universityA.txt
-Copying is done for /tmp/rcbio/universityA.txt
-Job done. Summary:
-       JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
------------- ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-e-16-180
-41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
-41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
-41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-e-16-180
-*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+Begin allocating memory...
+...end allocating memory. Begin sleeping for 60 seconds...
+Done
+Running /home/ld32/smartSlurm/bin/cleanUp.sh /n/groups/rccg/ld32/smartSlurm useSomeMemTimeAccordingInputSize.sh none 1.0.useSomeMemTimeAccordingInputSize.sh.1 1465 1 2G 50:0 9M 0-0:6:0 short rccg /home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
 
+Job summary:
+JobID                     Submit               Start                 End     MaxRSS      State                       NodeList  Partition                        ReqTRES   TotalCPU        Elapsed      Timelimit
+------------ ------------------- ------------------- ------------------- ---------- ---------- ------------------------------ ---------- ------------------------------ ---------- -------------- --------------
+46631        2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05      short  billing=1,cpu=1,mem=9M,node=1  00:00.076       00:01:06       00:06:00
+46631.batch  2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05                                             00:00:00       00:01:06               
+46631.extern 2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05                                             00:00:00       00:01:06               
+46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-dev05                                            00:00.076       00:01:00               
+*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-dev05                                            00:00.076       00:01:00               
+start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
+jobStatus: COMPLETED
+Added this line to ~/smartSlurm/myJobRecord.txt:
+46631,1465,2G,50:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/n/groups/rccg/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-dev05,/n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
+Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /n/groups/rccg/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
+Find current job id (flag: 1.0.useSomeMemTimeAccordingInputSize.sh.1):
+46631
+
+Find all downstream jobs which depend on current job
+job idNames:
+..46631..46632 3.1.2.useSomeMemTimeAccordingInputSize.sh
+1working on ..46631..46632 3.1.2.useSomeMemTimeAccordingInputSize.sh
+2working on 46631
+Ignore. It is the current job. It should adjust the mem and time for the downsteam job.
+2working on 46632
+look for the job flag for 46632
+This job was done!
+Dependants for 3.1.2.useSomeMemTimeAccordingInputSize.sh are all done except for the current job. Ready to adjust mem/runtime
+Do not have a formula. Let us build one...
+Running
+/home/ld32/smartSlurm/bin/jobStatistics.sh 4
+Usage: checkJobRecord.sh software reference
+Try to build fomular, but it was not successful
+
+Error output:
 The key elements are time and memory used.
 Check job logs
 
 You can use the command:
-ls -l flag
+ls -l log
 
 This command list all the logs created by the pipeline runner. *.sh files are the slurm scripts for each step, *.out files are output files for each step, *.success files means job successfully finished for each step and *.failed means job failed for each steps.
 
@@ -709,7 +736,7 @@ You also get two emails for each step, one at the start of the step, one at the 
 Cancel all jobs
 
 You can use the command to cancel running and pending jobs:
-cancelAllJobs flag/alljobs.jid
+cancelAllJobs log/alljobs.jid
 What happens if there is some error? 
 
 You can re-run this command in the same folder. We will delete an input file to see what happens.
