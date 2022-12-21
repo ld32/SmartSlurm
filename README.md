@@ -209,9 +209,8 @@ git clone git://github.com/ld32/smartSlurm.git
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
 
-# run sbatch as usual 
-# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time 
-runAsPipeline ~/smartSlurm/bin/bashScriptV2.sh "sbatch -A rccg -p short -t 10:0 -c 1" noTmp run
+# run bash script as Slurm pipeline 
+runAsPipeline ~/smartSlurm/bin/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" noTmp run
 
 ```
 
@@ -224,7 +223,7 @@ git clone git://github.com/ld32/smartSlurm.git
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
 
-# Take a look at the exmplar bash script
+# Take a look at a regular exmaple bash script
 cat ~/smartSlurm/bin/bashScriptV1.sh
 
 # Below is the content of bashScriptV1.sh
@@ -245,11 +244,11 @@ cat ~/smartSlurm/bin/bashScriptV1.sh
 
 #Notes about bashScriptV1.sh: 
 The script first finds 1234 in file bigText1.txt in row 6, then finds 5678 in bigText1.txt in row 9, then merges the results into all.txt in orow 14 
-In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
 
+#In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
 cat ~/smartSlurm/bin/bashScriptV2.sh
 
-# below is the content of bashScriptV1.sh
+# below is the content of bashScriptV2.sh
 1 #!/bin/sh
 2 
 3 outputs=""
@@ -279,18 +278,18 @@ cat ~/smartSlurm/bin/bashScriptV2.sh
 
     Step 3 is denoted by #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useSomeMemTimeAccordingInputSize.sh with on reference file, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
 
-Notice the format of step annotation is #@stepID,dependIDs,stepName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
+Notice the format of step annotation is #@stepID,dependIDs,sofwareName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
 
 Here are two more examples:
 
-#@4,1.3,map,,in,sbatch -p short -c 1 -t 50:0   Means step4 depends on step1 and step3, this step is named map, there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 50:0
+#@4,1.3,map,,in,sbatch -p short -c 1 -t 50:0   Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 50:0
 
-#@3,1.2,align,db1.db2   Means step3 depends on step1 and step2, this step is named align, $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
+#@3,1.2,align,db1.db2   Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
 Test run the modified bash script as a pipeline
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-This command will generate new bash script of the form slurmPipeLine.checksum.sh in flag folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated.
+This command will generate new bash script of the form slurmPipeLine.checksum.sh in log folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated.
 
 This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job ids like 1234 for each step. If you were to append run at the end of the command, the pipeline would actually be submitted to the Slurm scheduler.
 
@@ -302,156 +301,367 @@ Sample output from the test run
 Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-Fri Sep 24 09:46:15 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp
+# here i the outputs:
+
+Wed Dec 21 15:50:43 EST 2022
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -A rccg -p short -t 10:0 -c 1 noTmp
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  1) gcc/6.2.0
 
-converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh
 
-find loop start: for i in A B; do
+converting /home/ld32/smartSlurm/bin/bashScriptV2.sh to log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh
 
-find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
-
-find job:
-grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+find loop start: for i in {1..1}; do
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
 
 find job:
-grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
+
+find job marker:
+#@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
+
+find job:
+useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
 find loop end: done
 
 find job marker:
-#@3,1.2,merge
+#@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input
 
 find job:
-cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
-flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh is ready to run. Starting to run ...
-Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh
+useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output
+log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh is ready to run. Starting to run ...
+Running log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  1) gcc/6.2.0
 
 ---------------------------------------------------------
 
-step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
-depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
-# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1349
+step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
+Running:
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --me
+m 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
 
-step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+Parsing result from sbatch commandline:
+sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
+additional sbatch parameter: -c 1 -A rccg
+test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
-# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1560
 
-step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
+
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
+hort"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
+,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeM
+emTimeAccordingInputSize.sh.1.success"
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log
+/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+This is a testing, not really running a job...
+
+step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
+Running:
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --me
+m 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
+
+Parsing result from sbatch commandline:
+sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
+additional sbatch parameter: -c 1 -A rccg
+test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
-# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1766
 
-step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
-depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
-# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1970
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
 
-step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
+hort"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I
+,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeM
+emTimeAccordingInputSize.sh.1.success"
+
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log
+/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+This is a testing, not really running a job...
+
+step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
+Running:
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -A rccg -A rccg -p s
+hort -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt"
+
+Parsing result from sbatch commandline:
+sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
+additional sbatch parameter: -A rccg -c 1
+test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
 depend on multiple jobs
-sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:1349:1766:1560:1970 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
-# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 2172
+working on 123
+working on 123
+
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
+
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:123:123 -A rccg -A rccg -c 1 /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+This is a testing, not really running a job...
 
 All submitted jobs:
 job_id       depend_on              job_flag
-1349        null                  1.0.find1.A
-1560        null                  2.0.find2.A
-1766        null                  1.0.find1.B
-1970        null                  2.0.find2.B
-2172        ..1349.1766..1560.1970  3.1.2.merge
+123         null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
+123         null                  2.0.useSomeMemTimeAccordingInputSize.sh.1
+123         ..123..123            3.1.2.useSomeMemTimeAccordingInputSize.sh
 ---------------------------------------------------------
 Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above.
+
+
 Run the modified bash script as a pipeline
 
 Thus far in the example, we have not actually submitted any jobs to the scheduler. To submit the pipeline, you will need to append the run parameter to the command. If run is not specified, test mode will be used, which does not submit jobs and gives the placeholder of 1234for jobids in the command's output. 
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+runAsPipeline ~/smartSbatch/bin/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Below is the output
-Fri Sep 24 09:48:12 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Wed Dec 21 16:02:47 EST 2022
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -A rccg -p short -t 10:0 -c 1 noTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  1) gcc/6.2.0
 
-converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
 
-find loop start: for i in A B; do
 
-find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
-
-find job:
-grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
-
-find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
-
-find job:
-grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
-find loop end: done
-
-find job marker:
-#@3,1.2,merge
-
-find job:
-cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
-flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh is ready to run. Starting to run ...
-Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
+This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh
+Running log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  1) gcc/6.2.0
 
-Could not find any jobs to cancel.
+
+
+the following jobs are not finished yet:
+ 46630       null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
+
+Do you want to stop(kill) them? (y)?:1.0.useSomeMemTimeAccordingInputSize.sh.1 cancelled.
 ---------------------------------------------------------
 
-step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
-depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
-# Submitted batch job 41208893
+step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
+Running:
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
 
-step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
-depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
-# Submitted batch job 41208894
+found -L
+found -S
+Found -R
+Found -F
+Found -I
+Found -D
+Found sbatch options
+options before sbatch options: slurmAcc: logDir: /n/groups/rccg/ld32/smartSlurm software: useSomeMemTimeAccordingInputSize.sh ref: none jobFlag: 1.0.useSomeMemTimeAccordingInputSize.sh.1 inputs: ,bigText1.txt deps: null
+Parsing sbatch command...
+Found -A
+Found -p
+Found -c
+Found --mem
+Found time
+Found -A
+Found --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
 
-step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
-depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
-# Submitted batch job 41208895
+Parsing result from sbatch commandline:
 
-step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
+additional sbatch parameter: -c 1 -A rccg
+test or run: run
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
-# Submitted batch job 41208898
 
-step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
+
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+Start submtting job...
+
+step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
+Running:
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
+
+Parsing result from sbatch commandline:
+sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
+additional sbatch parameter: -c 1 -A rccg
+test or run: run
+depend on no job
+
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
+
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+Start submtting job...
+
+step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
+Running:
+
+ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
+
+found -L
+found -S
+Found -R
+Found -F
+Found -I
+Found -D
+Found sbatch options
+options before sbatch options: slurmAcc: logDir: /n/groups/rccg/ld32/smartSlurm software: useSomeMemTimeAccordingInputSize.sh ref: none jobFlag: 3.1.2.useSomeMemTimeAccordingInputSize.sh inputs: ,bigText1.txt deps: ..46631..46632
+Parsing sbatch command...
+Found -A
+Found -A
+Found -p
+Found time
+Found -c
+Found --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
+
+Parsing result from sbatch commandline:
+sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
+wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
+additional sbatch parameter: -A rccg -c 1
+test or run: run
 depend on multiple jobs
-sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41208893:41208895:41208894:41208898 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
-# Submitted batch job 41208899
+working on 46631
+working on 46632
+
+Check if there input file list and this job does not depend on other jobs
+inputSize: 1465
+Running: estimateMemTime.sh useSomeMemTimeAccordingInputSize.sh none 1465
+Estimating mem:
+Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
+mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
+
+Estimating time:
+Finala: 0.001023890784415 Finalb: -0.699999996948272 Maximum: 7325.000000000000000
+time formula: ( 0.001023890784415 x 1465 + -0.699999996948272 ) x 1.0
+Got 3.519999999999810 .800000002219703
+Got estimation inputsize: 1465 mem: 9M time: 6
+
+0 0, 0 hour, 6 min, 0 sec
+
+Building new sbatch command ...
+
+New slurmScirpt is ready. The content is:
+#!/bin/bash
+trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
+srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:46631:46632 -A rccg -A rccg -c 1 /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+Start submtting job...
 
 All submitted jobs:
 job_id       depend_on              job_flag
-41208893    null                  1.0.find1.A
-41208894    null                  2.0.find2.A
-41208895    null                  1.0.find1.B
-41208898    null                  2.0.find2.B
-41208899    ..41208893.41208895..41208894.41208898  3.1.2.merge
----------------------------------------------------------
+46631       null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
+46632       null                  2.0.useSomeMemTimeAccordingInputSize.sh.1
+46633       ..46631..46632        3.1.2.useSomeMemTimeAccordingInputSize.sh
+
+
+
+
+
+
+
+
+
+
 Monitoring the jobs
 
 You can use the command:
