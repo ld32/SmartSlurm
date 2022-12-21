@@ -493,36 +493,11 @@ Running log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh /home/ld32/sma
 Currently Loaded Modules:
   1) gcc/6.2.0
 
-
-
-the following jobs are not finished yet:
- 46630       null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
-
-Do you want to stop(kill) them? (y)?:1.0.useSomeMemTimeAccordingInputSize.sh.1 cancelled.
 ---------------------------------------------------------
 
 step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
 ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
-
-found -L
-found -S
-Found -R
-Found -F
-Found -I
-Found -D
-Found sbatch options
-options before sbatch options: slurmAcc: logDir: /n/groups/rccg/ld32/smartSlurm software: useSomeMemTimeAccordingInputSize.sh ref: none jobFlag: 1.0.useSomeMemTimeAccordingInputSize.sh.1 inputs: ,bigText1.txt deps: null
-Parsing sbatch command...
-Found -A
-Found -p
-Found -c
-Found --mem
-Found time
-Found -A
-Found --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
-
-Parsing result from sbatch commandline:
 
 sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
@@ -596,22 +571,6 @@ Running:
 
 ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
 
-found -L
-found -S
-Found -R
-Found -F
-Found -I
-Found -D
-Found sbatch options
-options before sbatch options: slurmAcc: logDir: /n/groups/rccg/ld32/smartSlurm software: useSomeMemTimeAccordingInputSize.sh ref: none jobFlag: 3.1.2.useSomeMemTimeAccordingInputSize.sh inputs: ,bigText1.txt deps: ..46631..46632
-Parsing sbatch command...
-Found -A
-Found -A
-Found -p
-Found time
-Found -c
-Found --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
-
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
@@ -652,15 +611,6 @@ job_id       depend_on              job_flag
 46631       null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
 46632       null                  2.0.useSomeMemTimeAccordingInputSize.sh.1
 46633       ..46631..46632        3.1.2.useSomeMemTimeAccordingInputSize.sh
-
-
-
-
-
-
-
-
-
 
 Monitoring the jobs
 
