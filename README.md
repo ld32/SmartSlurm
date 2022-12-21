@@ -8,7 +8,7 @@
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
-    - [smart pipline Quick start](#quick-start)
+    - [smart pipline Quick start](#smart-pineline-quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work]($how-does-smart-pipeline-work)
 
@@ -108,7 +108,7 @@ unset SSBATCH_S
 unset SSBATCH_I
 ```
 
-## How does it work
+## How does smart sbatch work
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
@@ -186,7 +186,7 @@ adjustPartition() {
     ~/smartSlurm/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
 
 
-# Smart pipeline
+# Run bash script as smart pipeline using smart sbatch
 Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipine. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
 ## smart pipeline features:
@@ -201,6 +201,21 @@ Smart pipeline was originally designed to run bash script as pipelie on Slurm cl
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
 
 ## Smart Pipeline Quick Start
+``` bash
+# Download
+cd $HOME 
+git clone git://github.com/ld32/smartSlurm.git  
+
+# Setup path
+export PATH=$HOME/smartSlurm/bin:$PATH  
+
+# run sbatch as usual 
+# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time 
+runAsPipeline ~/smartSlurm/bin/bashScriptV2.sh "sbatch -A rccg -p short -t 10:0 -c 1" noTmp run
+
+```
+
+## How to use smart pipeline
 ``` bash
 # Download
 cd $HOME 
@@ -272,74 +287,1063 @@ Here are two more examples:
 
 #@3,1.2,align,db1.db2   Means step3 depends on step1 and step2, this step is named align, $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
+Test run the modified bash script as a pipeline
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
+This command will generate new bash script of the form slurmPipeLine.checksum.sh in flag folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated.
 
-# run sbatch as usual 
-# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time 
-runAsPipeline ~/smartSlurm/bin/bashScriptV3.sh "sbatch -A rccg -p short -t 10:0 -c 1" noTmp run
+This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job ids like 1234 for each step. If you were to append run at the end of the command, the pipeline would actually be submitted to the Slurm scheduler.
 
+Ideally, with useTmp, the software should run faster using local /tmp disk space for database/reference than the network storage. For this small query, the difference is small, or even slower if you use local /tmp. If you don't need /tmp, you can use noTmp.
 
-```
+With useTmp, the pipeline runner copy related data to /tmp and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
+Sample output from the test run
 
-## How to use ssbatch
-``` bash
-# Download
-cd $HOME 
-git clone git://github.com/ld32/smartSlurm.git  
+Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-# Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
+Fri Sep 24 09:46:15 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp
 
-# Set up a function so that ssbatch is called when running sbatch
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
+Currently Loaded Modules:
+  1) rcbio/1.3.3
 
-# Create some text files for testing
-createBigTextFiles.sh
+converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh
 
-# Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
-# Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Notice 2: Slurm will submit three jobs to short partition, each reserves 2G memory and 2 hour run-time 
-export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the script
-for i in {1..3}; do
-    sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
-done
+find loop start: for i in A B; do
 
-# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time so that 90% jobs can finish successfully
-# Notice: Slurm will submit five jobs to short partition, and reserved 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
 
-# Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
-# Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Notice 2: Slurm will submit five jobs to short partition, each reserves 2G memory and 2 hour run-time 
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the script
-for i in {1..5}; do
-    export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
-done
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
-# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
-# Notice: Slurm will submit one job to short partition, and reserves 21M memory and 13 minute run-time 
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the script
-export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
-sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
 
-# The second way to tell the input file name and software name: 
-sbatch --comment="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt" \
-    -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
 
-# The third way to tell the input file name and software name: 
-sbatch -t 2:0:0 --mem 2G job.sh
+find job marker:
+#@3,1.2,merge
 
-cat job.sh
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1349
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1560
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1766
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1970
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:1349:1766:1560:1970 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 2172
+
+All submitted jobs:
+job_id       depend_on              job_flag
+1349        null                  1.0.find1.A
+1560        null                  2.0.find2.A
+1766        null                  1.0.find1.B
+1970        null                  2.0.find2.B
+2172        ..1349.1766..1560.1970  3.1.2.merge
+---------------------------------------------------------
+Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above.
+Run the modified bash script as a pipeline
+
+Thus far in the example, we have not actually submitted any jobs to the scheduler. To submit the pipeline, you will need to append the run parameter to the command. If run is not specified, test mode will be used, which does not submit jobs and gives the placeholder of 1234for jobids in the command's output. 
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Below is the output
+Fri Sep 24 09:48:12 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
+
+find loop start: for i in A B; do
+
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
+
+find job marker:
+#@3,1.2,merge
+
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+# Submitted batch job 41208893
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+# Submitted batch job 41208894
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# Submitted batch job 41208895
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+# Submitted batch job 41208898
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41208893:41208895:41208894:41208898 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41208899
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41208893    null                  1.0.find1.A
+41208894    null                  2.0.find2.A
+41208895    null                  1.0.find1.B
+41208898    null                  2.0.find2.B
+41208899    ..41208893.41208895..41208894.41208898  3.1.2.merge
+---------------------------------------------------------
+Monitoring the jobs
+
+You can use the command:
+O2squeue -u $USER
+
+To see the job status (running, pending, etc.). You also get two emails for each step, one at the start of the step, one at the end of the step.
+Successful job email
+Email subject: Success: job id:41208893 name:1.0.find1.A
+
+Email content:
+
+Job script content:
 #!/bin/bash
-#SBATCH --commen="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt"
-useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt
+#Commands:
+trap "{ cleanup.sh /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A; }” EXIT
+touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.start
+srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityA.txt; grep -H John /tmp/rcbio/universityA.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityA.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.failed"
 
-# After you finish using ssbatch, run this command to disable it:    
-unset sbatch
-unset SSBATCH_S
-unset SSBATCH_I
-```
+#sbatch command:
+#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+
+# Submitted batch job 41208893
+Job output:
+Working to copy: /tmp/rcbio/universityA.txt, waiting lock...
+Got lock: /tmp/-tmp-rcbio-universityA.txt. Copying data to: /tmp/rcbio/universityA.txt
+Copying is done for /tmp/rcbio/universityA.txt
+Job done. Summary:
+       JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
+------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
+41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-e-16-180
+41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
+41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
+41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-e-16-180
+*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+
+The key elements are time and memory used.
+Check job logs
+
+You can use the command:
+ls -l flag
+
+This command list all the logs created by the pipeline runner. *.sh files are the slurm scripts for each step, *.out files are output files for each step, *.success files means job successfully finished for each step and *.failed means job failed for each steps.
+
+You also get two emails for each step, one at the start of the step, one at the end of the step.
+Cancel all jobs
+
+You can use the command to cancel running and pending jobs:
+cancelAllJobs flag/alljobs.jid
+What happens if there is some error? 
+
+You can re-run this command in the same folder. We will delete an input file to see what happens.
+# We are intentionally removing an input file to see a "failed job" email message
+rm universityB.txt
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Here is the output
+Fri Sep 24 10:00:36 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+1.0.find1.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+2.0.find2.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.A is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+1.0.find1.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type ‘y’ and enter here to re-run
+
+Will re-run the down stream steps even if they are done before.
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# Submitted batch job 41209197
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+2.0.find2.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.B is not submitted
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on other jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41209197 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41209210
+
+# Notice above, rcbio didn’t ask if user wants to re-run step3 or not and directly re-run it.
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41209197    null                  1.0.find1.B
+41209210    ..41209197.           3.1.2.merge
+---------------------------------------------------------
+
+This command will check if the earlier run is finished or not. If not, ask user to kill the running jobs or not, then ask user to rerun the successfully finished steps or not. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+Failed job email
+Email subject: Failed: job id:41209197 name:1.0.find1.B
+
+Email content:
+Job script content:
+#!/bin/bash
+#Commands:
+trap "{ cleanup.sh /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B; }” EXIT
+touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.start
+srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityB.txt; grep -H John /tmp/rcbio/universityB.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityB.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.failed"
+
+#sbatch command:
+#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+
+# Submitted batch job 41209197
+Job output:
+Working to copy: /tmp/rcbio/universityB.txt, waiting lock...
+Reference file or folder not exist: /universityB.txt
+grep: /tmp/rcbio/universityB.txt: No such file or directory
+grep: /tmp/rcbio/universityB.txt: No such file or directory
+Job done. Summary:
+       JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
+------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-e-16-180
+41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
+41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
+41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-e-16-180
+*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+
+    The key element here is the error message.
+
+    Notice here, step2 job is automatically canceled because this job failed. We deleted universityB.txt, so the job has failed. We don’t get an email from the downstream step3 job. 
+
+Fix the error and re-run the pipeline
+
+You can rerun this command in the same folder
+cp universityA.txt universityB.txt
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+This command will automatically check if the earlier run is finished. If the run has not finished, the script will ask the user if they want to kill the running jobs or not, then ask user to rerun the successfully finished steps or not. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+
+Notice here, step3 will run by default. It will run without prompting the user for permission.
+What happens if we add more input data and re-run the pipeline?
+
+You can rerun this command in the same folder
+cp universityA.txt universityC.txt
+cp bashScriptV2.sh bashScriptV3.sh 
+nano bashScriptV3.sh  
+# change
+for i in A B; do
+to: 
+for i in A B C; do
+
+# save the file and run:
+runAsPipeline bashScriptV3.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Here are the output: 
+Fri Sep 24 10:56:16 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh
+
+find loop start: for i in A B C; do
+
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
+
+find job marker:
+#@3,1.2,merge
+
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+1.0.find1.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 1.0.find1.A is not submitted
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+2.0.find2.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.A is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+1.0.find1.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 1.0.find1.B is not submitted
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+2.0.find2.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.B is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.C reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
+# Submitted batch job 41211380
+
+step: 2, depends on: 0, job name: find2, flag: find2.C reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
+# Submitted batch job 41211381
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41211380:41211381 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41211382
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41211380    null                  1.0.find1.C
+41211381    null                  2.0.find2.C
+41211382    ..41211380..41211381  3.1.2.merge
+---------------------------------------------------------
+
+This command will check if the earlier run is finished, and will prompt the user if they kill any running jobs. Next, it will then ask the user if they want to rerun any successfully finished steps. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+
+For the new data, RCBio will submit 2 jobs. Step3 will also still automatically run.
+Re-run a single job manually
+# /working/directory is a placeholder, replace it with your actual working directory path
+cd /working/directory
+# all/related/modules is a placeholder, replace it with the actual other modules/versions you need
+module load rcbio/1.3.3 and all/related/modules
+
+# submit job with proper partition, time, number of cores and memory
+sbatch --requeue --mail-type=ALL -p short -t 2:0:0 -c 2 --mem 2G /working/directory/flag/stepID.loopID.stepName.sh
+
+Or:
+runSingleJob "module load bowtie/1.2.2; bowtie -x /n/groups/shared_databases/bowtie_indexes/hg19 -p 2 -1 read1.fq -2 read2.fq --sam > out.bam" "sbatch -p short -t 1:0:0 -c 2 -mem 8G"
+
+For details about the second option: Get more informative slurm email notification and logs through rcbio/1.3 
+To run your own script as Slurm pipeline
+
+If you have a bash script with multiple steps and you wish to run it as Slurm pipeline, here is how you can do that:
+
+    modify your old script and add the notation to mark the start and end of any loops, and the start of any step for which you want to submit as an sbatch job. 
+
+    use runAsPipeline with your modified bash script, as detailed above. 
+
+How does the runAsPipeline RCBio pipeline runner work?
+
+In case you wonder how it works, here is a simple example to explain.
+
+For each step per loop, the pipeline runner creates a file that looks like the one below. (Here it is named flag.sh): 
+#!/bin/bash 
+srun -n 1 bash -c "{ echo I am running...; hostname; otherCommands; } && touch flag.success" 
+sleep 5 
+export SLURM_TIME_FORMAT=relative 
+echo Job done. Summary: 
+sacct --format=JobID,Submit,Start,End,State,Partition,ReqTRES%30,CPUTime,MaxRSS,NodeList%30 --units=M -j $SLURM_JOBID 
+sendJobFinishEmail.sh flag 
+[ -f flag.success ] && exit 0 || exit 1 
+
+Your analysis commands will be wrapped in an srun so we can monitor if it completed successfully. If your commands worked (meaning exited in 0 status), then we will create the success file. Next, we will run sacct to get stats for the job step, and will send a job completion email with sendJobFinishEmail.sh. The sendJobFinishEmail.sh script is available in /n/app/rcbio/1.3.3/bin/, if you are interested in the contents of that script.
+
+Then the job script will be submitted with: 
+sbatch -p short -t 10:0 -o flag.out -e flag.out flag.sh
+
+ 
+
+Let us know if you have any questions by emailing rchelp@hms.harvard.edu. Please include your working folder and the commands used in your email. Any comments and suggestions are welcome!
+
+We have additional example ready-to-run workflows available, which may be of interest to you.Test run the modified bash script as a pipeline
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+
+This command will generate new bash script of the form slurmPipeLine.checksum.sh in flag folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated.
+
+This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job ids like 1234 for each step. If you were to append run at the end of the command, the pipeline would actually be submitted to the Slurm scheduler.
+
+Ideally, with useTmp, the software should run faster using local /tmp disk space for database/reference than the network storage. For this small query, the difference is small, or even slower if you use local /tmp. If you don't need /tmp, you can use noTmp.
+
+With useTmp, the pipeline runner copy related data to /tmp and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
+Sample output from the test run
+
+Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+
+Fri Sep 24 09:46:15 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh
+
+find loop start: for i in A B; do
+
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
+
+find job marker:
+#@3,1.2,merge
+
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1349
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1560
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1766
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1970
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:1349:1766:1560:1970 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 2172
+
+All submitted jobs:
+job_id       depend_on              job_flag
+1349        null                  1.0.find1.A
+1560        null                  2.0.find2.A
+1766        null                  1.0.find1.B
+1970        null                  2.0.find2.B
+2172        ..1349.1766..1560.1970  3.1.2.merge
+---------------------------------------------------------
+Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above.
+Run the modified bash script as a pipeline
+
+Thus far in the example, we have not actually submitted any jobs to the scheduler. To submit the pipeline, you will need to append the run parameter to the command. If run is not specified, test mode will be used, which does not submit jobs and gives the placeholder of 1234for jobids in the command's output. 
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Below is the output
+Fri Sep 24 09:48:12 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
+
+find loop start: for i in A B; do
+
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
+
+find job marker:
+#@3,1.2,merge
+
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+# Submitted batch job 41208893
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+# Submitted batch job 41208894
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# Submitted batch job 41208895
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+# Submitted batch job 41208898
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41208893:41208895:41208894:41208898 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41208899
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41208893    null                  1.0.find1.A
+41208894    null                  2.0.find2.A
+41208895    null                  1.0.find1.B
+41208898    null                  2.0.find2.B
+41208899    ..41208893.41208895..41208894.41208898  3.1.2.merge
+---------------------------------------------------------
+Monitoring the jobs
+
+You can use the command:
+O2squeue -u $USER
+
+To see the job status (running, pending, etc.). You also get two emails for each step, one at the start of the step, one at the end of the step.
+Successful job email
+Email subject: Success: job id:41208893 name:1.0.find1.A
+
+Email content:
+
+Job script content:
+#!/bin/bash
+#Commands:
+trap "{ cleanup.sh /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A; }” EXIT
+touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.start
+srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityA.txt; grep -H John /tmp/rcbio/universityA.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityA.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.failed"
+
+#sbatch command:
+#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+
+# Submitted batch job 41208893
+Job output:
+Working to copy: /tmp/rcbio/universityA.txt, waiting lock...
+Got lock: /tmp/-tmp-rcbio-universityA.txt. Copying data to: /tmp/rcbio/universityA.txt
+Copying is done for /tmp/rcbio/universityA.txt
+Job done. Summary:
+       JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
+------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
+41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-e-16-180
+41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
+41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
+41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-e-16-180
+*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+
+The key elements are time and memory used.
+Check job logs
+
+You can use the command:
+ls -l flag
+
+This command list all the logs created by the pipeline runner. *.sh files are the slurm scripts for each step, *.out files are output files for each step, *.success files means job successfully finished for each step and *.failed means job failed for each steps.
+
+You also get two emails for each step, one at the start of the step, one at the end of the step.
+Cancel all jobs
+
+You can use the command to cancel running and pending jobs:
+cancelAllJobs flag/alljobs.jid
+What happens if there is some error? 
+
+You can re-run this command in the same folder. We will delete an input file to see what happens.
+# We are intentionally removing an input file to see a "failed job" email message
+rm universityB.txt
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Here is the output
+Fri Sep 24 10:00:36 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
+Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+1.0.find1.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+2.0.find2.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.A is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+1.0.find1.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type ‘y’ and enter here to re-run
+
+Will re-run the down stream steps even if they are done before.
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+# Submitted batch job 41209197
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+2.0.find2.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.B is not submitted
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on other jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41209197 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41209210
+
+# Notice above, rcbio didn’t ask if user wants to re-run step3 or not and directly re-run it.
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41209197    null                  1.0.find1.B
+41209210    ..41209197.           3.1.2.merge
+---------------------------------------------------------
+
+This command will check if the earlier run is finished or not. If not, ask user to kill the running jobs or not, then ask user to rerun the successfully finished steps or not. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+Failed job email
+Email subject: Failed: job id:41209197 name:1.0.find1.B
+
+Email content:
+Job script content:
+#!/bin/bash
+#Commands:
+trap "{ cleanup.sh /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B; }” EXIT
+touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.start
+srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityB.txt; grep -H John /tmp/rcbio/universityB.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityB.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.failed"
+
+#sbatch command:
+#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+
+# Submitted batch job 41209197
+Job output:
+Working to copy: /tmp/rcbio/universityB.txt, waiting lock...
+Reference file or folder not exist: /universityB.txt
+grep: /tmp/rcbio/universityB.txt: No such file or directory
+grep: /tmp/rcbio/universityB.txt: No such file or directory
+Job done. Summary:
+       JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
+------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-e-16-180
+41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
+41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
+41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-e-16-180
+*Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
+
+    The key element here is the error message.
+
+    Notice here, step2 job is automatically canceled because this job failed. We deleted universityB.txt, so the job has failed. We don’t get an email from the downstream step3 job. 
+
+Fix the error and re-run the pipeline
+
+You can rerun this command in the same folder
+cp universityA.txt universityB.txt
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+This command will automatically check if the earlier run is finished. If the run has not finished, the script will ask the user if they want to kill the running jobs or not, then ask user to rerun the successfully finished steps or not. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+
+Notice here, step3 will run by default. It will run without prompting the user for permission.
+What happens if we add more input data and re-run the pipeline?
+
+You can rerun this command in the same folder
+cp universityA.txt universityC.txt
+cp bashScriptV2.sh bashScriptV3.sh 
+nano bashScriptV3.sh  
+# change
+for i in A B; do
+to: 
+for i in A B C; do
+
+# save the file and run:
+runAsPipeline bashScriptV3.sh "sbatch -p short -t 10:0 -c 1" useTmp run
+
+# Here are the output: 
+Fri Sep 24 10:56:16 EDT 2021
+Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh
+
+find loop start: for i in A B C; do
+
+find job marker:
+#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
+
+find job marker:
+#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
+sbatch options: sbatch -p short -c 1 -t 50:0
+
+find job:
+grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
+find loop end: done
+
+find job marker:
+#@3,1.2,merge
+
+find job:
+cat John.txt Mike.txt Nick.txt Julia.txt > all.txt
+flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh is ready to run. Starting to run ...
+Running flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh
+
+Currently Loaded Modules:
+  1) rcbio/1.3.3
+
+
+Could not find any jobs to cancel.
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
+depend on no job
+1.0.find1.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 1.0.find1.A is not submitted
+
+step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
+depend on no job
+2.0.find2.A was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.A is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
+depend on no job
+1.0.find1.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 1.0.find1.B is not submitted
+
+step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
+depend on no job
+2.0.find2.B was done before, do you want to re-run it?
+y:        To re-run this job, press y, then enter key.
+ystep:    To re-run all jobs for step 3: hisatCount, type yall, then press enter key.
+yall:     To re-run all jobs, type yallall, then press enter key.
+enter:    To not re-run this job, directly press enter key.
+nstep:    To not re-run all successful jobs for step 3: hisatCount, type nall, then press enter key.
+nall:     To not re-run all successful jobs, type nallall, then press enter key.
+
+# type enter here to not re-run
+
+job 2.0.find2.B is not submitted
+
+step: 1, depends on: 0, job name: find1, flag: find1.C reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
+# Submitted batch job 41211380
+
+step: 2, depends on: 0, job name: find2, flag: find2.C reference: .u
+depend on no job
+sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
+# Submitted batch job 41211381
+
+step: 3, depends on: 1.2, job name: merge , flag: merge reference:
+depend on multiple jobs
+sbatch -p short -t 10:0 -c 1 --requeue --nodes=1 --dependency=afterok:41211380:41211381 -J 3.1.2.merge -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/3.1.2.merge.sh
+# Submitted batch job 41211382
+
+All submitted jobs:
+job_id       depend_on              job_flag
+41211380    null                  1.0.find1.C
+41211381    null                  2.0.find2.C
+41211382    ..41211380..41211381  3.1.2.merge
+---------------------------------------------------------
+
+This command will check if the earlier run is finished, and will prompt the user if they kill any running jobs. Next, it will then ask the user if they want to rerun any successfully finished steps. Click 'y', it will rerun, directly press 'enter' key, it will not rerun. 
+
+For the new data, RCBio will submit 2 jobs. Step3 will also still automatically run.
+Re-run a single job manually
+# /working/directory is a placeholder, replace it with your actual working directory path
+cd /working/directory
+# all/related/modules is a placeholder, replace it with the actual other modules/versions you need
+module load rcbio/1.3.3 and all/related/modules
+
+# submit job with proper partition, time, number of cores and memory
+sbatch --requeue --mail-type=ALL -p short -t 2:0:0 -c 2 --mem 2G /working/directory/flag/stepID.loopID.stepName.sh
+
+Or:
+runSingleJob "module load bowtie/1.2.2; bowtie -x /n/groups/shared_databases/bowtie_indexes/hg19 -p 2 -1 read1.fq -2 read2.fq --sam > out.bam" "sbatch -p short -t 1:0:0 -c 2 -mem 8G"
+
+For details about the second option: Get more informative slurm email notification and logs through rcbio/1.3 
+To run your own script as Slurm pipeline
+
+If you have a bash script with multiple steps and you wish to run it as Slurm pipeline, here is how you can do that:
+
+    modify your old script and add the notation to mark the start and end of any loops, and the start of any step for which you want to submit as an sbatch job. 
+
+    use runAsPipeline with your modified bash script, as detailed above. 
+
+How does the runAsPipeline RCBio pipeline runner work?
+
+In case you wonder how it works, here is a simple example to explain.
+
+For each step per loop, the pipeline runner creates a file that looks like the one below. (Here it is named flag.sh): 
+#!/bin/bash 
+srun -n 1 bash -c "{ echo I am running...; hostname; otherCommands; } && touch flag.success" 
+sleep 5 
+export SLURM_TIME_FORMAT=relative 
+echo Job done. Summary: 
+sacct --format=JobID,Submit,Start,End,State,Partition,ReqTRES%30,CPUTime,MaxRSS,NodeList%30 --units=M -j $SLURM_JOBID 
+sendJobFinishEmail.sh flag 
+[ -f flag.success ] && exit 0 || exit 1 
+
+Your analysis commands will be wrapped in an srun so we can monitor if it completed successfully. If your commands worked (meaning exited in 0 status), then we will create the success file. Next, we will run sacct to get stats for the job step, and will send a job completion email with sendJobFinishEmail.sh. The sendJobFinishEmail.sh script is available in /n/app/rcbio/1.3.3/bin/, if you are interested in the contents of that script.
+
+Then the job script will be submitted with: 
+sbatch -p short -t 10:0 -o flag.out -e flag.out flag.sh
+
+ 
+
+Let us know if you have any questions by emailing rchelp@hms.harvard.edu. Please include your working folder and the commands used in your email. Any comments and suggestions are welcome!
+
+We have additional example ready-to-run workflows available, which may be of interest to you.
 
 ## How does it work
 
