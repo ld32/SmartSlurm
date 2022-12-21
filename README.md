@@ -2,15 +2,15 @@
 # SmartSlurm
 - [Smart sbatch](#smart-sbatch)
     - [Smart sbatch features](#smart-sbatch-features)
-    - [Quick start](#quick-start)
+    - [Quick start](#ssbatch-quick-start)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does it Work]($how-does-it-work)
+    - [How does smart sbatch work]($how-does-smart-sbatch-work)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
-    - [Quick start](#quick-start)
+    - [smart pipline Quick start](#quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
-    - [How does it Work]($how-does-it-work)
+    - [How does smart pipeline work]($how-does-smart-pipeline-work)
 
 - [sbatchAndTop](#sbatchAndTop)
 
@@ -25,7 +25,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
 4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
-## Quick Start
+## ssbatch Quick Start
 ``` bash
 # Download
 cd $HOME 
@@ -186,17 +186,21 @@ adjustPartition() {
     ~/smartSlurm/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
 
 
-# Smart sbatch
-ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and sbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
+# Smart pipeline
+Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipine. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeAccordingInputSize.sh.none.time.png)
+## smart pipeline features:
+1) Submit each step as a cluster job using ssbatch, which auto adjusts memory and run-time according to statistics from earlier jobs, and re-run OOM/OOT jobs with doubled memory/run-time
+2) Automatically arrange dependencies among jobs
+3) Email notifications are sent when each job fails or succeeds
+4) If a job fails, all its downstream jobs automatically are killed
+5) When re-running the pipeline on the same data folder, if there are any unfinished jobs, the user is asked to kill them or not
+6) When re-running the pipeline on the same data folder, the user is asked to confirm to re-run or not if a job or a step was done successfully earlier
+7) For re-run, if the script is not changed, runAsPipeline does not re-process the bash script and directly use old one
+8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
+9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
 
-## ssbatch features:
-1) Auto adjust memory and run-time according to statistics from earlier jobs
-2) Auto choose partition according to run-time request
-3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
-4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
-## Quick Start
+## Smart Pipeline Quick Start
 ``` bash
 # Download
 cd $HOME 
@@ -205,18 +209,76 @@ git clone git://github.com/ld32/smartSlurm.git
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
 
-# Set up a function so that ssbatch is called when running sbatch
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
+# Take a look at the exmplar bash script
+cat ~/smartSlurm/bin/bashScriptV1.sh
 
-# Create some text files for testing
-createBigTextFiles.sh
+# Below is the content of bashScriptV1.sh
+1 #!/bin/sh
+2 
+3 for i in {1..1}; do
+4    input=bigText$i.txt
+5    output=1234.$i.txt
+6    useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
+7
+8    output=5678.$i.txt
+9    useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
+10 done
+11
+12 input=bigText1.txt
+13 output=all.txt
+14 useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output
+
+#Notes about bashScriptV1.sh: 
+The script first finds 1234 in file bigText1.txt in row 6, then finds 5678 in bigText1.txt in row 9, then merges the results into all.txt in orow 14 
+In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
+
+cat ~/smartSlurm/bin/bashScriptV2.sh
+
+# below is the content of bashScriptV1.sh
+1 #!/bin/sh
+2 
+3 outputs=""
+4 for i in {1..1}; do
+5    input=bigText$i.txt
+6    output=1234.$i.txt
+7    #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+8    useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
+9    outputs=$outputs,$output
+10
+11    output=5678.$i.txt
+12    #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+13    useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
+14    outputs=$outputs,$output
+15 done
+16 
+17 input1=bigText1.txt
+18 output=all.txt
+19 #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input
+20 useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output    
+
+# Notice that there are a few things added to the script here:
+
+    Step 1 is denoted by #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0 (line 7 above), which means this is step 1 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+
+    Step 2 is denoted by #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0 (line 12 above), which means this is step2 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
+
+    Step 3 is denoted by #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useSomeMemTimeAccordingInputSize.sh with on reference file, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
+
+Notice the format of step annotation is #@stepID,dependIDs,stepName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
+
+Here are two more examples:
+
+#@4,1.3,map,,in,sbatch -p short -c 1 -t 50:0   Means step4 depends on step1 and step3, this step is named map, there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 50:0
+
+#@3,1.2,align,db1.db2   Means step3 depends on step1 and step2, this step is named align, $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
+
+
 
 # run sbatch as usual 
 # Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
+runAsPipeline ~/smartSlurm/bin/bashScriptV3.sh "sbatch -A rccg -p short -t 10:0 -c 1" noTmp run
 
-# After you finish using ssbatch, run this command to disable it:    
-unset sbatch
+
 ```
 
 ## How to use ssbatch
