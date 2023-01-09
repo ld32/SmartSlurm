@@ -52,8 +52,8 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 createBigTextFiles.sh
 
 # run sbatch as usual 
-# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
+# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time  
+sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh 1"
 
 # After you finish using ssbatch, run this command to disable it:    
 unset sbatch
