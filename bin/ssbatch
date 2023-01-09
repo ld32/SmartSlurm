@@ -131,7 +131,7 @@ done
 
 echoerr 
 echoerr Parsing result from sbatch commandline: 
-echoerr sbatch options: time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
+echoerr sbatch options: partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
 
 if [ -z "$slurmScript" ]; then
     echoerr wrapCMD: $wrapCMD 

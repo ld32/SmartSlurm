@@ -35,11 +35,12 @@ adjustPartition() {
     partitionO=$2
     for i in {6..10}; do 
         partition=partition${i}Name
-        [ -z ""${!partition}"" ] && continue
+        partition=${!partition}
+        [ -z "$partition" ] && continue
         #partitionTime=partition${i}TimeLimit  
-        if [ "$partition" ==  "$partitionO" ]; then 
+        if [[ "$partition" ==  "$partitionO" ]]; then 
             echo $partition
-            exit
+            return
         fi        
     done 
     
