@@ -77,7 +77,7 @@ createBigTextFiles.sh
 # Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit three jobs to short partition, each reserves 2G memory and 2 hour run-time 
-export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the script
+export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the slurm script
 for i in {1..3}; do
     sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
 done
@@ -89,7 +89,7 @@ sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 # Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
 # Notice 2: Slurm will submit five jobs to short partition, each reserves 2G memory and 2 hour run-time 
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the script
+export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
     sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
@@ -97,7 +97,7 @@ done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: Slurm will submit one job to short partition, and reserves 21M memory and 13 minute run-time 
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the script
+export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is to tell ssbatch the input file to calculate input file size 
 sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
@@ -113,7 +113,7 @@ cat job.sh
 #SBATCH --commen="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt"
 useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt
 
-# After you finish using ssbatch, run this command to disable it:    
+# After you finish using ssbatch, run these command to disable ssbatch:    
 unset sbatch
 unset SSBATCH_S
 unset SSBATCH_I
@@ -162,27 +162,45 @@ ________________________________________________________________________________
 \# Genernal partions, ordered by maximum allowed run-time in hours 
 
 partition1Name=short   
+
 partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
+
 partition2Name=medium  
+
 partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
+
 partition3Name=long        
+
 partition3TimeLimit=720 # run-time > 5 days and <= 30 days
+
 partition4Name=      
+
 partition4TimeLimit=  
+
 partition5Name=     
+
 partition5TimeLimit=    
 
 \# Special pertitions with special restrictions
 
 partition6Name=priority    # only allow two job running at the same time        
+
 partition6TimeLimit=720    # run-time <= 30 days
+
 partition7Name=highmem     # run-time <= 30 days, special partision     
+
 partition7TimeLimit=720    # run-time <= 30 days 
+
 partition8Name=interactive      
+
 partition8TimeLimit=12     # run-time <= 12 hours
+
 partition9Name=mpi      
+
 partition9TimeLimit=720    # run-time <= 30 days 
+
 partition10Name=        
+
 partition10TimeLimit=       
 
 \#function 
