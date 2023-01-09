@@ -287,12 +287,12 @@ cat ~/smartSlurm/bin/bashScriptV2.sh
 4 for i in {1..1}; do
 5    input=bigText$i.txt
 6    output=1234.$i.txt
-7    #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+7    #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 8    useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
 9    outputs=$outputs,$output
 10
 11    output=5678.$i.txt
-12    #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+12    #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 13    useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
 14    outputs=$outputs,$output
 15 done
@@ -304,9 +304,9 @@ cat ~/smartSlurm/bin/bashScriptV2.sh
 
 # Notice that there are a few things added to the script here:
 
-    Step 1 is denoted by #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0 (line 7 above), which means this is step 1 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+    Step 1 is denoted by #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
 
-    Step 2 is denoted by #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0 (line 12 above), which means this is step2 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
+    Step 2 is denoted by #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
 
     Step 3 is denoted by #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useSomeMemTimeAccordingInputSize.sh with on reference file, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
 
@@ -314,7 +314,7 @@ Notice the format of step annotation is #@stepID,dependIDs,sofwareName,referenc
 
 Here are two more examples:
 
-#@4,1.3,map,,in,sbatch -p short -c 1 -t 50:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 50:0
+#@4,1.3,map,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
 
 #@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
@@ -330,7 +330,7 @@ Ideally, with useTmp, the software should run faster using local /tmp disk spa
 With useTmp, the pipeline runner copy related data to /tmp and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
 Sample output from the test run
 
-Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
+Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 
@@ -348,15 +348,15 @@ converting /home/ld32/smartSlurm/bin/bashScriptV2.sh to log/slurmPipeLine.6f93dc
 find loop start: for i in {1..1}; do
 
 find job marker:
-#@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
+#@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
 useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
 
 find job marker:
-#@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
+#@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
 useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
@@ -378,10 +378,10 @@ Currently Loaded Modules:
 step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
 ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
-m 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
+m 2G -t 2:0:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
 
 Parsing result from sbatch commandline:
-sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
 additional sbatch parameter: -c 1
 test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
@@ -405,8 +405,8 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
-,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
+,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 New sbatch command to submit job:
 /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
@@ -416,10 +416,10 @@ This is a testing, not really running a job...
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
 ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
-m 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
+m 2G -t 2:0:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
 
 Parsing result from sbatch commandline:
-sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
 additional sbatch parameter: -c 1 -A 
 test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
@@ -442,9 +442,9 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "s
 hort"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I
-,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
+,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeM
 emTimeAccordingInputSize.sh.1.success"
 
@@ -525,9 +525,9 @@ Currently Loaded Modules:
 
 step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
 
-sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
 additional sbatch parameter: -c 1 -A 
 test or run: run
@@ -551,7 +551,7 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
@@ -560,10 +560,10 @@ Start submtting job...
 
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
 
 Parsing result from sbatch commandline:
-sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
+sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
 additional sbatch parameter: -c 1 -A 
 test or run: run
@@ -587,7 +587,7 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
@@ -653,7 +653,7 @@ Email content:
 
 Job script content:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 #Command used to submit the job:
@@ -666,7 +666,7 @@ Job output:
 Begin allocating memory...
 ...end allocating memory. Begin sleeping for 60 seconds...
 Done
-Running /home/ld32/smartSlurm/bin/cleanUp.sh /home/ld32/smartSlurm useSomeMemTimeAccordingInputSize.sh none 1.0.useSomeMemTimeAccordingInputSize.sh.1 1465 1 2G 50:0 9M 0-0:6:0 short /home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
+Running /home/ld32/smartSlurm/bin/cleanUp.sh /home/ld32/smartSlurm useSomeMemTimeAccordingInputSize.sh none 1.0.useSomeMemTimeAccordingInputSize.sh.1 1465 1 2G 2:0:0 9M 0-0:6:0 short /home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
 
 Job summary:
 JobID                     Submit               Start                 End     MaxRSS      State                       NodeList  Partition                        ReqTRES   TotalCPU        Elapsed      Timelimit
@@ -680,7 +680,7 @@ Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 20
 start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
 jobStatus: COMPLETED
 Added this line to ~/smartSlurm/myJobRecord.txt:
-46631,1465,2G,50:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
+46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
 Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
 Find current job id (flag: 1.0.useSomeMemTimeAccordingInputSize.sh.1):
 46631
@@ -778,7 +778,7 @@ nall:     To not re-run all successful jobs, type nallall, then press enter key.
 # type ‘y’ and enter here to re-run
 
 Will re-run the down stream steps even if they are done before.
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 # Submitted batch job 41209197
 
 step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
@@ -821,7 +821,7 @@ touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.start
 srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityB.txt; grep -H John /tmp/rcbio/universityB.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityB.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.failed"
 
 #sbatch command:
-#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+#sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 
 # Submitted batch job 41209197
 Job output:
@@ -832,7 +832,7 @@ grep: /tmp/rcbio/universityB.txt: No such file or directory
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-x
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:2:0:0   00:00:09                          compute-x
 41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
 41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
 41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-x
@@ -877,15 +877,15 @@ converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f7
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
@@ -964,12 +964,12 @@ job 2.0.find2.B is not submitted
 
 step: 1, depends on: 0, job name: find1, flag: find1.C reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
 # Submitted batch job 41211380
 
 step: 2, depends on: 0, job name: find2, flag: find2.C reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
 # Submitted batch job 41211381
 
 step: 3, depends on: 1.2, job name: merge , flag: merge reference:
@@ -1043,7 +1043,7 @@ Ideally, with useTmp, the software should run faster using local /tmp disk spa
 With useTmp, the pipeline runner copy related data to /tmp and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
 Sample output from the test run
 
-Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
+Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 Fri Sep 24 09:46:15 EDT 2021
@@ -1057,15 +1057,15 @@ converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d4176
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
@@ -1086,22 +1086,22 @@ Currently Loaded Modules:
 
 step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
 # This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1349
 
 step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
 # This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1560
 
 step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 # This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1766
 
 step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
 # This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job 1970
 
 step: 3, depends on: 1.2, job name: merge , flag: merge reference:
@@ -1135,15 +1135,15 @@ converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d4176
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
@@ -1165,22 +1165,22 @@ Could not find any jobs to cancel.
 
 step: 1, depends on: 0, job name: find1, flag: find1.A reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
 # Submitted batch job 41208893
 
 step: 2, depends on: 0, job name: find2, flag: find2.A reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.A.sh
 # Submitted batch job 41208894
 
 step: 1, depends on: 0, job name: find1, flag: find1.B reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 # Submitted batch job 41208895
 
 step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.B.sh
 # Submitted batch job 41208898
 
 step: 3, depends on: 1.2, job name: merge , flag: merge reference:
@@ -1215,7 +1215,7 @@ touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.start
 srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityA.txt; grep -H John /tmp/rcbio/universityA.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityA.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.failed"
 
 #sbatch command:
-#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
+#sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.A -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.A.sh
 
 # Submitted batch job 41208893
 Job output:
@@ -1225,7 +1225,7 @@ Copying is done for /tmp/rcbio/universityA.txt
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-x
+41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:2:0:0   00:00:10                          compute-x
 41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-x
 41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-x
 41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-x
@@ -1306,7 +1306,7 @@ nall:     To not re-run all successful jobs, type nallall, then press enter key.
 # type ‘y’ and enter here to re-run
 
 Will re-run the down stream steps even if they are done before.
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 # Submitted batch job 41209197
 
 step: 2, depends on: 0, job name: find2, flag: find2.B reference: .u
@@ -1349,7 +1349,7 @@ touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.start
 srun -n 1 bash -e -c "{ set -e; rsyncToTmp  /tmp/rcbio/universityB.txt; grep -H John /tmp/rcbio/universityB.txt >>  John.txt; grep -H Mike /tmp/rcbio/universityB.txt >>  Mike.txt        ; } && touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.success || touch /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.failed"
 
 #sbatch command:
-#sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
+#sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.B -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.B.sh
 
 # Submitted batch job 41209197
 Job output:
@@ -1360,7 +1360,7 @@ grep: /tmp/rcbio/universityB.txt: No such file or directory
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-x
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:2:0:0   00:00:09                          compute-x
 41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
 41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
 41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-x
@@ -1405,15 +1405,15 @@ converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f7
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 50:0
-sbatch options: sbatch -p short -c 1 -t 50:0
+#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H Nick $u >>  Nick.txt; grep -H Julia $u >>  Julia.txt
@@ -1492,12 +1492,12 @@ job 2.0.find2.B is not submitted
 
 step: 1, depends on: 0, job name: find1, flag: find1.C reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 1.0.find1.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/1.0.find1.C.sh
 # Submitted batch job 41211380
 
 step: 2, depends on: 0, job name: find2, flag: find2.C reference: .u
 depend on no job
-sbatch -p short -c 1 -t 50:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
+sbatch -p short -c 1 -t 2:0:0 --requeue --nodes=1  -J 2.0.find2.C -o /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out -e /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.out /home/ld32/testRunBashScriptAsSlurmPipeline/flag/2.0.find2.C.sh
 # Submitted batch job 41211381
 
 step: 3, depends on: 1.2, job name: merge , flag: merge reference:
