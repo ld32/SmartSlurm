@@ -333,12 +333,11 @@ Sample output from the test run
 Note that only step 2 used -t 50:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-### todo. modify this part
 
-# here i the outputs:
+# here is the outputs:
 
 Wed Dec 21 15:50:43 EST 2022
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -A rccg -p short -t 10:0 -c 1 noTmp
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -p short -t 10:0 -c 1 noTmp
 
 Currently Loaded Modules:
   1) gcc/6.2.0
@@ -378,13 +377,13 @@ Currently Loaded Modules:
 
 step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --me
-m 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
+m 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
-additional sbatch parameter: -c 1 -A rccg
+additional sbatch parameter: -c 1
 test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
 depend on no job
 
@@ -406,26 +405,23 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
-hort"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
-,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeM
-emTimeAccordingInputSize.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
+,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
- -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log
-/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 This is a testing, not really running a job...
 
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --me
-m 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
+m 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
-additional sbatch parameter: -c 1 -A rccg
+additional sbatch parameter: -c 1 -A 
 test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
 depend on no job
 
@@ -446,27 +442,26 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
-hort"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I
-,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeM
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "s
+hort"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I
+,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeM
 emTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out
- -e /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log
-/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 This is a testing, not really running a job...
 
 step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
 Running:
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -A rccg -A rccg -p s
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -p s
 hort -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt"
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
-additional sbatch parameter: -A rccg -c 1
+additional sbatch parameter: -c 1
 test or run: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
 depend on multiple jobs
 working on 123
@@ -490,18 +485,18 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:123:123 -A rccg -A rccg -c 1 /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:123:123 -c 1 /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
 This is a testing, not really running a job...
 
 All submitted jobs:
 job_id       depend_on              job_flag
 123         null                  1.0.useSomeMemTimeAccordingInputSize.sh.1
-123         null                  2.0.useSomeMemTimeAccordingInputSize.sh.1
-123         ..123..123            3.1.2.useSomeMemTimeAccordingInputSize.sh
+124         null                  2.0.useSomeMemTimeAccordingInputSize.sh.1
+125         ..123..124            3.1.2.useSomeMemTimeAccordingInputSize.sh
 ---------------------------------------------------------
 Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above.
 
@@ -514,11 +509,10 @@ runAsPipeline ~/smartSbatch/bin/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" u
 # Below is the output
 
 Wed Dec 21 16:02:47 EST 2022
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -A rccg -p short -t 10:0 -c 1 noTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/bin/bashScriptV2.sh sbatch -p short -t 10:0 -c 1 noTmp run
 
 Currently Loaded Modules:
   1) gcc/6.2.0
-
 
 
 This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh
@@ -531,11 +525,11 @@ Currently Loaded Modules:
 
 step: 1, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
 
 sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
-additional sbatch parameter: -c 1 -A rccg
+additional sbatch parameter: -c 1 -A 
 test or run: run
 depend on no job
 
@@ -557,21 +551,21 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 Start submtting job...
 
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
 Running:
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 50:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt
-additional sbatch parameter: -c 1 -A rccg
+additional sbatch parameter: -c 1 -A 
 test or run: run
 depend on no job
 
@@ -593,22 +587,22 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -A rccg -c 1 -A rccg /n/groups/rccg/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 Start submtting job...
 
 step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
 Running:
 
-ssbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap "set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt
-additional sbatch parameter: -A rccg -c 1
+additional sbatch parameter: -c 1
 test or run: run
 depend on multiple jobs
 working on 46631
@@ -633,11 +627,11 @@ Building new sbatch command ...
 
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -A rccg -A rccg -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:46631:46632 -A rccg -A rccg -c 1 /n/groups/rccg/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:46631:46632 -c 1 /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
 Start submtting job...
 
 All submitted jobs:
@@ -659,11 +653,11 @@ Email content:
 
 Job script content:
 #!/bin/bash
-trap "{ cleanUp.sh \"/n/groups/rccg/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"rccg\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 -A rccg bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "50:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 #Command used to submit the job:
-#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1  -A rccg    -c 1   -A rccg  /n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1     -c 1    /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 
 #Sbatch command output:
 #Submitted batch job 46631
@@ -672,22 +666,22 @@ Job output:
 Begin allocating memory...
 ...end allocating memory. Begin sleeping for 60 seconds...
 Done
-Running /home/ld32/smartSlurm/bin/cleanUp.sh /n/groups/rccg/ld32/smartSlurm useSomeMemTimeAccordingInputSize.sh none 1.0.useSomeMemTimeAccordingInputSize.sh.1 1465 1 2G 50:0 9M 0-0:6:0 short rccg /home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
+Running /home/ld32/smartSlurm/bin/cleanUp.sh /home/ld32/smartSlurm useSomeMemTimeAccordingInputSize.sh none 1.0.useSomeMemTimeAccordingInputSize.sh.1 1465 1 2G 50:0 9M 0-0:6:0 short /home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
 
 Job summary:
 JobID                     Submit               Start                 End     MaxRSS      State                       NodeList  Partition                        ReqTRES   TotalCPU        Elapsed      Timelimit
 ------------ ------------------- ------------------- ------------------- ---------- ---------- ------------------------------ ---------- ------------------------------ ---------- -------------- --------------
-46631        2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05      short  billing=1,cpu=1,mem=9M,node=1  00:00.076       00:01:06       00:06:00
-46631.batch  2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05                                             00:00:00       00:01:06               
-46631.extern 2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-dev05                                             00:00:00       00:01:06               
-46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-dev05                                            00:00.076       00:01:00               
+46631        2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-x      short  billing=1,cpu=1,mem=9M,node=1  00:00.076       00:01:06       00:06:00
+46631.batch  2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-x                                             00:00:00       00:01:06               
+46631.extern 2022-12-21T16:03:24 2022-12-21T16:03:24             Unknown               RUNNING                  compute-x                                             00:00:00       00:01:06               
+46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-x                                            00:00.076       00:01:00               
 *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
-Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-dev05                                            00:00.076       00:01:00               
+Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 2022-12-21T16:04:25      3.49M  COMPLETED                  compute-x                                            00:00.076       00:01:00               
 start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
 jobStatus: COMPLETED
 Added this line to ~/smartSlurm/myJobRecord.txt:
-46631,1465,2G,50:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/n/groups/rccg/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-dev05,/n/groups/rccg/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /n/groups/rccg/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -A rccg -p short -c 1 --mem 2G -t 50:0 -A rccg --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
-Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /n/groups/rccg/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
+46631,1465,2G,50:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 50:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
+Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
 Find current job id (flag: 1.0.useSomeMemTimeAccordingInputSize.sh.1):
 46631
 
@@ -709,7 +703,8 @@ Try to build fomular, but it was not successful
 
 Error output:
 The key elements are time and memory used.
-Check job logs
+
+# Check job logs
 
 You can use the command:
 ls -l log
@@ -837,10 +832,10 @@ grep: /tmp/rcbio/universityB.txt: No such file or directory
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-e-16-180
-41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
-41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
-41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-e-16-180
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-x
+41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
+41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
+41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-x
 *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
 
     The key element here is the error message.
@@ -1230,10 +1225,10 @@ Copying is done for /tmp/rcbio/universityA.txt
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-e-16-180
-41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
-41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-e-16-180
-41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-e-16-180
+41208893     2021-09-24T09:48:13 2021-09-24T09:48:24             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:10                          compute-x
+41208893.ba+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-x
+41208893.ex+ 2021-09-24T09:48:24 2021-09-24T09:48:24             Unknown    RUNNING                                              00:00:10                          compute-x
+41208893.0   2021-09-24T09:48:29 2021-09-24T09:48:29 2021-09-24T09:48:29  COMPLETED                                              00:00:00          0               compute-x
 *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
 
 The key elements are time and memory used.
@@ -1365,10 +1360,10 @@ grep: /tmp/rcbio/universityB.txt: No such file or directory
 Job done. Summary:
        JobID              Submit               Start                 End      State  Partition              ReqTRES  Timelimit    CPUTime     MaxRSS                       NodeList
 ------------ ------------------- ------------------- ------------------- ---------- ---------- -------------------- ---------- ---------- ---------- ------------------------------
-41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-e-16-180
-41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
-41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-e-16-180
-41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-e-16-180
+41209197     2021-09-24T10:02:43 2021-09-24T10:03:09             Unknown    RUNNING      short billing=1,cpu=1,mem+   00:50:00   00:00:09                          compute-x
+41209197.ba+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
+41209197.ex+ 2021-09-24T10:03:09 2021-09-24T10:03:09             Unknown    RUNNING                                              00:00:09                          compute-x
+41209197.0   2021-09-24T10:03:13 2021-09-24T10:03:13 2021-09-24T10:03:13  COMPLETED                                              00:00:00          0               compute-x
 *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
 
     The key element here is the error message.
@@ -1581,11 +1576,11 @@ We have additional example ready-to-run workflows available, which may be of int
 The data from the three columns are plotted and statistics  
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-a-16-21,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
+46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-x,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
 
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-a-16-21,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
+46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-x,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
 
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
+46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-x,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
 
 \#Here is the input size vs memory plot for useSomeMemTimeAccordingInputSize.sh: 
 
@@ -1753,11 +1748,11 @@ unset SSBATCH_I
 The data from the three columns are plotted and statistics  
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-a-16-21,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
+46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-x,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText1.txt run"
 
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-a-16-21,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
+46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-x,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText2.txt run"
 
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-a-16-21,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
+46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-x,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useSomeMemTimeAccordingInputSize.sh bigText3.txt run"
 
 \#Here is the input size vs memory plot for useSomeMemTimeAccordingInputSize.sh: 
 
