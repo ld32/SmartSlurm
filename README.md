@@ -21,7 +21,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useSomeMemTimeAccordingInputSize.sh.none.time.png)
 
-## ssbatch features:
+## smart sbatch features:
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
