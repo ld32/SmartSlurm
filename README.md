@@ -222,7 +222,7 @@ Smart pipeline was originally designed to run bash script as pipelie on Slurm cl
 8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
 
-## Smart Pipeline Quick Start
+## Smart pipeline quick Start
 ``` bash
 # Download
 cd $HOME 
