@@ -1,8 +1,6 @@
 =============================
 # SmartSlurm
-- [Smart sbatch](#smart-sbatch)
-    - [Smart sbatch features](#smart-sbatch-features)
-    - [Quick start](#quick-start)
+
 - [Smart sbatch](#smart-sbatch)
     - [Smart sbatch features](#smart-sbatch-features)
     - [Quick start](#ssbatch-quick-start)
