@@ -7,19 +7,11 @@
     - [Smart sbatch features](#smart-sbatch-features)
     - [Quick start](#ssbatch-quick-start)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does it Work]($how-does-it-work)
+    - [How does smart sbatch Work]($how-does-smart-sbatch-work)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
     - [Quick start](#quick-start)
-    - [How to use smart pipeline](#how-to-use-smart-pipeline)
-    - [How does it Work]($how-does-it-work)
-
-    - [How does smart sbatch work]($how-does-smart-sbatch-work)
-
-- [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
-    - [Smart pipeline features](#smart-pipeline-features)
-    - [smart pipline Quick start](#smart-pineline-quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work]($how-does-smart-pipeline-work)
 
