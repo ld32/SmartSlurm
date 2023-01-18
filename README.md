@@ -2,14 +2,14 @@
 # SmartSlurm
 
 - [Smart sbatch](#smart-sbatch)
-    - [Smart sbatch features](#smart-sbatch-features)
+    - [ssbatch features](#ssbatch-features)
     - [Quick start](#ssbatch-quick-start)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does smart sbatch Work]($how-does-smart-sbatch-work)
+    - [How does ssbatch work]($how-does-ssbatch-work)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
-    - [Quick start](#quick-start)
+    - [Quick start](#smart-pipeline-quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work]($how-does-smart-pipeline-work)
 
@@ -21,7 +21,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useSomeMemTimeAccordingInputSize.sh.none.time.png)
 
-## smart sbatch features:
+## ssbatch features:
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
@@ -109,7 +109,7 @@ unset SSBATCH_S
 unset SSBATCH_I
 ```
 
-## How does smart sbatch work
+## How does ssbatch work
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
