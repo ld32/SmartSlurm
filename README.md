@@ -5,13 +5,13 @@
     - [ssbatch features](#ssbatch-features)
     - [Quick start](#ssbatch-quick-start)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does ssbatch work]($how-does-ssbatch-work)
+    - [How does ssbatch work](#how-does-ssbatch-work)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
     - [Quick start](#smart-pipeline-quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
-    - [How does smart pipeline work]($how-does-smart-pipeline-work)
+    - [How does smart pipeline work](#how-does-smart-pipeline-work)
 
 - [sbatchAndTop](#sbatchAndTop)
 
