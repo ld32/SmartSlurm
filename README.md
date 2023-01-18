@@ -1530,7 +1530,7 @@ How does the runAsPipeline RCBio pipeline runner work?
 
 In case you wonder how it works, here is a simple example to explain.
 
-
+```
 
 ## How does smart pipeline work
 
