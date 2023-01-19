@@ -143,7 +143,7 @@ ________________________________________________________________________________
 
 \#Here is the run-time vs memory plot for useSomeMemTimeNoInput.sh: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeNoInput.sh.none.stat.noInput.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useSomeMemTimeNoInput.sh.none.stat.noInput.png)
 
 2) Auto choose partition according to run-time request
 
