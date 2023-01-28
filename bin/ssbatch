@@ -262,6 +262,9 @@ else
     deps=${deps#.}        
 fi    
 
+# load partition config file
+x=`realpath $0` 
+. ${x%\/bin\/ssbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
 
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
@@ -270,7 +273,7 @@ fi
 
 if [ -z "$mem" ]; then
     if [ -z "$mem1" ]; then
-        mem=2G
+        mem=$defaultMem
     else
         [[ "$mem1" == *G ]] && mem=$(( ${mem1%G} * $core ))G || mem=$(( ${mem1%M} * $core ))M
     fi
@@ -331,7 +334,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     rm $flagDir/$flag.*  2>/dev/null 
 fi
 
-[ -z "$time" ] && time=2:0:0
+[ -z "$time" ] && time=$defaultTime
 
 # original mem and time 
 memO=$mem; timeO=$time
@@ -470,8 +473,6 @@ echoerr $day $day,  $hour hour,  $min min,  $sec sec
 hours=$(($day * 24 + $hour + ($min + 59 + ($sec + 59) / 60 ) / 60))
 
 #echoerr looking partition for hour: $hours 
-x=`realpath $0` 
-. ${x%\/bin\/ssbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
 
 partition=`adjustPartition $hours $partition`
 
