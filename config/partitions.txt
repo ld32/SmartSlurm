@@ -57,3 +57,5 @@ adjustPartition() {
 } 
 export -f adjustPartition
 
+defaultMem=2G
+defaultTime=2:0:0
