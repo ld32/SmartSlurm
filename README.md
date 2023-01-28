@@ -30,7 +30,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 ``` bash
 # Download
 cd $HOME 
-git clone git://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
@@ -53,7 +53,7 @@ unset sbatch
 ``` bash
 # Download
 cd $HOME 
-git clone git://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
@@ -226,7 +226,7 @@ Smart pipeline was originally designed to run bash script as pipelie on Slurm cl
 ``` bash
 # Download
 cd $HOME 
-git clone git://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
@@ -240,7 +240,7 @@ runAsPipeline ~/smartSlurm/bin/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" no
 ``` bash
 # Download
 cd $HOME 
-git clone git://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
