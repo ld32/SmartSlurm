@@ -43,6 +43,8 @@ usage() { echoerr -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-
 
 [[ "-h" == "$1" ]] && usage
 
+[[ "--help" == "$1" ]] && usage
+
 echoerr -e "Running:"
 
 cmd="ssbatch"
@@ -264,7 +266,7 @@ fi
 
 # load partition config file
 x=`realpath $0` 
-. ${x%\/bin\/ssbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
+source ${x%\/bin\/ssbatch}/config/partitions.txt || { echoerr Partition list file not found: partition.txt; exit 1; }
 
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
