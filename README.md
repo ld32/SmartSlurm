@@ -3,13 +3,11 @@
 
 - [Smart sbatch](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
-    - [Quick start](#ssbatch-quick-start)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
-    - [Quick start](#smart-pipeline-quick-start)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work](#how-does-smart-pipeline-work)
 
@@ -26,28 +24,6 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
 4) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
-## ssbatch Quick Start
-``` bash
-# Download
-cd $HOME 
-git clone https://github.com/ld32/smartSlurm.git  
-
-# Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
-
-# Set up a function so that ssbatch is called when running sbatch
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
-
-# Create some text files for testing
-createBigTextFiles.sh
-
-# run sbatch as usual 
-# Notice: Slurm will submit a jobs to short partition, and reserved 21M memory and 7 minute run-time  
-sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh 1"
-
-# After you finish using ssbatch, run this command to disable it:    
-unset sbatch
-```
 
 ## How to use ssbatch
 ``` bash
@@ -58,9 +34,6 @@ git clone https://github.com/ld32/smartSlurm.git
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
 
-# Set up a function so that ssbatch is called when running sbatch
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
-
 # Create some text files for testing
 createBigTextFiles.sh
 
@@ -69,12 +42,12 @@ createBigTextFiles.sh
 # Notice 2: This submits three jobs to short partition, each reserves 2G memory and 2 hour run-time 
 export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the slurm script
 for i in {1..3}; do
-    sbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
+    ssbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
 done
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
+ssbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 
 # Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 # Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
@@ -82,26 +55,29 @@ sbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
+    ssbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
 export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
 export SSBATCH_I=bigText1.txt,bigText2.txt # This is required to tell ssbatch the input file name to calculate input file size 
-sbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+ssbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
 # The second way to tell the input file name and software name: 
-sbatch --comment="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt" \
+ssbatch --comment="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt" \
     -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
 # The third way to tell the input file name and software name: 
-sbatch -t 2:0:0 --mem 2G job.sh
+ssbatch -t 2:0:0 --mem 2G job.sh
 
 cat job.sh
 #!/bin/bash
 #SBATCH --commen="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt"
 useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt
+
+# If you would like to use ssbatch to replace regular sbatch, set up a fuction. This way, whenever you run sbatch, ssbatch is called. 
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
 # After you finish using ssbatch, run these command to disable ssbatch:    
 unset sbatch
@@ -221,20 +197,6 @@ Smart pipeline was originally designed to run bash script as pipelie on Slurm cl
 7) For re-run, if the script is not changed, runAsPipeline does not re-process the bash script and directly use old one
 8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
-
-## Smart pipeline quick Start
-``` bash
-# Download
-cd $HOME 
-git clone https://github.com/ld32/smartSlurm.git  
-
-# Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
-
-# run bash script as Slurm pipeline 
-runAsPipeline ~/smartSlurm/bin/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" noTmp run
-
-```
 
 ## How to use smart pipeline
 ``` bash
