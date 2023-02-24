@@ -6,3 +6,5 @@
 46571,0,2G,2:0:0,2G,0-2:0:0,10.93,1,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none
 46572,0,2G,2:0:0,2G,0-2:0:0,13.23,1,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none
 46573,0,2G,2:0:0,2G,0-2:0:0,16.66,2,COMPLETED,ld32,,useSomeMemTimeNoInput.sh,none
+46881,4395,2G,2:0:0,15M,0-0:9:0,0,0,COMPLETED,ld32,,useSomeMemTimeAccordingInputSize.sh,none,slurm-%j.out slurm-Qzipzr0t.sh slurm-%j.err,1,compute-dev04,slurm-46881.err,Sat Jan 28 12:54:10 EST 2023,"/home/ld32/smartSlurm/bin/ssbatch --comment=SSBATCH_I=bigText3.txt SSBATCH_S=useSomeMemTimeAccordingInputSize.sh -A rccg -p priority job1.sh run"
+46882,1465,2G,2:0:0,2G,0-2:0:0,0,0,COMPLETED,ld32,,job1.sh,none,slurm-%j.out slurm-sBMOMIpY.sh slurm-%j.err,1,compute-dev04,slurm-46882.err,Sat Jan 28 12:54:41 EST 2023,"/home/ld32/smartSlurm/bin/ssbatch -A rccg -p priority job1.sh run"
