@@ -206,9 +206,9 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 # Take a look at a regular exmaple bash script
 cat ~/smartSlurm/bin/bashScriptV1.sh
 
-# Below is the content of bashScriptV1.sh
+# Below is the content of a regular bashScriptV1.sh
 1 #!/bin/sh
-2 
+2
 3 for i in {1..1}; do
 4    input=bigText$i.txt
 5    output=1234.$i.txt
@@ -222,10 +222,10 @@ cat ~/smartSlurm/bin/bashScriptV1.sh
 13 output=all.txt
 14 useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output
 
-#Notes about bashScriptV1.sh: 
+# Notes about bashScriptV1.sh: 
 The script first finds 1234 in file bigText1.txt in row 6, then finds 5678 in bigText1.txt in row 9, then merges the results into all.txt in orow 14 
 
-#In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
+# In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
 cat ~/smartSlurm/bin/bashScriptV2.sh
 
 # below is the content of bashScriptV2.sh
