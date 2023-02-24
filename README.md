@@ -38,8 +38,6 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 createBigTextFiles.sh
 
 # Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
-# Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Notice 2: This submits three jobs to short partition, each reserves 2G memory and 2 hour run-time 
 export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the slurm script
 for i in {1..3}; do
     ssbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
@@ -50,8 +48,6 @@ done
 ssbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 
 # Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
-# Notice 1: you don't have to run this section, because I have run it and save the statistics in $HOME/smartSlurm
-# Notice 2: This submits five jobs to short partition, each reserves 2G memory and 2 hour run-time 
 export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
 for i in {1..5}; do
     export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
