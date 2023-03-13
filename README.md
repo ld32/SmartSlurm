@@ -235,36 +235,36 @@ cat ~/smartSlurm/bin/bashScriptV2.sh
 4 for i in {1..1}; do
 5    input=bigText$i.txt
 6    output=1234.$i.txt
-7    #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+7    #@1,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 8    useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
 9    outputs=$outputs,$output
 10
 11    output=5678.$i.txt
-12    #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+12    #@2,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 13    useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
 14    outputs=$outputs,$output
 15 done
 16 
 17 input=bigText1.txt
 18 output=all.txt
-19 #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input
+19 #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,,input
 20 useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output    
 
 # Notice that there are a few things added to the script here:
 
-    Step 1 is denoted by #@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+    Step 1 is denoted by #@1,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
 
-    Step 2 is denoted by #@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
+    Step 2 is denoted by #@2,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useSomeMemTimeAccordingInputSize.sh, use the value of $i as unique job identifier for this step, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
 
-    Step 3 is denoted by #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useSomeMemTimeAccordingInputSize.sh with no reference file, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
+    Step 3 is denoted by #@3,1.2,useSomeMemTimeAccordingInputSize.sh,,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useSomeMemTimeAccordingInputSize.sh with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
 
-Notice the format of step annotation is #@stepID,dependIDs,sofwareName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
+Notice the format of step annotation is #@stepID,dependIDs,sofwareName,uniqueID,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
 
 Here are two more examples:
 
-#@4,1.3,map,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
+#@4,1.3,map,,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
 
-#@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
+#@3,1.2,align,,,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
 # Test run the modified bash script as a pipeline
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
@@ -291,19 +291,19 @@ Currently Loaded Modules:
   1) gcc/6.2.0
 
 
-converting /home/ld32/smartSlurm/bin/bashScriptV2.sh to log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh
+converting /home/ld32/smartSlurm/bin/bashScriptV2.sh to logs/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh
 
 find loop start: for i in {1..1}; do
 
 find job marker:
-#@1,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+#@1,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
 useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
 
 find job marker:
-#@2,0,useSomeMemTimeAccordingInputSize.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+#@2,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
@@ -311,12 +311,12 @@ useSomeMemTimeAccordingInputSize.sh $input; grep 5678 $input > $output
 find loop end: done
 
 find job marker:
-#@3,1.2,useSomeMemTimeAccordingInputSize.sh,,input
+#@3,1.2,useSomeMemTimeAccordingInputSize.sh,,,input
 
 find job:
 useSomeMemTimeAccordingInputSize.sh $input; cat 1234.*.txt 5678.*.txt > $output
-log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh is ready to run. Starting to run ...
-Running log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
+logs/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh is ready to run. Starting to run ...
+Running logs/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
 
 Currently Loaded Modules:
   1) gcc/6.2.0
@@ -355,10 +355,10 @@ New slurmScirpt is ready. The content is:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I
 ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
- -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 This is a testing, not really running a job...
 
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
@@ -393,12 +393,12 @@ New slurmScirpt is ready. The content is:
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "s
 hort"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I
 ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeM
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/logs/2.0.useSomeM
 emTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out
- -e /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.out
+ -e /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 This is a testing, not really running a job...
 
 step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
@@ -434,10 +434,10 @@ Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..123..123 -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:123:123 -c 1 /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:123:123 -c 1 /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
 This is a testing, not really running a job...
 
 All submitted jobs:
@@ -463,8 +463,8 @@ Currently Loaded Modules:
   1) gcc/6.2.0
 
 
-This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh
-Running log/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
+This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: logs/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh
+Running logs/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.run.sh /home/ld32/smartSlurm/bin/bashScriptV2.sh
 
 Currently Loaded Modules:
   1) gcc/6.2.0
@@ -500,10 +500,10 @@ Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 Start submtting job...
 
 step: 2, depends on: 0, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh.1
@@ -536,10 +536,10 @@ Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"2.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 2.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 2.0.useSomeMemTimeAccordingInputSize.sh.1 -c 1 /home/ld32/smartSlurm/logs/2.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 Start submtting job...
 
 step: 3, depends on: 1.2, job name: useSomeMemTimeAccordingInputSize.sh, flag: useSomeMemTimeAccordingInputSize.sh
@@ -576,10 +576,10 @@ Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"3.1.2.useSomeMemTimeAccordingInputSize.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 3.1.2.useSomeMemTimeAccordingInputSize.sh -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:46631:46632 -c 1 /home/ld32/smartSlurm/log/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.out -e /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.err -J 3.1.2.useSomeMemTimeAccordingInputSize.sh --dependency=afterok:46631:46632 -c 1 /home/ld32/smartSlurm/logs/3.1.2.useSomeMemTimeAccordingInputSize.sh.sh
 Start submtting job...
 
 All submitted jobs:
@@ -602,10 +602,10 @@ Email content:
 Job script content:
 #!/bin/bash
 trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useSomeMemTimeAccordingInputSize.sh" "none" \"1.0.useSomeMemTimeAccordingInputSize.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
+srun -n 1 bash -e -c "{ set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.success"
 
 #Command used to submit the job:
-#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1     -c 1    /home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
+#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.out -e /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.err -J 1.0.useSomeMemTimeAccordingInputSize.sh.1     -c 1    /home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.sh
 
 #Sbatch command output:
 #Submitted batch job 46631
@@ -628,7 +628,7 @@ Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 20
 start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
 jobStatus: COMPLETED
 Added this line to ~/smartSlurm/myJobRecord.txt:
-46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
+46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/logs/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
 Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
 Find current job id (flag: 1.0.useSomeMemTimeAccordingInputSize.sh.1):
 46631
@@ -663,7 +663,7 @@ You also get two emails for each step, one at the start of the step, one at the 
 Cancel all jobs
 
 You can use the command to cancel running and pending jobs:
-cancelAllJobs log/alljobs.jid
+cancelAllJobs logs/alljobs.jid
 What happens if there is some error? 
 
 You can re-run this command in the same folder. We will delete an input file to see what happens.
@@ -673,16 +673,16 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Here is the output
 Fri Sep 24 10:00:36 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+ 
 
 This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
 Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+
 
 Could not find any jobs to cancel.
 ---------------------------------------------------------
@@ -815,24 +815,24 @@ runAsPipeline bashScriptV3.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Here are the output: 
 Fri Sep 24 10:56:16 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh
 
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -848,7 +848,7 @@ flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh is re
 Running flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 
 Could not find any jobs to cancel.
@@ -970,7 +970,7 @@ sacct --format=JobID,Submit,Start,End,State,Partition,ReqTRES%30,CPUTime,MaxRSS,
 sendJobFinishEmail.sh flag 
 [ -f flag.success ] && exit 0 || exit 1 
 
-Your analysis commands will be wrapped in an srun so we can monitor if it completed successfully. If your commands worked (meaning exited in 0 status), then we will create the success file. Next, we will run sacct to get stats for the job step, and will send a job completion email with sendJobFinishEmail.sh. The sendJobFinishEmail.sh script is available in /n/app/rcbio/1.3.3/bin/, if you are interested in the contents of that script.
+Your analysis commands will be wrapped in an srun so we can monitor if it completed successfully. If your commands worked (meaning exited in 0 status), then we will create the success file. Next, we will run sacct to get stats for the job step, and will send a job completion email with sendJobFinishEmail.sh. The sendJobFinishEmail.sh script is available in /home/ld32/smartSlurm/bin/, if you are interested in the contents of that script.
 
 Then the job script will be submitted with: 
 sbatch -p short -t 10:0 -o flag.out -e flag.out flag.sh
@@ -995,24 +995,24 @@ Note that only step 2 used -t 2:0:0, and all other steps used the default -t 1
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 Fri Sep 24 09:46:15 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh
 
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1028,7 +1028,7 @@ flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh is ready 
 Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.sh bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 ---------------------------------------------------------
 
@@ -1073,24 +1073,24 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Below is the output
 Fri Sep 24 09:48:12 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 converting bashScriptV2.sh to flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
 
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1106,7 +1106,7 @@ flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh is re
 Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 Could not find any jobs to cancel.
 ---------------------------------------------------------
@@ -1201,16 +1201,16 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Here is the output
 Fri Sep 24 10:00:36 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV2.sh sbatch -p short -t 10:0 -c 1 useTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh
 Running flag/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762.run.sh bashScriptV2.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 Could not find any jobs to cancel.
 ---------------------------------------------------------
@@ -1343,24 +1343,24 @@ runAsPipeline bashScriptV3.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Here are the output: 
 Fri Sep 24 10:56:16 EDT 2021
-Running: /n/app/rcbio/1.3.3/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline bashScriptV3.sh sbatch -p short -t 10:0 -c 1 useTmp run
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 converting bashScriptV3.sh to flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh
 
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,u,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,u,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1376,7 +1376,7 @@ flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh is re
 Running flag/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79.run.sh bashScriptV3.sh
 
 Currently Loaded Modules:
-  1) rcbio/1.3.3
+  
 
 
 Could not find any jobs to cancel.

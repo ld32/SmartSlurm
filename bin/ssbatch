@@ -32,7 +32,7 @@
 
 # todo:
 
-
+#set -e
 #set -x 
 
 echoerr() { echo "$@" 1>&2; }
@@ -250,7 +250,7 @@ else
     [ -z "$software" ] && { echoerr software is emtpty; usage; }
     flag=${flag//\//-}
 
-    flagDir=$logDir/log
+    flagDir=$logDir/logs
     [ ! -d $flagDir ] && mkdir $flagDir 
     job=$flagDir/$flag.sh
     #echo -e "#!/bin/bash\n\n" > $job
@@ -331,9 +331,12 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
                 exit
             fi  
         fi
-        echoerr
+        #echoerr
+        #rm $succFlag
+        #ls -l $flagDir/ 1>&2 
     fi    
-    rm $flagDir/$flag.*  2>/dev/null 
+    #ls $flagDir/$flag.* 1>&2
+    rm $flagDir/$flag.* 2>/dev/null || echoerr # in case user has set -e and file not exist,  we will not exit
 fi
 
 [ -z "$time" ] && time=$defaultTime
@@ -369,7 +372,7 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
                 echoerr Input size is too big for the curve to estimate!
                 if [ -z "$justRunStats" ]; then 
                     echoerr Delete the curve and try to re-run the statistics.
-                    rm ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ~/smartSlurm/stats/$software.${ref//\//-}.time.stat.final
+                    rm ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ~/smartSlurm/stats/$software.${ref//\//-}.time.stat.final || echoerr # in case user has set -e and file not exist,  we will not exit
                     jobStatistics.sh $software ${ref//\//-} 4 1>&2 
                     if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat.final ]; then    
                         output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
@@ -548,7 +551,7 @@ if [ -z "$logDir" ]; then
     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 else
     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
-    rm $startFile $failFile $flag.failed $flag.killed  2>/dev/null  || echoerr 
+    #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || echoerr 
 fi
 if [ -z "$slurmScript" ]; then 
     cmd="$cmd $CMDWithoutWrap $job" 
@@ -562,11 +565,17 @@ echoerr New sbatch command to submit job:
 echoerr $cmd 
 if [[ "$testRun" == "run" ]]; then
     echoerr Start submtting job...
-    jobID=`$cmd 2>&1`
+    #output=`$cmd`
+    #echoerr $output
+    jobID=`$cmd`
+    
+    echoerr Output is: $jobID
     #touch $submitFlag  
 else 
-    echoerr This is a testing, not really running a job...
-    jobID="123"
+    jobID=$(date +"%4N")
+    #echoerr This is a testing, not really running a job...
+    echoerr "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
+    #jobID=
 fi    
 
 # add this to the job script
@@ -586,5 +595,5 @@ if [ -z "$logDir" ]; then
     echo Submitted batch job $jobID
 else
     echo $jobID; 
-    printf "%-10s  %-20s  %-10s\n" $jobID $depsO $flag >> $flagDir/allJobs.txt;
+    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs>> $flagDir/allJobs.txt;
 fi

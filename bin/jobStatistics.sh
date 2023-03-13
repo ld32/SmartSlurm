@@ -5,7 +5,7 @@ echo $0 $@
 
 # usage: command <software> <ref> <numberOfJobRecordsToUse>
 
-[[ -z "$1" || -z "$2" ]] && echo Usage: checkJobRecord.sh software reference && exit 1   
+[[ -z "$1" || -z "$2" ]] && echo Usage: $0 software reference && exit 1   
 
 # if not rsynced today, sync some jobRecords from other users 
 #if [ ! -f ~/smartSlurm/stats/jobRecord.txt ]; then

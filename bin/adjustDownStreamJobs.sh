@@ -3,6 +3,9 @@
 #set -x 
 
 Usage="Usage: $0 full_path_to_flag_folder  flag(job name) \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
+
+echo 
+
 echo Running: $0  $@
 
 path=$1
@@ -53,8 +56,8 @@ for i in $idNames; do
     if [ -z "$allDone" ]; then
         echo Dependants for $name are all done except for the current job. Ready to adjust mem/runtime
         
-        # look for the downstream job info:                                     jobID,software, ref, inputs
-        output=`cat $path/allJobs.txt| awk '{if ($3 ~ /'"$name/"') print $1, $4, $5, $6;}'`
+        # look for the downstream job info:                            jobID,software, ref, inputs
+        output=`cat $path/allJobs.txt | awk '{if ($3 ~ /'"$name/"') print $1, $4, $5, $6;}'`
     
         id2=${output%% *}; inputs=${output##* }; 
         softwareRef=${output#* };  softwareRef=${softwareRef% *}
@@ -137,10 +140,10 @@ for i in $idNames; do
                                
             fi
         else 
-            echo Try to build fomular, but it was not successful
+            echo Try to build fomular, but it was not successful.
         fi
     else 
-        echo Need wait for other jobs to finish before we can ajust
+        echo Need wait for other jobs to finish before we can ajust mem and runtime...
     fi   
         
 done

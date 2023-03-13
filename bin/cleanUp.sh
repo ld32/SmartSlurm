@@ -12,7 +12,7 @@ if [ -z "$1" ]; then
     out=${4%% *}; out=${out/\%j/$SLURM_JOB_ID}; err=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success; failFile=${script/\.sh/}.failed; 
     
 else 
-    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
+    out=$1/logs/"${4}.out"; err=$1/logs/${4}.err; script=$1/logs/${4}.sh; succFile=$1/logs/${4}.success; failFile=$1/logs/${4}.failed;   
 fi 
 
 sleep 5
@@ -173,7 +173,7 @@ if [ ! -f $succFile ]; then
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/log $4     
+    adjustDownStreamJobs.sh $1/logs $4     
 fi
 
 minimumsize=9000

@@ -18,15 +18,15 @@ echo Running: $0 $@
 
 module list 
 
-[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c %y log | tr " " ".") 
+[ -d logs ] && [[ "$4" == run ]] && cp -rp logs logs.$(stat -c %y logs | tr " " ".") 
 
-mkdir -p log
+mkdir -p logs
 
 checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
 
-run=log/slurmPipeLine.$checkSum.sh
+run=logs/slurmPipeLine.$checkSum.sh
 
-[[ "$4" == run ]] && run=log/slurmPipeLine.$checkSum.run.sh
+[[ "$4" == run ]] && run=logs/slurmPipeLine.$checkSum.run.sh
 
 if [ -f "$run" ]; then  
     thisCmd="#cmd: $0 $@"
@@ -50,11 +50,11 @@ echo module list >> $run
      
 echo "xsubd=\"$2\"" >> $run
     
-echo mkdir -p log >> $run
+echo mkdir -p logs >> $run
 
-echo "if [ -f log/allJobs.txt ]; then" >> $run
+echo "if [ -f logs/allJobs.txt ]; then" >> $run
 
-echo "    cancelAllJobs log/allJobs.txt " >> $run
+echo "    cancelAllJobs logs/allJobs.txt " >> $run
 
 echo "    [ \$? == 1 ] && exit 0;" >> $run
 
@@ -62,13 +62,13 @@ echo "fi" >> $run
 
 echo "cwd=\`realpath ./\`" >> $run
 
-#echo "rm log/*.failed log/*.killed 2>/dev/null" >> $run
+#echo "rm logs/*.failed logs/*.killed 2>/dev/null" >> $run
 
-echo "[ -f log/allJobs.txt ] && mv log/allJobs.txt log/allJobs.txt.old"  >> $run 
+echo "[ -f logs/allJobs.txt ] && mv logs/allJobs.txt logs/allJobs.txt.old"  >> $run 
 
-echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
+echo "rm logs/skipAllSuccessJobs*.txt logs/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
 
-echo "printf \"%-10s   %-20s   %-10s\n\" job_id depend_on job_flag > log/allJobs.txt" >> $run 
+echo "printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs> logs/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
@@ -124,21 +124,24 @@ for t in `cat ${1%% *}`; do
         step=${arrIN[0]}
         de=${arrIN[1]}   
         name=${arrIN[2]%%:*}
-        ref=${arrIN[3]%%:*} # references files which need to rsync to tmp space
-	    inputs=${arrIN[4]}
-        xsuba=${arrIN[5]}  # sbatch options
-	    
+        indx=${arrIN[3]}
+        ref=${arrIN[4]%%:*} # references files which need to rsync to tmp space
+        inputs=${arrIN[5]}
+        xsuba=${arrIN[6]}  # sbatch options
+        
+        ([ - z "$step" ] || [ -z "$de" ] || [ -z "$name" ]) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit 
+        
         # if it is old format bash annotation without inputs
-        [[ "$inputs" == sbatch* ]] && xsuba="$inputs" && inputs=""  
+        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit         
+        [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit  
 
-
-	    [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run 
-	    
+        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run 
+        
         # echo run content:
         # tail $run
         # exit
 
-	    [ -z "$ref" ] || ref=.$ref
+        [ -z "$ref" ] || ref=.$ref
         [ -z "$inputs" ] || inputs=.$inputs
         
         echo "$t" >> $run
@@ -147,6 +150,7 @@ for t in `cat ${1%% *}`; do
         #echo de is $de
         #echo name is $name
         cmd=""
+        
     elif [ ! -z $findjob ]; then
         [[ "$i" == \#* ]] && { findjob=""; echo "$t" >> $run; continue; }
         echo
@@ -198,8 +202,11 @@ for t in `cat ${1%% *}`; do
                       
         #echo "debug: ${cloper[$step]} ${cloper[$de]} .$sameloop. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
-	    echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: $name$loper $useTmp " >> $run
-        echo "${space}flag=${step}.$de.${name}${loper}"  >> $run
+        
+        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: $name.\$$indx $useTmp " >> $run
+        
+        #[ -z "$indx" ] && echo "${space}flag=${step}.$de.${name}"  >> $run || echo "${space}flag=${step}.$de.${name}.\$${indx}"  >> $run 
+        echo "${space}([ -z \"$indx\" ] || [ -z \"\$${indx}\" ]) && flag=${step}.$de.${name} || flag=${step}.$de.${name}.\$${indx}"  >> $run
         echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _ 
         
         echo -e "${space}deps=\"\""  >> $run
@@ -264,20 +271,21 @@ for t in `cat ${1%% *}`; do
         if [[ "$i" == done* ]]; then
             echo find loop end: $i
             #space=${space%    }
-            loper=${loper%.\$*}
+            loper=${loper%.*}
         elif [[ "$i" == for* ]]; then
             echo; echo find loop start: $i
-            a=`echo $i | xargs`  # remove leading space and tailing space
-            a=${a#* }; a=${a%% *}
+            #a=`echo $i | xargs`  # remove leading space and tailing space
+            #a=${a#* }; a=${a%% *}
             #echo a is .$a.
-            loper="$loper.\$$a"
+            #loper="$loper.\$$a"
+            loper="$loper.for"
             #echo new loper: $loper
         elif [[ "$i" == while* ]]; then
             echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
-            a=whiele #${a#* }; a=${a%% *}
+            #a=whiele #${a#* }; a=${a%% *}
             #echo a is .$a.
-            loper="$loper.$a"
+            loper="$loper.while"
             #echo new loper: $loper    
         fi    
     fi   
@@ -288,7 +296,7 @@ done
 #echo "cd \$cwd/.." >> $run
 
 echo "echo; echo All submitted jobs: " >> $run
-echo "cat \$cwd/log/allJobs.txt" >> $run 
+echo "cat \$cwd/logs/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
 
@@ -296,4 +304,4 @@ echo "#cmd: $0 $@" >> $run
 
 echo $run ${1#* } is ready to run. Starting to run ...
 
-eval /bin/bash $run "${1#* }"
+eval "/bin/bash $run ${1#* }"
