@@ -33,7 +33,7 @@
 # todo:
 
 #set -e
-#set -x 
+set -x 
 
 echoerr() { echo "$@" 1>&2; }
 
@@ -353,7 +353,7 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then 
-        echoerr Some or all input files not exist: $inputs  && exit 1
+        echoerr Some or all input files not exist: $inputs
     else 
         #inputSize=$(($inputSize/1024)); # convert to M      
         echoerr inputSize: $inputSize 
@@ -415,8 +415,9 @@ elif [[ "$inputs" == "none" ]]; then
             # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $13 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput
             # grep COMPLETED ~/smartSlurm/stats/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($3 == a && $4 == b) {print $14 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
         
-            txt=($({ grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
- 
+        
+          txt=($({ grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | sort -rn ; date +%s; } | tee  ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
+     
             grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | sort -rn > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
          #   [ -s ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput        
          #   [ -s ~/smartSlurm/stats/$software.$ref.time.stat.noInput ] || rm ~/smartSlurm/stats/$software.$ref.time.stat.noInput
@@ -424,21 +425,23 @@ elif [[ "$inputs" == "none" ]]; then
         #    rm ~/smartSlurm/stats/jobRecord.txt
         
         
-        cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput   
-        cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput  
+        #cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput   
+        #cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput  
         
-        paste ~/smartSlurm/stats/$software.$ref.time.stat.noInput ~/smartSlurm/stats/$software.$ref.mem.stat.noInput | column -s $'\t' -t | sed '$ d' > ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt
+        if [ -s ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ] && [ -s ~/smartSlurm/stats/$software.$ref.time.stat.noInput ]; then 
         
-        cp ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt $OUT/timeMem.txt
-        cd $OUT
-        # make plot and calculate statistics
-gnuplot -e 'set term pdf; set output "timeMem.pdf"; set title "Time vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "timeMem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "timeMem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "timeMem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $software.$ref.timeMem.stat.noInput.txt
+            paste ~/smartSlurm/stats/$software.$ref.time.stat.noInput ~/smartSlurm/stats/$software.$ref.mem.stat.noInput | column -s $'\t' -t | sed '$ d' > ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt
 
-        cd - 
-        convert $OUT/timeMem.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf
-        pdftoppm ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf  -png > ~/smartSlurm/stats/$software.$ref.stat.noInput.png
+            cp ~/smartSlurm/stats/$software.$ref.timeMem.noInput.txt $OUT/timeMem.txt
+            cd $OUT
+            # make plot and calculate statistics
+    gnuplot -e 'set term pdf; set output "timeMem.pdf"; set title "Time vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "timeMem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "timeMem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "timeMem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $software.$ref.timeMem.stat.noInput.txt
+
+            cd - 
+            convert $OUT/timeMem.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf
+            pdftoppm ~/smartSlurm/stats/$software.$ref.stat.noInput.pdf  -png > ~/smartSlurm/stats/$software.$ref.stat.noInput.png
         
-        #fi
+        fi
     fi
 
     # at least 3 records
