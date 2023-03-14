@@ -59,6 +59,9 @@ case "$jobStat" in
 
 
 esac
+
+[[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && rm $succFile
+
 record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
 
 echo -e  "Last row of job summary: $jobStat" 

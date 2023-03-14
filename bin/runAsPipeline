@@ -2,7 +2,7 @@
 
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
 
-set -x
+#set -x
 
 [ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
@@ -237,14 +237,18 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
+        #echo "[[ \"\$id\" == \"Submitted batch job \" ]] && id=\${id##*Submitted batch job } && id=\${id%% *} || id=\"\"" >> $run
+        echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
+
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
         #echo "echo id is: \$id ">> $run
         
-        echo "${space}if [ -z \"\$id\" ]; then"  >> $run
-        echo "${space}    echo  job \$flag is not submitted"  >> $run
-        echo "${space}    exit 1"  >> $run
-        echo "${space}    jobID[$step]=\"\"" >> $run 
-        echo "${space}else"  >> $run
+        #echo "${space}if [ -z \"\$id\" ]; then"  >> $run
+        #echo "${space}    echo  job \$flag is not submitted"  >> $run
+        #echo "${space}    exit 1"  >> $run 
+        echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
+        echo "${space}    jobID[$step]=\"\"" >> $run
+        echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
@@ -262,6 +266,10 @@ for t in `cat ${1%% *}`; do
         echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run 
         echo "${space}    jobID[$step]=\$id"  >> $run
         echo "${space}    jobIDs[$step]=\${jobIDs[$step]}.\$id"  >> $run
+        
+        echo "${space}else" >> $run
+        echo "${space}    echo  job \$flag is not submitted"  >> $run
+        echo "${space}    exit 1"  >> $run 
         
         echo "${space}fi" >> $run 
         IFS=''
