@@ -115,7 +115,7 @@ for t in `cat ${1%% *}`; do
         
         findjob="yes"
         x=${i#*\#@} 
-        # #@1,0,find1,u,input1;input2,sbatch -p short -c 1 -t 50:0
+        # #@1,0,find1,indx,u,input1.input2,sbatch -p short -c 1 -t 50:0
         
         # smartSbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
@@ -131,8 +131,9 @@ for t in `cat ${1%% *}`; do
         
         ([ - z "$step" ] || [ -z "$de" ] || [ -z "$name" ]) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit 
         
-        # if it is old format bash annotation without inputs
-        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit         
+        # if it is old format bash job annotation without inputs
+        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit 
+        
         [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit  
 
         [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run 
@@ -159,27 +160,21 @@ for t in `cat ${1%% *}`; do
         
         # command maybe multiple lines
         if [[ "$i" == *\\ ]]; then  # command have multiple lines, at end of the line is a \
-          #echo check i: $i
           cmd="$cmd ${i%\\}"
-          #echo cmd0: $cmd
           continue
         fi
         space="$oldspace"
         cmd="$cmd ${i%% #*}" # remove comments
         cmd="${cmd# }"       # remove leading space
         
-        #echo cmd1:$cmd
         findjob=""
         [ ! -z ${find[$step]} ] && { echo job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
                 
         cmd=${cmd//\\/\\\\}   # escape back slash
         
-        #echo cmd2 is $cmd
         cmd=${cmd//\"/\\\"} # escape double quotes
         
         [ -z "$name" ] && name=${cmd%% *}
-        
-        #echo cmd3 is $cmd
         
         cloper[$step]=$loper
         sameloop=no
@@ -204,8 +199,6 @@ for t in `cat ${1%% *}`; do
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
         
         echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: $name.\$$indx $useTmp " >> $run
-        
-        #[ -z "$indx" ] && echo "${space}flag=${step}.$de.${name}"  >> $run || echo "${space}flag=${step}.$de.${name}.\$${indx}"  >> $run 
         echo "${space}([ -z \"$indx\" ] || [ -z \"\$${indx}\" ]) && flag=${step}.$de.${name} || flag=${step}.$de.${name}.\$${indx}"  >> $run
         echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _ 
         
@@ -226,7 +219,6 @@ for t in `cat ${1%% *}`; do
         # replace space with ., if the job depends on something
         echo "${space}[ -z \"\${deps// /}\" ] && deps=null || deps=\${deps// /.}" >> $run
 
-        #echo "echo command is: bsubRun \$xsub -flag \$deps \$cwd \$flag \"$cmd\" " >> $run
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
@@ -237,23 +229,17 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
-        #echo "[[ \"\$id\" == \"Submitted batch job \" ]] && id=\${id##*Submitted batch job } && id=\${id%% *} || id=\"\"" >> $run
         echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
-        #echo "echo id is: \$id ">> $run
         
-        #echo "${space}if [ -z \"\$id\" ]; then"  >> $run
-        #echo "${space}    echo  job \$flag is not submitted"  >> $run
-        #echo "${space}    exit 1"  >> $run 
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
-        #echo "${space}    printf \"%-10s  %-20s  %-10s\n\" \$id \$deps \$flag >> \$cwd/flag/allJobs.txt"  >> $run 
-        
+    
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
@@ -285,17 +271,18 @@ for t in `cat ${1%% *}`; do
             echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=${a#* }; a=${a%% *}
-            #echo a is .$a.
             #loper="$loper.\$$a"
             loper="$loper.for"
-            #echo new loper: $loper
         elif [[ "$i" == while* ]]; then
             echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=whiele #${a#* }; a=${a%% *}
-            #echo a is .$a.
             loper="$loper.while"
-            #echo new loper: $loper    
+        elif [[ "$i" == until* ]]; then
+            echo; echo find loop start: $i
+            #a=`echo $i | xargs`  # remove leading space and tailing space
+            #a=whiele #${a#* }; a=${a%% *}
+            loper="$loper.until"   
         fi    
     fi   
 done

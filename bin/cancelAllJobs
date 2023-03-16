@@ -19,7 +19,7 @@ for line in $lines; do
         id=${line%% *} #`echo $line | cut -d' ' -f1`
         if [[ "$out" == *$id* ]]; then 
             ids="$ids $id"
-            nmap[$id]=${line##* }
+            nmap[$id]=`echo $line | cut -d' ' -f3`
             notdone="$notdone $line\n" #flags="$flags $flag"       
         fi
     fi    

@@ -19,6 +19,8 @@ sleep 5
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
+#sacct=`cat ~/fakeSacct.txt`
+
 echo -e "\nJob summary:\n$sacct"
 # echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
 
@@ -62,19 +64,31 @@ esac
 
 [[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && rm $succFile
 
-record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
-
 echo -e  "Last row of job summary: $jobStat" 
 echo start: $START finish: $FINISH mem: $mem mins: $mins
 echo jobStatus: $jobStatus
+
+# sometimes, the last row say srun cancelled, but the job is actually out of memory or out
+if [[ $jobStatus == "Cancelled" ]]; then  
+    if [[ "$sacct" == *TIMEOUT* ]]; then 
+        echo The job is actually timeout
+        jobStatus="OOT"
+    elif [[ "$sacct" == *OUT_OF_ME* ]]; then 
+        echo The job is actually out-of-memory
+        jobStatus="OOM"
+    fi
+fi
+
+record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
+
     
 if [ ! -z "$record" ]; then
-#    if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat.final || "$2" == "regularSbatch" ]]; then 
+    if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
         echo $record >> ~/smartSlurm/myJobRecord.txt
         echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
-#    else 
-#        echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
-#    fi
+    else 
+        echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+    fi
 #else 
 #    echo "Job record:\n$record\n" 
 #    echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt1
@@ -95,18 +109,29 @@ if [ ! -f $succFile ]; then
         mem=${jobStat#*mem=}; mem=${mem%M*}
 
         if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
-            echo Submitting a job to re-queue the job. 
             mem=$(( $mem * 2 ))
-            p=`adjustPartition 1 short`
-            echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
-            jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
-            #scontrol top $jobID   
+            
+            echo Trying to re-queue the job with memory: $mem
+            
+            # submit a small job to requeue the job, because it can not requeue itself
+#             p=`adjustPartition 1 short`
+#             echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
+#             jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
+            
+            # let's try to requeue using login nodes
+            for nodeIdx in {1..4}; do
+                echo trying $i
+                 if `ssh login0$nodeIdx "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
+                     echo Requeued successfully from computer login0$nodeIdx
+                     [ -f $failFile ] && rm $failFile
+                     break
+                 fi    
+            done    
+            
         else
             echo Could not find the original mem value.
             echo Job failed of out-of-memory. Please resubmit with more memory check youself.
-        fi
-
-#        [ -f ~/smartSlurm/stats/$2.$3.mem.stat.final ] && rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final  
+        fi  
         if [ "$5" == 0 ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
@@ -171,7 +196,7 @@ if [ ! -f $succFile ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final 2>/dev/null
         fi    
 #        [ -f ~/smartSlurm/stats/$2.$3.mem.stat.final ] && rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final      
-        
+        [ -f $failFile ] && rm $failFile
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
@@ -183,7 +208,7 @@ minimumsize=9000
 
 actualsize=`wc -c $out`
 
-[ -f $succFile ] && s="Success: job id:$SLURM_JOBID name:$SLURM_JOB_NAME" || s="Failed($jobStatus): job id:$SLURM_JOBID name:$SLURM_JOB_NAME" 
+[ -f $succFile ] && s="Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    toSend=`echo Job script content:; cat $script;`
@@ -207,7 +232,8 @@ fi
 #echo -e "tosend:\n $toSend"
 echo "Sending email..."
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-echo -e "$toSend" | mail -s "$s" $USER && echo email sent || echo email not sent
+echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
+    { echo Email not sent.; echo -e "$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 echo 
 

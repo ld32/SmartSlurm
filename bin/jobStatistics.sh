@@ -34,7 +34,7 @@ cat $OUT/mem.txt
 echo "Got time data from jobRecord.txt (content of time.txt):"
 cat $OUT/time.txt 
 
-if [[ $(wc -l <$OUT/mem.txt) -le $3 ]]; then
+if [[ $(wc -l <$OUT/mem.txt) -lt $3 ]]; then
     echo There is less than $3 records. No way to fit a curve. Exiting...
     exit 
 fi
@@ -48,27 +48,18 @@ gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Memory
 gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt
 
 # after this file is created, don't need to calculate stats anymore 
-if [[ $(wc -l <mem.txt) -ge $3 ]]; then 
-  mv $OUT/mem.stat.txt ~/smartSlurm/stats/$1.$2.mem.stat.final 
-  mv $OUT/time.stat.txt ~/smartSlurm/stats/$1.$2.time.stat.final  
-  echo There are more than $3 jobs already run for this software, statics is ready for current job: 
-  echo Memeory statisics:
-  cat ~/smartSlurm/stats/$1.$2.mem.stat.final
-  echo
-  echo Time statistics:
-  cat ~/smartSlurm/stats/$1.$2.time.stat.final
-else
+if [[ $(wc -l <mem.txt) -gt $3 ]]; then 
   mv $OUT/mem.stat.txt ~/smartSlurm/stats/$1.$2.mem.stat 
-  mv $OUT/time.stat.txt ~/smartSlurm/stats/$1.$2.time.stat
-  echo There are less than $3 jobs already run for this software, statics is not ready to use yet: 
-  echo 
+  mv $OUT/time.stat.txt ~/smartSlurm/stats/$1.$2.time.stat  
+  echo There are more than $3 jobs already run for this software, statics is ready for current job: 
   echo Memeory statisics:
   echo "inputsize mem(M)"
   cat ~/smartSlurm/stats/$1.$2.mem.stat
+  echo
   echo Time statistics:
   echo "inputsize time(minute)"
   cat ~/smartSlurm/stats/$1.$2.time.stat
-fi  
+fi
 
 #mv $OUT/mem.pdf ~/smartSlurm/stats/$1.$2.mem.pdf 
 mv $OUT/mem.txt ~/smartSlurm/stats/$1.$2.mem.txt
