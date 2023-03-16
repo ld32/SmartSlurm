@@ -58,5 +58,5 @@ echoerr Got  $mem $time
 
 # +1 to round up the number to integer
 # memory in M and time in minutes
-echo $((${mem%.*} + 1)) $((${time%.*} + 1)) 
+output="$((${mem%.*} + 1)) $((${time%.*} + 1))" 
       

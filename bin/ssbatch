@@ -356,7 +356,7 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
                 resAjust="$resAjust#Input size is too big for the curve to estimate!\n"
             fi    
         fi
-        if [[ "$output" == "outOfRange" && test `find ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat -mmin +60` || ! -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]]; then  
+        if [[ "$output" == "outOfRange" ]] && test `find ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat -mmin +60` || [ ! -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]; then  
             resAjust="$resAjust#Do not have a formula, or it is old and out of range. Let us build one...\n"
             
             [[ -z "$1" || -z "$2" ]] && echo Usage: $0 software reference && exit 1   
@@ -429,7 +429,7 @@ if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
             fi
         fi
                     
-        if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat]; then    
+        if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]; then    
             output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
             if [[ "$output" == "outOfRange" ]]; then 
                 resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
@@ -456,7 +456,7 @@ elif [[ "$inputs" == "none" ]]; then
         #cat /home/*/smartSlurm/stats/myJobRecord.txt > ~/smartSlurm/stats/jobRecord.txt 
         [ test `find ~/smartSlurm/jobRecord.txt -mmin -2` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > ~/smartSlurm/jobRecord.txt  
 
-        grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput))
+        grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' > ~/smartSlurm/stats/$software.$ref.mem.stat.noInput
      
         grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' > ~/smartSlurm/stats/$software.$ref.time.stat.noInput
         

@@ -83,17 +83,42 @@ record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,
 
     
 if [ ! -z "$record" ]; then
-    if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
+    #if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
+        
+    if [[ $jobStatus == "COMPLETED" ]]; then 
+        if [ "$5" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
+            maxMem=`cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput | sort -nr | cut -f 1 -d "\n"`
+            maxTime=`cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput | sort -nr | cut -f 1 -d "\n"`
+            if[ ! -z "$maxMem" ] && [ "$maxMem" -lt "$mem" ] || ([ ! -z "$maxTime" ] && [ "$maxTime" -lt "$min" ]); then
+                echo $record >> ~/smartSlurm/myJobRecord.txt
+                echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
+                rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ~/smartSlurm/stats/$software.$ref.time.stat.noInput
+            else 
+                echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+            fi  
+        
+        elif         
+            . ~/smartSlurm/stats/$software.$ref.mem.stat # todo:
+            if[ ! -z "$maxMem" ] && [ "$maxMem" -lt "$mem" ] || ([ ! -z "$maxTime" ] && [ "$maxTime" -lt "$min" ]); then
+                echo $record >> ~/smartSlurm/myJobRecord.txt
+                echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
+                rm ~/smartSlurm/stats/$software.$ref.mem.stat ~/smartSlurm/stats/$software.$ref.time.stat
+            else 
+                echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+            fi  
+        fi
+        
+    else
+        # todo: may not need failed job records?
         echo $record >> ~/smartSlurm/myJobRecord.txt
         echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
-    else 
-        echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
     fi
+    
 #else 
 #    echo "Job record:\n$record\n" 
 #    echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt1
 #    echo Because we already have ~/smartSlurm/stats/$1.$2.mem.stat.final
-fi
+
 
 if [ ! -f $succFile ]; then
     touch $failFile
