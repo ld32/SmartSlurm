@@ -2,7 +2,7 @@
 
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
 
-#set -x
+set -x
 
 [ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
@@ -66,7 +66,7 @@ echo "cwd=\`realpath ./\`" >> $run
 
 echo "[ -f logs/allJobs.txt ] && mv logs/allJobs.txt logs/allJobs.txt.old"  >> $run 
 
-echo "rm logs/skipAllSuccessJobs*.txt logs/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
+echo "rm logs/skipAllSuccessJobs*.txt logs/reRunAllSuccessJobs*.txt logs/*requeued* 2>/dev/null" >> $run
 
 echo "printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs> logs/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
@@ -129,7 +129,7 @@ for t in `cat ${1%% *}`; do
         inputs=${arrIN[5]}
         xsuba=${arrIN[6]}  # sbatch options
         
-        ([ - z "$step" ] || [ -z "$de" ] || [ -z "$name" ]) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit 
+        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit 
         
         # if it is old format bash job annotation without inputs
         [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit 

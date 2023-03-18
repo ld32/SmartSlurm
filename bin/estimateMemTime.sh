@@ -4,7 +4,8 @@ echoerr() { echo "$@" 1>&2; }
 
 usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
-#set -x 
+set -x 
+
 echoerr Running: estimateMemTime.sh $@
 
 software=$1
@@ -16,7 +17,7 @@ inputSize=$3
 
 echoerr Estimating mem: 
         
-.  ~/smartSlurm/stats/$software.$ref.mem.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  ~/smartSlurm/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.mem.stat.final:
 
@@ -39,7 +40,7 @@ fi
 echoerr
 echoerr Estimating time: 
 
-.  ~/smartSlurm/stats/$software.$ref.time.stat.final # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  ~/smartSlurm/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.time.stat.final:
 
@@ -56,7 +57,8 @@ echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
 
 echoerr Got  $mem $time
 
-# +1 to round up the number to integer
+# +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
 output="$((${mem%.*} + 1)) $((${time%.*} + 1))" 
       
+echo $output

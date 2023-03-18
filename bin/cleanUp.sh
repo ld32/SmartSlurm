@@ -1,16 +1,16 @@
 #!/bin/bash
 
-#set -x 
+set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
 
 echo Running $0 $@
 
-if [ -z "$1" ]; then 
+if [[ -z "$1" ]]; then 
 
-    out=${4%% *}; out=${out/\%j/$SLURM_JOB_ID}; err=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success; failFile=${script/\.sh/}.failed; 
-    
+   #out=$4.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed; 
+    out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$4.sh; succFile=$4.success; failFile=$4.failed;
 else 
     out=$1/logs/"${4}.out"; err=$1/logs/${4}.err; script=$1/logs/${4}.sh; succFile=$1/logs/${4}.success; failFile=$1/logs/${4}.failed;   
 fi 
@@ -62,6 +62,9 @@ case "$jobStat" in
 
 esac
 
+# for testing
+#jobStatus="OOM"
+
 [[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && rm $succFile
 
 echo -e  "Last row of job summary: $jobStat" 
@@ -86,39 +89,38 @@ if [ ! -z "$record" ]; then
     #if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
         
     if [[ $jobStatus == "COMPLETED" ]]; then 
+        memm=${mem%M*}
         if [ "$5" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
-            maxMem=`cat ~/smartSlurm/stats/$software.$ref.mem.stat.noInput | sort -nr | cut -f 1 -d "\n"`
-            maxTime=`cat ~/smartSlurm/stats/$software.$ref.time.stat.noInput | sort -nr | cut -f 1 -d "\n"`
-            if[ ! -z "$maxMem" ] && [ "$maxMem" -lt "$mem" ] || ([ ! -z "$maxTime" ] && [ "$maxTime" -lt "$min" ]); then
-                echo $record >> ~/smartSlurm/myJobRecord.txt
-                echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$software.$ref.mem.stat.noInput ~/smartSlurm/stats/$software.$ref.time.stat.noInput
+            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.stat.noInput | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.stat.noInput | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+            
+            if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
+                echo $record >> ~/smartSlurm/jobRecord.txt
+                echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
+                rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput
             else 
-                echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+                echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
             fi  
-        
-        elif         
-            . ~/smartSlurm/stats/$software.$ref.mem.stat # todo:
-            if[ ! -z "$maxMem" ] && [ "$maxMem" -lt "$mem" ] || ([ ! -z "$maxTime" ] && [ "$maxTime" -lt "$min" ]); then
-                echo $record >> ~/smartSlurm/myJobRecord.txt
-                echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$software.$ref.mem.stat ~/smartSlurm/stats/$software.$ref.time.stat
+        else         
+            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.txt | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+            
+            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.txt | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+    
+            if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
+                echo $record >> ~/smartSlurm/jobRecord.txt
+                echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
+                rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat
             else 
-                echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt
+                echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
             fi  
         fi
-        
     else
         # todo: may not need failed job records?
-        echo $record >> ~/smartSlurm/myJobRecord.txt
-        echo -e "Added this line to ~/smartSlurm/myJobRecord.txt:\n$record"
+        echo $record >> ~/smartSlurm/jobRecord.txt
+        echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
     fi
-    
-#else 
-#    echo "Job record:\n$record\n" 
-#    echo Did not add this record to ~/smartSlurm/stats/myJobRecord.txt1
-#    echo Because we already have ~/smartSlurm/stats/$1.$2.mem.stat.final
-
+    echo Final mem usage: $mem, time usage: $mins minutes
+fi    
 
 if [ ! -f $succFile ]; then
     touch $failFile
@@ -128,6 +130,8 @@ if [ ! -f $succFile ]; then
     . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
     if [[ "$jobStatus" == "OOM" ]]; then
+        
+        
 
         jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
 
@@ -143,24 +147,40 @@ if [ ! -f $succFile ]; then
 #             echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
 #             jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
             
-            # let's try to requeue using login nodes
-            for nodeIdx in {1..4}; do
-                echo trying $i
-                 if `ssh login0$nodeIdx "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
-                     echo Requeued successfully from computer login0$nodeIdx
-                     [ -f $failFile ] && rm $failFile
-                     break
-                 fi    
-            done    
+            # put this block of code in to background and sleep, so that email run first before requeue 
+            ( sleep 5; 
             
+            for try in {1..4}; do
+                if [ ! -f $failFile.requeued.$try ]; then
+                    echo trying to requeue $try
+                    touch $failFile.requeued.$try 
+                   
+                    # 80G memory
+                    #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
+            
+        
+                    # let's try to requeue using login nodes
+                    for nodeIdx in {1..2}; do
+                        echo trying ssh to node $nodeIdx
+                        if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
+                            echo Requeued successfully from computer login0$nodeIdx
+                            [ -f $failFile ] && rm $failFile
+                            break
+                        fi    
+                    done  
+                    #break
+                fi
+            done ) &
         else
             echo Could not find the original mem value.
             echo Job failed of out-of-memory. Please resubmit with more memory check youself.
         fi  
+        
+        # delete stats and redo them
         if [ "$5" == 0 ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
-            rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final 2>/dev/null
+            rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null
         fi 
         #rm ~/smartSlurm/stats/$2.$3.mem.stat* ~/smartSlurm/stats/$2.$3.time.stat* 2>/dev/null
         #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
@@ -182,54 +202,70 @@ if [ ! -f $succFile ]; then
 
         #echo job resubmitted: $SLURM_JOBID with mem: $mem
     elif [[ "$jobStatus" == "OOT" ]]; then
-        scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
-    
-        # time=${10}
-        # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
-
-        # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
-
-        # echo $day $day,  $hour hour,  $min min,  $sec sec
-
-        # # how many hours for sbatch command if we double the time
-        # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
-
-        hours=$((($mins * 2 + 59) / 60))
-
-        partition=`adjustPartition $hours $partition`
-
-        seconds=$(($mins * 2 * 60))
-
-        #[ $seconds -le 60 ] && time=11:0 && seconds=60
-
-        #echo srun seconds: $seconds
-
-        time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-
-        if [[ "$partition" != "${11}" ]]; then 
-            scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
-        else 
-            scontrol update jobid=$SLURM_JOBID TimeLimit=$time
-            
-        fi 
-
-        echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
         
+        for try in {1..1}; do
+            if [ ! -f $failFile.requeued.$try ]; then
+                echo trying to requeue $try
+                touch $failFile.requeued.$try 
+
+                # 80G memory
+                [ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
+
+                touch $failFile.requeued.$try 
+                scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
+
+                # time=${10}
+                # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
+
+                # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
+
+                # echo $day $day,  $hour hour,  $min min,  $sec sec
+
+                # # how many hours for sbatch command if we double the time
+                # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
+
+                hours=$((($mins * 2 + 59) / 60))
+
+                partition=`adjustPartition $hours $partition`
+
+                seconds=$(($mins * 2 * 60))
+
+                #[ $seconds -le 60 ] && time=11:0 && seconds=60
+
+                #echo srun seconds: $seconds
+
+                time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
+
+                if [[ "$partition" != "${11}" ]]; then 
+                    scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
+                else 
+                    scontrol update jobid=$SLURM_JOBID TimeLimit=$time
+
+                fi 
+
+                echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
+
+                [ -f $failFile ] && rm $failFile
+
+                break
+            fi
+        done 
+         # delete stats and redo them
         if [ "$5" == 0 ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
-            rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final 2>/dev/null
-        fi    
-#        [ -f ~/smartSlurm/stats/$2.$3.mem.stat.final ] && rm ~/smartSlurm/stats/$2.$3.mem.stat.final ~/smartSlurm/stats/$2.$3.time.stat.final      
-        [ -f $failFile ] && rm $failFile
+            rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null
+        fi 
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
-elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/logs $4     
+# elif [ ! -z "$1" ]; then
+#     adjustDownStreamJobs.sh $1/logs $4     
 fi
 
-minimumsize=9000
+echo "Sending email..."
+
+minimumsize=90000
 
 actualsize=`wc -c $out`
 
@@ -254,11 +290,12 @@ if [ -f "$err" ]; then
     fi
 fi    
 
-#echo -e "tosend:\n $toSend"
-echo "Sending email..."
+#echo -e "tosend:\n$toSend"
+echo -e "$toSend" >> ${err%.err}.email
+
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
-    { echo Email not sent.; echo -e "$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+    { echo Email not sent.; echo -e "$toSend \nTry again..." | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 echo 
 
