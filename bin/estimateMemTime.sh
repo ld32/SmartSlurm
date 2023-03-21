@@ -4,7 +4,7 @@ echoerr() { echo "$@" 1>&2; }
 
 usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
-set -x 
+#set -x 
 
 echoerr Running: estimateMemTime.sh $@
 

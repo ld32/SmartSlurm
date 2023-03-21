@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #set -e
-set -x 
+#set -x 
 
 ## notes: to estimate resource, need at least three jobs if no input size is given, and 5 jobs if there is input size given
 
@@ -37,8 +37,8 @@ set -x
 
 # the logic, if has input, check if stat file exist, if not make one. Then estimate mem/time  
 
-extraMin=0 # extra minutes than the estimated time
-extraMem=0  # extra memory than the estinated memory
+extraMin=20 # 500M. extra minutes than the estimated time
+extraMem=500  # 20min. extra memory than the estinated memory
 
 usage() { echo -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
@@ -72,20 +72,20 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
 #  	echo $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
-        --comment=*     )   echo found --comment && comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
-  	    "-L"            )   echo found -L && logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; 
-  		--LogDir=*      )   echo found --LogDir && logDir="${array[$i]}" && logDir=${logDir/--LogDir=/} && array[$i]="";;
-  		"-S" 			)   echo found -S && software="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Software=* 	)   echo Found --Software= && software="${array[$i]}" && software="${software/--Software=/}" && array[$i]="";;
-  		"-R" 			)   echo Found -R && ref="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Ref=* 		)   echo Found --Ref= && ref="${array[$i]}" && ref="${ref/--Ref=/}" && array[$i]="";;
-  		"-F" 			)   echo Found -F && flag="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Flag=* 	    )   echo Found --Flag= && flag="${array[$i]}" && flag="${flag/--Flag=/}" && array[$i]="";;
-        "-I" 			)   echo Found -I && inputs="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Inputs=* 	    )   echo Found --Inputs= && inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}" && array[$i]="";;
-        "-D"            )   echo Found -D  && deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-        "--Dependency=" )   echo Found -D  && deps="${array[$i]}" && deps="${deps/--Dependency=/}" && array[$i]="";;
-        *               )   echo Found sbatch options &&  sbatchLocation=$i && break
+        --comment=*     )   comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
+  	    "-L"            )   logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; 
+  		--LogDir=*      )   logDir="${array[$i]}" && logDir=${logDir/--LogDir=/} && array[$i]="";;
+  		"-S" 			)   software="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--Software=* 	)   software="${array[$i]}" && software="${software/--Software=/}" && array[$i]="";;
+  		"-R" 			)   ref="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--Ref=* 		)   ref="${array[$i]}" && ref="${ref/--Ref=/}" && array[$i]="";;
+  		"-F" 			)   flag="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}" && array[$i]="";;
+        "-I" 			)   inputs="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}" && array[$i]="";;
+        "-D"            )   deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+        "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}" && array[$i]="";;
+        *               )   sbatchLocation=$i && break
     esac
 done 
 
@@ -102,26 +102,26 @@ for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || ec
     [ -z "${array[$i]}" ] && continue
 #  	echo $i " / " $(($#)) " : " ${array[$i]}    
   	case "${array[$i]}" in
-  	    "-p"            )   echo Found -p && partition="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; # will set partition later
-  		--partition=*   )   echo Found --partition && partition="${array[$i]}" && partition=${partition/--partition=/} && array[$i]="";;
-  		--mem-per-cpu=* ) 	echo Found --mem-per-cpu= && mem1="${array[$i]}" && mem1="${mem1/--mem-per-cpu=/}";;
-  		"-c" 	 		) 	echo Found -c && core="${array[$i+1]}";;
-  		--cpus-per-task=*)  echo Found --cpus-per-task= && core="${array[$i]}" && core="${core/--cpus-per-task=/}";;
-  		"-n" 	 		) 	echo Found -n && task="${array[$i+1]}";;
-  		--ntasks=*      )   echo Found --ntasks= && task="${array[$i]}" && task="${task/--ntasks=/}";;
-  		"-N" 	 		) 	echo Found -N && node="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--nodes=*       )   echo Found --nodes= && node="${array[$i]}" && node="${node/--nodes=/}" && array[$i]="";;
-  		"--mem"  		) 	echo Found --mem && mem="${array[$i+1]}"&& array[$i]="" && array[$i+1]="";; # will set memory later
-  		--mem=* 		)  	echo Found --mem= && [ -z "$mem" ] && mem="${array[$i]}" && mem=${mem/--mem=/} && array[$i]="";;
-  		"-t" 			)   echo Found time && time="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--time=* 		)   echo Found --time= && time="${array[$i]}" && time="${time/--time=/}" && array[$i]="";;
-  		"-o" 			)   echo Found -o && out="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--output=* 		)   echo Found --output= && out="${array[$i]}" && out="${out/--oupput=/}" && array[$i]="";;
-  		"-e" 			)   echo Found -o && err="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--error=* 		)   echo Found --error= && err="${array[$i]}" && err="${err/--error=/}" && array[$i]="";;
-        "-A"            )   echo Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-        "-d" 			)   echo Found -d && dep="${array[$i+1]}";;
-  		--dependency=* 	)   echo Found --dependency= && dep="${array[$i]}" && dep="${dep/--dependency=/}";;
+  	    "-p"            )   partition="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; # will set partition later
+  		--partition=*   )   partition="${array[$i]}" && partition=${partition/--partition=/} && array[$i]="";;
+  		--mem-per-cpu=* ) 	mem1="${array[$i]}" && mem1="${mem1/--mem-per-cpu=/}";;
+  		"-c" 	 		) 	core="${array[$i+1]}";;
+  		--cpus-per-task=*)  core="${array[$i]}" && core="${core/--cpus-per-task=/}";;
+  		"-n" 	 		) 	task="${array[$i+1]}";;
+  		--ntasks=*      )   task="${array[$i]}" && task="${task/--ntasks=/}";;
+  		"-N" 	 		) 	node="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--nodes=*       )   node="${array[$i]}" && node="${node/--nodes=/}" && array[$i]="";;
+  		"--mem"  		) 	mem="${array[$i+1]}"&& array[$i]="" && array[$i+1]="";; # will set memory later
+  		--mem=* 		)  	[ -z "$mem" ] && mem="${array[$i]}" && mem=${mem/--mem=/} && array[$i]="";;
+  		"-t" 			)   time="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--time=* 		)   time="${array[$i]}" && time="${time/--time=/}" && array[$i]="";;
+  		"-o" 			)   out="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/}" && array[$i]="";;
+  		"-e" 			)   err="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}" && array[$i]="";;
+        "-A"            )   [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+        "-d" 			)   dep="${array[$i+1]}";;
+  		--dependency=* 	)   dep="${array[$i]}" && dep="${dep/--dependency=/}";;
   		
     esac
  
@@ -330,7 +330,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #ls -l $flagDir/ 1>&2 
     fi    
     #ls $flagDir/$flag.* 1>&2
-    rm $flagDir/$flag.* || : # in case user has set -e and file not exist,  we will not exit
+    rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
 
 [ -z "$time" ] && time=$defaultTime
@@ -343,11 +343,13 @@ echo
 echo Check if there input file list and this job does not depend on other jobs
 
 # not depends on other job, and there is input file list
-if [ -z "$dep" ] &&  [[ "$inputs" != "none" ]]; then
+if [ -z "$deps" ] &&  [[ "$inputs" != "none" ]]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then 
         resAjust="$resAjust#Some or all input files not exist: $inputs\n"
+        echo Error! missingInputFile: ${inputs//,/ }
+        exit 
     else 
         #inputSize=$(($inputSize/1024)); # convert to M      
         resAjust="$resAjust#InputSize: $inputSize\n"
@@ -481,6 +483,7 @@ elif [[ "$inputs" == "none" ]]; then
             
             rows=`wc -l ~/smartSlurm/stats/$software.$ref.mem.stat.noInput 2>/dev/null || echo 0 | cut -f 1 -d " "` 
         
+            rm -r $OUT 2>/dev/null 
         fi
     fi
 
@@ -547,7 +550,7 @@ time=$day-$hour:$min:$sec
 #[[ "$mem" == *G ]] && memN=$(( 1024 * ${mem%G} -10 ))M || memN=$(( ${mem%M} -10 ))M
 
 #[ ${memN%M} -le 1 ] && { echo Error: --mem for sbatch command should bigger than 11M; usage; }
-#[ ${memN%M} -le 1 ] && mem=11M && memN=10M
+#[ ${memN%M} -le 1 ] && mem=20M && memN=10M
 
 #echo Mew mem for srun: $memN
 
@@ -591,10 +594,13 @@ fi
 # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
 # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
+# testing
+#mem=50M
+
 if [ -z "$logDir" ]; then
-    cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
+    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 else
-    cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || : 
 fi
 if [ -z "$slurmScript" ]; then 

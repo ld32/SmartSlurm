@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x 
+#set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
@@ -116,11 +116,14 @@ if [ ! -z "$record" ]; then
         fi
     else
         # todo: may not need failed job records?
-        echo $record >> ~/smartSlurm/jobRecord.txt
-        echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
+        echo # $record >> ~/smartSlurm/jobRecord.txt
+        #echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
     fi
     echo Final mem usage: $mem, time usage: $mins minutes
 fi    
+
+# for testing
+#rm $succFile; jobStatus=OOM 
 
 if [ ! -f $succFile ]; then
     touch $failFile
@@ -137,6 +140,10 @@ if [ ! -f $succFile ]; then
 
         mem=${jobStat#*mem=}; mem=${mem%M*}
 
+
+        [ "$mem" -lt 500 ] && mem=500 # at least 500M
+
+
         if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
             mem=$(( $mem * 2 ))
             
@@ -147,10 +154,18 @@ if [ ! -f $succFile ]; then
 #             echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
 #             jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
             
+            # does work, can not update memory for job steps
+            # ( sleep 5; 
+            #     scontrol requeue $SLURM_JOBID 
+            #     scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem
+            #     scontrol update JobId=$SLURM_JOBID 1 Memory=$(( $mem - 10 )) 
+            
+            # ) &
+            # this works but need ssh to login nodes to run scontrol
             # put this block of code in to background and sleep, so that email run first before requeue 
             ( sleep 5; 
             
-            for try in {1..4}; do
+            for try in {1..8}; do
                 if [ ! -f $failFile.requeued.$try ]; then
                     echo trying to requeue $try
                     touch $failFile.requeued.$try 
@@ -203,13 +218,13 @@ if [ ! -f $succFile ]; then
         #echo job resubmitted: $SLURM_JOBID with mem: $mem
     elif [[ "$jobStatus" == "OOT" ]]; then
         
-        for try in {1..1}; do
+        for try in {1..8}; do
             if [ ! -f $failFile.requeued.$try ]; then
                 echo trying to requeue $try
                 touch $failFile.requeued.$try 
 
                 # 80G memory
-                [ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
+                #[ "${mem%M}" -gt 81920 ] && [ "$try" -gt 2 ] && break
 
                 touch $failFile.requeued.$try 
                 scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
@@ -224,6 +239,8 @@ if [ ! -f $succFile ]; then
                 # # how many hours for sbatch command if we double the time
                 # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
+                [ "$mins" -lt 20 ] && mins=20 # at least 20 minutes
+
                 hours=$((($mins * 2 + 59) / 60))
 
                 partition=`adjustPartition $hours $partition`
@@ -232,7 +249,9 @@ if [ ! -f $succFile ]; then
 
                 #[ $seconds -le 60 ] && time=11:0 && seconds=60
 
-                #echo srun seconds: $seconds
+                #echo srun seconds: $seconds 
+                
+                # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
 
                 time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
@@ -240,6 +259,7 @@ if [ ! -f $succFile ]; then
                     scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
                 else 
                     scontrol update jobid=$SLURM_JOBID TimeLimit=$time
+                    scontrol update jobstep=123456.2 TimeLimit=02:00:00
 
                 fi 
 
@@ -259,13 +279,13 @@ if [ ! -f $succFile ]; then
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
-# elif [ ! -z "$1" ]; then
-#     adjustDownStreamJobs.sh $1/logs $4     
+elif [ ! -z "$1" ]; then
+    adjustDownStreamJobs.sh $1/logs $4     
 fi
 
 echo "Sending email..."
 
-minimumsize=90000
+minimumsize=9000
 
 actualsize=`wc -c $out`
 
@@ -274,7 +294,7 @@ actualsize=`wc -c $out`
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    toSend=`echo Job script content:; cat $script;`
    toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
-   toSend="$toSend\n...\nLast 6 row of output:\n`tail -n 6 $out`"
+   toSend="$toSend\n...\nLast 10 row of output:\n`tail -n 10 $out`"
 else
    toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
    #toSend="$s\n$toSend"
@@ -284,7 +304,7 @@ if [ -f "$err" ]; then
     actualsize=`wc -c $err`
     if [ "${actualsize% *}" -ge "$minimumsize" ]; then
         toSend="$toSend\nError file is too big for email. Please find output in: $err"  
-        toSend="$toSend\n...\nLast 6 rows of error file:\n`tail -n 6 $err`"
+        toSend="$toSend\n...\nLast 10 rows of error file:\n`tail -n 10 $err`"
     else
         toSend="$toSend\n\nError output:\n`cat  $err`"
     fi

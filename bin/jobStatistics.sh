@@ -76,6 +76,8 @@ echo You can see the plot using commands:
 echo display ~/smartSlurm/stats/$1.$2.mem.pdf
 echo display ~/smartSlurm/stats/$1.$2.time.pdf
 
+cd -
+
 rm -r $OUT 2>/dev/null
 
 # Finala=0.03
