@@ -4,6 +4,7 @@ usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least colum
 
 [[ -z "$1" ]] && usage
 
+#set -x 
 
 IFS=$'\n'
 
@@ -13,14 +14,15 @@ out=`squeue -u $USER -o "%.18i"`
 
 declare -A nmap
 
-lines=`tail -n +2  $1`
+lines=`tail -n +2  $1 | awk '{print $1, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
         if [[ "$out" == *$id* ]]; then 
             ids="$ids $id"
             nmap[$id]=${line##* }
-            notdone="$notdone $line\n" #flags="$flags $flag"       
+            notdone="$notdone $line\n" #flags="$flags $flag" 
+            echo $line | cut -d' ' -f3      
         fi
     fi    
 done 
@@ -35,7 +37,7 @@ if [ ! -z "${ids/ /}" ]; then
         for id in $ids; do #`echo -e "$ids" | cut -d' ' -f1`; do
           scancel $id
           echo ${nmap[$id]} cancelled.
-          touch log/${nmap[$id]}.user.killed
+          touch logs/${nmap[$id]}.user.killed
         done
     else
         exit 1;
