@@ -336,12 +336,15 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #echo $flag >&2
         # check the third column for the job name, then find the the job id in column 1
         id=`cat logs/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1;}' | tail -n 1`
+        
+        # job still running
         if [ ! -z "$id" ] && grep ^$id logs/keepRunningJobs.txt; then 
+            
             if [ ! -z "$deps" ]; then 
                 echo $deps
                 dep=`grep ^$id logs/keepRunningJobs.txt | awk -d' ' -f2`
                 echo should add to the job $dep
-                if [[ "$dep" != "null" ]] && deps=$deps,$dep
+                [[ "$dep" != "null" ]] && deps=$deps:$dep
                 scancel $id
             else       
                 echo thisJobStillRunning && exit
