@@ -280,7 +280,7 @@ else
     resAjust="#Depend on multiple jobs\n"
     tmp=""
     for t in ${deps//\./ }; do
-        #echo working on $t >&2
+        #echo working on $t >&2  test
         tmp="$tmp:$t"
     done
     [ ! -z "$tmp" ] && deps="--dependency=afterok$tmp"
@@ -295,7 +295,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         if ([ -f $flagDir/skipAllSuccessJobs.txt ] || [ -f $flagDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then 
             echo skipThisJob
             exit    
-        elif [[ "$te"  != test ]] && [ ! -f $flagDir/reRunAllSuccessJobs.txt ] && [ ! -f $flagDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ]; then
+        elif [ ! -f $flagDir/reRunAllSuccessJobs.txt ] && [ ! -f $flagDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ]; then
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
             echo $flag was done before, do you want to re-run it? >&2
             echo -e "y:        To re-run this job, press y, then enter key." >&2
@@ -328,6 +328,26 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #echo
         #rm $succFlag
         #ls -l $flagDir/ 1>&2 
+    elif [ -f logs/keepRunningJobs.txt ]; then 
+     
+        set -x    
+        #cat logs/allJobs.txt >&2
+
+        #echo $flag >&2
+        # check the third column for the job name, then find the the job id in column 1
+        id=`cat logs/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1;}' | tail -n 1`
+        if [ ! -z "$id" ] && grep ^$id logs/keepRunningJobs.txt; then 
+            if [ ! -z "$deps" ]; then 
+                echo $deps
+                dep=`grep ^$id logs/keepRunningJobs.txt | awk -d' ' -f2`
+                echo should add to the job $dep
+                if [[ "$dep" != "null" ]] && deps=$deps,$dep
+                scancel $id
+            else       
+                echo thisJobStillRunning && exit
+            fi    
+        fi
+        set +x 
     fi    
     #ls $flagDir/$flag.* 1>&2
     rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit

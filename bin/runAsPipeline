@@ -52,23 +52,21 @@ echo "xsubd=\"$2\"" >> $run
     
 echo mkdir -p logs >> $run
 
+echo rm logs/keepRunningJobs.txt 2>/dev/null
 echo "if [ -f logs/allJobs.txt ]; then" >> $run
-
-echo "    cancelAllJobs logs/allJobs.txt " >> $run
-
+echo "    cancelAllJobsReRun logs/allJobs.txt" >> $run
 echo "    [ \$? == 1 ] && exit 0;" >> $run
-
 echo "fi" >> $run
 
 echo "cwd=\`realpath ./\`" >> $run
 
 #echo "rm logs/*.failed logs/*.killed 2>/dev/null" >> $run
 
-echo "[ -f logs/allJobs.txt ] && mv logs/allJobs.txt logs/allJobs.txt.old"  >> $run 
+echo "[ -f logs/allJobs.txt ] && [ ! -f logs/keepRunningJobs.txt ] && mv logs/allJobs.txt logs/allJobs.txt.old"  >> $run 
 
 echo "rm logs/skipAllSuccessJobs*.txt logs/reRunAllSuccessJobs*.txt logs/*requeued* 2>/dev/null" >> $run
 
-echo "printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs> logs/allJobs.txt" >> $run 
+echo "[ ! -f logs/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs> logs/allJobs.txt" >> $run 
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
@@ -117,7 +115,7 @@ for t in `cat ${1%% *}`; do
         x=${i#*\#@} 
         # #@1,0,find1,indx,u,input1.input2,sbatch -p short -c 1 -t 50:0
         
-        # smartSbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
+        # ssbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
         IFS=''
     
@@ -227,10 +225,12 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(smartSbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
         #echo "${splace} echo get output fom ssbatch: \$id" >> $run 
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
+
+        #echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$id\n\" && id=\"\" ">> $run
 
         echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
 
@@ -238,9 +238,11 @@ for t in `cat ${1%% *}`; do
         
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
+        echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
+        echo "${space}    jobID[$step]=\"\"; echo This job was submitted earlier, and is still running."  >> $run
+        
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
-        
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
     
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
