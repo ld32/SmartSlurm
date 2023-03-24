@@ -17,7 +17,7 @@ fi
 software=$1
 ref=$2 
 inputSize=$3
-
+ 
 #echoerr content of .rcbio
 #ls -l ~/.rcbio 1>&2  
 
