@@ -37,7 +37,7 @@ echo
 
 idNames=`echo $text | awk '{if ($2 ~ /'"$id/"') print $2, $3;}'`
 
-echo -e "Jobs on the save dependency level with current job:\n$idNames"
+echo -e "Jobs on the same dependency level with current job:\n$idNames"
 [ -z "$idNames" ] && { echo -e "Downstream job ids not found for $id"; exit; }
 
 # sleep for a random number of seconds to avoid race condition
@@ -64,6 +64,8 @@ for i in $idNames; do
         # look for the downstream job info:                            jobID,software, ref, inputs
         output=`cat $path/allJobs.txt | awk '{if ($3 ~ /'"$name/"') print $1, $4, $5, $6;}'`
     
+        echo The downsteam job is: 
+        echo $output 
         IFS=' ' read -a arrIN <<< "$output"
     
         id2=${arrIN[0]}
@@ -110,7 +112,7 @@ for i in $idNames; do
             cat $OUT/time.txt 
 
             if [[ $(wc -l <$OUT/mem.txt) -lt 3 ]]; then
-                echo There are less than 3 records. No way to fit a curve. Exiting...
+            
                 echo There are less than 3 records. No way to fit a curve.
                  
             else

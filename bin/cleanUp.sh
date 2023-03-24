@@ -2,8 +2,8 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13 
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  original.sbatch.command
+# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13    14 
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  inputs original.sbatch.command
 
 echo Running $0 $@
 
@@ -82,7 +82,19 @@ if [[ $jobStatus == "Cancelled" ]]; then
     fi
 fi
 
-record="$SLURM_JOB_ID,$5,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${13}\""
+inputs=${13}
+inputSize=0     # input doe snot exist when job was submitted.
+if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
+    inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
+
+    if [[ "$inputSize" == "notExist" ]]; then 
+        echo Some or all input files not exist: $inputs
+        echo Error! missingInputFile: ${inputs//,/ } 
+        exit 
+    fi
+fi    
+    
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${14}\""
 
     
 if [ ! -z "$record" ]; then
@@ -90,26 +102,26 @@ if [ ! -z "$record" ]; then
         
     if [[ $jobStatus == "COMPLETED" ]]; then 
         memm=${mem%M*}
-        if [ "$5" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
-            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.stat.noInput | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
-            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.stat.noInput | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+        if [ "$inputSize" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
+            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
             
             if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
                 echo $record >> ~/smartSlurm/jobRecord.txt
                 echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput
+                rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput  2>/dev/null
             else 
                 echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
             fi  
         else         
-            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.txt | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
             
-            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.txt | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
     
             if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
                 echo $record >> ~/smartSlurm/jobRecord.txt
                 echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat
+                rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat  2>/dev/null
             else 
                 echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
             fi  
@@ -192,7 +204,7 @@ if [ ! -f $succFile ]; then
         fi  
         
         # delete stats and redo them
-        if [ "$5" == 0 ]; then
+        if [ "$inputSize" == 0 ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
             rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null
@@ -271,7 +283,7 @@ if [ ! -f $succFile ]; then
             fi
         done 
          # delete stats and redo them
-        if [ "$5" == 0 ]; then
+        if [ "$inputSize" == 0 ]; then
             rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
             rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null

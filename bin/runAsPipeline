@@ -52,7 +52,7 @@ echo "xsubd=\"$2\"" >> $run
     
 echo mkdir -p logs >> $run
 
-echo rm logs/keepRunningJobs.txt 2>/dev/null
+echo "rm logs/keepRunningJobs.txt 2>/dev/null" >> $run 
 echo "if [ -f logs/allJobs.txt ]; then" >> $run
 echo "    cancelAllJobsReRun logs/allJobs.txt" >> $run
 echo "    [ \$? == 1 ] && exit 0;" >> $run
@@ -227,7 +227,8 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
-        #echo "${splace} echo get output fom ssbatch: \$id" >> $run 
+        echo "${splace} echo -e \"get output fom ssbatch: \$id\"" >> $run 
+        
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 
         #echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$id\n\" && id=\"\" ">> $run
