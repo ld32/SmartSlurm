@@ -9,10 +9,13 @@ echo
 extraMin=20
 extraMem=500
 
-x=`realpath $0`
-. ${x%\/bin\/adjustDownStreamJobs.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
-
 echo Running: $0  $@
+
+if [ -f ~/.smartSlurm/config.txt]; then 
+    source ~/.smartSlurm/confige.txt
+else     
+    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+fi
 
 path=$1
 
@@ -51,15 +54,13 @@ for i in $idNames; do
     IFS=$' '; 
     for j in ${id1//\./ }; do 
         echo 2working on $j
-        [[ "$j" == "$id" ]] && echo Ignore. It is the current job. It should adjust the mem and time for the downsteam job.  && continue
-        
         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
         [ -f "$path/$job.success" ] && echo -e This job was done! || { echo This job is not done yet: $job; allDone=no; }         
     done
     if [ -z "$allDone" ]; then
-        echo Dependants for $name are all done except for the current job. Ready to adjust mem/runtime
+        echo Dependants for $name are all done. Ready to adjust mem/runtime...
         
         # look for the downstream job info:                            jobID,software, ref, inputs
         output=`cat $path/allJobs.txt | awk '{if ($3 ~ /'"$name/"') print $1, $4, $5, $6;}'`
@@ -77,7 +78,7 @@ for i in $idNames; do
         [[ "$inputs" == "none" ]] && exit
         
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
-        if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]; then    
+        if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
             output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
             echo "Output from estimateMemTime.sh: $output"
             if [[ "$output" == "outOfRange" ]]; then 
@@ -90,10 +91,10 @@ for i in $idNames; do
         
         fi
         
-        if [[ "$output" == "outOfRange" ]] && test `find ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat -mmin +60` || [ ! -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]; then  
+        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.${ref//\//-}.mem.stat -mmin +60` || [ ! -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then  
             echo "Do not have a formula, or it is old and out of range. Let us build one..."   
 
-            #[ test `find ~/smartSlurm/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > ~/smartSlurm/jobRecord.txt  
+            #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
             
             #jobStatistics.sh $software ${ref//\//-} 4 1>&2 
             
@@ -102,8 +103,8 @@ for i in $idNames; do
             #filter by software and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref1=${ref//\//-}
-            grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
-            grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
+            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
+            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
 
             echo "Got mem data from jobRecord.txt (content of mem.txt):"
             cat $OUT/mem.txt 
@@ -125,38 +126,38 @@ for i in $idNames; do
                 # make plot and calculate statistics
                 gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt
                 
-                mv $OUT/mem.stat.txt ~/smartSlurm/stats/$software.$ref.mem.stat 
-                mv $OUT/time.stat.txt ~/smartSlurm/stats/$software.$ref.time.stat  
+                mv $OUT/mem.stat.txt $jobRecordDir/stats/$software.$ref.mem.stat 
+                mv $OUT/time.stat.txt $jobRecordDir/stats/$software.$ref.time.stat  
                 echo There are more than $ref jobs already run for this software, statics is ready for current job: 
                 echo Memeory statisics:
                 echo "inputsize mem(M)"
-                cat ~/smartSlurm/stats/$software.$ref.mem.stat
+                cat $jobRecordDir/stats/$software.$ref.mem.stat
                 echo
                 echo Time statistics:
                 echo "inputsize time(minute)"
-                cat ~/smartSlurm/stats/$software.$ref.time.stat
+                cat $jobRecordDir/stats/$software.$ref.time.stat
  
-                mv $OUT/mem.txt ~/smartSlurm/stats/$software.$ref.mem.txt
-                mv $OUT/time.txt ~/smartSlurm/stats/$software.$ref.time.txt
+                mv $OUT/mem.txt $jobRecordDir/stats/$software.$ref.mem.txt
+                mv $OUT/time.txt $jobRecordDir/stats/$software.$ref.time.txt
 
-                convert $OUT/mem.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.mem.pdf
-                convert $OUT/time.pdf -background White -flatten ~/smartSlurm/stats/$software.$ref.time.pdf
-                pdftoppm ~/smartSlurm/stats/$software.$ref.mem.pdf  -png > ~/smartSlurm/stats/$software.$ref.mem.png
-                pdftoppm ~/smartSlurm/stats/$software.$ref.time.pdf  -png > ~/smartSlurm/stats/$software.$ref.time.png
+                convert $OUT/mem.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.mem.pdf
+                convert $OUT/time.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.time.pdf
+                pdftoppm $jobRecordDir/stats/$software.$ref.mem.pdf  -png > $jobRecordDir/stats/$software.$ref.mem.png
+                pdftoppm $jobRecordDir/stats/$software.$ref.time.pdf  -png > $jobRecordDir/stats/$software.$ref.time.png
 
                 echo
                 echo You can see the plot using commands:
-                echo display ~/smartSlurm/stats/$software.$ref.mem.pdf
-                echo display ~/smartSlurm/stats/$software.$ref.time.pdf
+                echo display $jobRecordDir/stats/$software.$ref.mem.pdf
+                echo display $jobRecordDir/stats/$software.$ref.time.pdf
                 
                 cd -
 
                 rm -r $OUT 2>/dev/null
 
-                echo got files in ~/smartSlurm/stats:  
-                ls -lrt ~/smartSlurm/stats
+                echo got files in $jobRecordDir/stats:  
+                ls -lrt $jobRecordDir/stats
                 
-                if [ -f ~/smartSlurm/stats/$software.${ref//\//-}.mem.stat ]; then    
+                if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
                     output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
                     echo "Output from estimateMemTime.sh: $output"
                     if [[ "$output" == "outOfRange" ]]; then 

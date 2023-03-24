@@ -4,9 +4,15 @@ echoerr() { echo "$@" 1>&2; }
 
 usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
-#set -x 
+#set -x  
 
 echoerr Running: estimateMemTime.sh $@
+
+if [ -f ~/.smartSlurm/config.txt]; then 
+    source ~/.smartSlurm/confige.txt
+else     
+    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+fi
 
 software=$1
 ref=$2 
@@ -17,7 +23,7 @@ inputSize=$3
 
 echoerr Estimating mem: 
         
-.  ~/smartSlurm/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  $jobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.mem.stat.final:
 
@@ -40,7 +46,7 @@ fi
 echoerr
 echoerr Estimating time: 
 
-.  ~/smartSlurm/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+.  $jobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
 #echoerr content: $software.$ref.time.stat.final:
 

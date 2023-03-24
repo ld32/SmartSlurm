@@ -8,25 +8,31 @@ echo $0 $@
 [[ -z "$1" || -z "$2" ]] && echo Usage: $0 software reference && exit 1   
 
 # if not rsynced today, sync some jobRecords from other users 
-#if [ ! -f ~/smartSlurm/stats/jobRecord.txt ]; then
-#    echo File not exist:  ~/smartSlurm/stats/jobRecord.txt, sync some some data ...
-#    cat ~/smartSlurm/stats/myJobRecord.txt > ~/smartSlurm/stats/jobRecord.txt
-#    if [ ! -f ~/smartSlurm/stats/jobRecord.txt ]; then
-#      touch ~/smartSlurm/stats/jobRecord.txt #
+#if [ ! -f $jobRecordDir/stats/jobRecord.txt ]; then
+#    echo File not exist:  $jobRecordDir/stats/jobRecord.txt, sync some some data ...
+#    cat $jobRecordDir/stats/myJobRecord.txt > $jobRecordDir/stats/jobRecord.txt
+#    if [ ! -f $jobRecordDir/stats/jobRecord.txt ]; then
+#      touch $jobRecordDir/stats/jobRecord.txt #
 #    fi  
 
 #else
 #    # file modified in last 2 minutes
-    [ ! -z "`find ~/smartSlurm/jobRecord.txt -mmin -2`" ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > ~/smartSlurm/jobRecord.txt  
+#    [ ! -z "`find $jobRecordDir/jobRecord.txt -mmin -2`" ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
 #fi
+
+if [ -f ~/.smartSlurm/config.txt]; then 
+    source ~/.smartSlurm/confige.txt
+else     
+    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+fi
 
 OUT="$(mktemp -d)"
 
 #filter by software and reference
-grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F"," -v a=$1 -v b=$2 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
-grep COMPLETED ~/smartSlurm/jobRecord.txt | awk -F"," -v a=$1 -v b=$2 '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
+grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$1 -v b=$2 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
+grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$1 -v b=$2 '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
 
-#awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' ~/smartSlurm/stats/jobRecord.txt ~/smartSlurm/stats/myJobRecord.txt | grep COMPLETED | uniq > $OUT/time.txt
+#awk -v a=$1 -v b=$2 '{ if($2 == a && $3 == b) {print $5, $13 }}' $jobRecordDir/stats/jobRecord.txt $jobRecordDir/stats/myJobRecord.txt | grep COMPLETED | uniq > $OUT/time.txt
 
 echo "Got mem data from jobRecord.txt (content of mem.txt):"
 cat $OUT/mem.txt 
@@ -49,32 +55,32 @@ gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time 
 
 # after this file is created, don't need to calculate stats anymore 
 if [[ $(wc -l <mem.txt) -gt $3 ]]; then 
-  mv $OUT/mem.stat.txt ~/smartSlurm/stats/$1.$2.mem.stat 
-  mv $OUT/time.stat.txt ~/smartSlurm/stats/$1.$2.time.stat  
+  mv $OUT/mem.stat.txt $jobRecordDir/stats/$1.$2.mem.stat 
+  mv $OUT/time.stat.txt $jobRecordDir/stats/$1.$2.time.stat  
   echo There are more than $3 jobs already run for this software, statics is ready for current job: 
   echo Memeory statisics:
   echo "inputsize mem(M)"
-  cat ~/smartSlurm/stats/$1.$2.mem.stat
+  cat $jobRecordDir/stats/$1.$2.mem.stat
   echo
   echo Time statistics:
   echo "inputsize time(minute)"
-  cat ~/smartSlurm/stats/$1.$2.time.stat
+  cat $jobRecordDir/stats/$1.$2.time.stat
 fi
 
-#mv $OUT/mem.pdf ~/smartSlurm/stats/$1.$2.mem.pdf 
-mv $OUT/mem.txt ~/smartSlurm/stats/$1.$2.mem.txt
-#mv $OUT/time.pdf ~/smartSlurm/stats/$1.$2.time.pdf 
-mv $OUT/time.txt ~/smartSlurm/stats/$1.$2.time.txt
+#mv $OUT/mem.pdf $jobRecordDir/stats/$1.$2.mem.pdf 
+mv $OUT/mem.txt $jobRecordDir/stats/$1.$2.mem.txt
+#mv $OUT/time.pdf $jobRecordDir/stats/$1.$2.time.pdf 
+mv $OUT/time.txt $jobRecordDir/stats/$1.$2.time.txt
 
-convert $OUT/mem.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.mem.pdf
-convert $OUT/time.pdf -background White -flatten ~/smartSlurm/stats/$1.$2.time.pdf
-pdftoppm ~/smartSlurm/stats/$1.$2.mem.pdf  -png > ~/smartSlurm/stats/$1.$2.mem.png
-pdftoppm ~/smartSlurm/stats/$1.$2.time.pdf  -png > ~/smartSlurm/stats/$1.$2.time.png
+convert $OUT/mem.pdf -background White -flatten $jobRecordDir/stats/$1.$2.mem.pdf
+convert $OUT/time.pdf -background White -flatten $jobRecordDir/stats/$1.$2.time.pdf
+pdftoppm $jobRecordDir/stats/$1.$2.mem.pdf  -png > $jobRecordDir/stats/$1.$2.mem.png
+pdftoppm $jobRecordDir/stats/$1.$2.time.pdf  -png > $jobRecordDir/stats/$1.$2.time.png
 
 echo
 echo You can see the plot using commands:
-echo display ~/smartSlurm/stats/$1.$2.mem.pdf
-echo display ~/smartSlurm/stats/$1.$2.time.pdf
+echo display $jobRecordDir/stats/$1.$2.mem.pdf
+echo display $jobRecordDir/stats/$1.$2.time.pdf
 
 cd -
 
@@ -87,7 +93,7 @@ rm -r $OUT 2>/dev/null
 # Maximum=300.0000
 # Median=250.0000
 #rm -r $OUT 
-echo got files in ~/smartSlurm/stats:  
-ls -lrt ~/smartSlurm/stats/
+echo got files in $jobRecordDir/stats:  
+ls -lrt $jobRecordDir/stats/
 
 

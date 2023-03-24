@@ -5,14 +5,21 @@
 # to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13    14 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  inputs original.sbatch.command
 
+
 echo Running $0 $@
+
+if [ -f ~/.smartSlurm/config.txt]; then 
+    source ~/.smartSlurm/confige.txt
+else     
+    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+fi
 
 if [[ -z "$1" ]]; then 
 
    #out=$4.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed; 
     out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$4.sh; succFile=$4.success; failFile=$4.failed;
 else 
-    out=$1/logs/"${4}.out"; err=$1/logs/${4}.err; script=$1/logs/${4}.sh; succFile=$1/logs/${4}.success; failFile=$1/logs/${4}.failed;   
+    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
 fi 
 
 sleep 5
@@ -83,7 +90,7 @@ if [[ $jobStatus == "Cancelled" ]]; then
 fi
 
 inputs=${13}
-inputSize=0     # input doe snot exist when job was submitted.
+inputSize=$5     # input doe snot exist when job was submitted.
 if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
@@ -94,42 +101,42 @@ if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
     fi
 fi    
     
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`,\"${14}\""
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`"
 
     
 if [ ! -z "$record" ]; then
-    #if [[ ! -f ~/smartSlurm/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
+    #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
         
     if [[ $jobStatus == "COMPLETED" ]]; then 
         memm=${mem%M*}
         if [ "$inputSize" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
-            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
-            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+            maxMem=`cat $jobRecordDir/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+            maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
             
             if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
-                echo $record >> ~/smartSlurm/jobRecord.txt
-                echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput  2>/dev/null
+                echo $record >> $jobRecordDir/jobRecord.txt
+                echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+                rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null
             else 
-                echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
+                echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
             fi  
         else         
-            maxMem=`cat ~/smartSlurm/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+            maxMem=`cat $jobRecordDir/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
             
-            maxTime=`cat ~/smartSlurm/stats/$2.$3.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+            maxTime=`cat $jobRecordDir/stats/$2.$3.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
     
             if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
-                echo $record >> ~/smartSlurm/jobRecord.txt
-                echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
-                rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat  2>/dev/null
+                echo $record >> $jobRecordDir/jobRecord.txt
+                echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+                rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat  2>/dev/null
             else 
-                echo Did not add this record to ~/smartSlurm/stats/jobRecord.txt
+                echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
             fi  
         fi
     else
         # todo: may not need failed job records?
-        echo # $record >> ~/smartSlurm/jobRecord.txt
-        #echo -e "Added this line to ~/smartSlurm/jobRecord.txt:\n$record"
+        echo # $record >> $jobRecordDir/jobRecord.txt
+        #echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
     fi
     echo Final mem usage: $mem, time usage: $mins minutes
 fi    
@@ -139,10 +146,6 @@ fi
 
 if [ ! -f $succFile ]; then
     touch $failFile
-
-    #echo looking partition for hour: $hours 
-    x=`realpath $0` 
-    . ${x%\/bin\/cleanUp.sh}/config/partitions.txt || { echo Partition list file not found: partition.txt; exit 1; }
 
     if [[ "$jobStatus" == "OOM" ]]; then
         
@@ -205,11 +208,11 @@ if [ ! -f $succFile ]; then
         
         # delete stats and redo them
         if [ "$inputSize" == 0 ]; then
-            rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
-            rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 2>/dev/null
         fi 
-        #rm ~/smartSlurm/stats/$2.$3.mem.stat* ~/smartSlurm/stats/$2.$3.time.stat* 2>/dev/null
+        #rm $jobRecordDir/stats/$2.$3.mem.stat* $jobRecordDir/stats/$2.$3.time.stat* 2>/dev/null
         #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
         #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
 
@@ -284,15 +287,15 @@ if [ ! -f $succFile ]; then
         done 
          # delete stats and redo them
         if [ "$inputSize" == 0 ]; then
-            rm ~/smartSlurm/stats/$2.$3.mem.stat.noInput ~/smartSlurm/stats/$2.$3.time.stat.noInput 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
-            rm ~/smartSlurm/stats/$2.$3.mem.stat ~/smartSlurm/stats/$2.$3.time.stat 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 2>/dev/null
         fi 
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/logs $4     
+    adjustDownStreamJobs.sh $1/log $4     
 fi
 
 echo "Sending email..."
@@ -327,7 +330,7 @@ echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
-    { echo Email not sent.; echo -e "$toSend \nTry again..." | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+    { echo Email not sent.; echo -e "$toSend \nEmail not send out. Try again..." | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 echo 
 

@@ -2,7 +2,7 @@
 
 outputs=""
 for i in {1..1}; do
-    input=bigText$i.txt
+    input=bigText1$i.txt
     output=1234.$i.txt
     #@1,0,useSomeMemTimeAccordingInputSize.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
     useSomeMemTimeAccordingInputSize.sh $input; grep 1234 $input > $output
