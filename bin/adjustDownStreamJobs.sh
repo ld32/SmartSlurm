@@ -36,19 +36,28 @@ IFS=$' ';
 
 #echo 
 
-# todo, can directly get id, software, ref, and input here, if input is none, directly skip this job
-idNames=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $2, $3;}'`
+# directly get id, deps, software, ref, and input here, if input is none, directly skip this job
+output=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $1, $2, $3, $4, $5, $6;}'`
 
-echo -e "Jobs on the same dependency level with current job:\n$idNames"
-[ -z "$idNames" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; exit; }
+echo -e "Jobs on the same dependency level with current job:\n$output"
+[ -z "$output" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; exit; }
 
 IFS=$'\n';
-for i in $idNames; do
+for i in $output; do
     echo 1working on $i
-    id=${i% *}; name=${i#* };
+    IFS=' ' read -a arrIN <<< "$i"
+    
+    id=${arrIN[0]}
+    deps=${arrIN[1]}   
+    name=${arrIN[2]}
+    software=${arrIN[3]}
+    ref=${arrIN[4]}  ; ref=${ref//\//-}
+    inputs=${arrIN[5]} 
+    [[ "$inputs" == "none" ]] && continue
+    
     allDone=""
     IFS=$' '; 
-    for j in ${id//\./ }; do 
+    for j in ${deps//\./ }; do 
         echo 2working on $j
         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
@@ -60,24 +69,9 @@ for i in $idNames; do
         #ls -lrt $path 
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
         
-        # look for the downstream job info:                            jobID,software, ref, inputs
-        output=`cat $path/allJobs.txt | awk '{if ($3 ~ /'"$name/"') print $1, $4, $5, $6;}'`
-    
-        echo The downsteam job is: 
-        echo $output 
-        IFS=' ' read -a arrIN <<< "$output"
-    
-        id=${arrIN[0]}
-        software=${arrIN[1]}   
-        ref=${arrIN[2]}
-        inputs=${arrIN[3]}    
-        
-        mem="" 
-        [[ "$inputs" == "none" ]] && exit
-        
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
-        if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
-            output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
+        if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
+            output=`estimateMemTime.sh $software $ref $inputSize`
             echo "Output from estimateMemTime.sh: $output"
             if [[ "$output" == "outOfRange" ]]; then 
                 echo "Input size is too big for the curve to estimate! Use default mem and runtime to submit job."
@@ -89,7 +83,7 @@ for i in $idNames; do
         
         fi
         
-        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.${ref//\//-}.mem.stat -mmin +60` || [ ! -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then  
+        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.$ref.mem.stat -mmin +60` || [ ! -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then  
             echo "Do not have a formula, or it is old and out of range. Let us build one..."   
 
             #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
@@ -100,9 +94,9 @@ for i in $idNames; do
 
             #filter by software and reference
             # todo: maybe able to replace / in ref at begaining of the script?
-            ref1=${ref//\//-}
-            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
-            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref1 '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
+            
+            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
+            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
 
             echo "Got mem data from jobRecord.txt (content of mem.txt):"
             cat $OUT/mem.txt 
@@ -155,8 +149,8 @@ for i in $idNames; do
                 echo got files in $jobRecordDir/stats:  
                 #ls -lrt $jobRecordDir/stats
                 
-                if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
-                    output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
+                if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
+                    output=`estimateMemTime.sh $software $ref $inputSize`
                     echo "Output from estimateMemTime.sh: $output"
                     if [[ "$output" == "outOfRange" ]]; then 
                         echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
@@ -184,7 +178,8 @@ for i in $idNames; do
         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
-
+        
+        touch logs/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else 
         echo Need wait for other jobs to finish before we can ajust mem and runtime...

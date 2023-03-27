@@ -243,7 +243,7 @@ for t in `cat ${1%% *}`; do
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
         echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run  
-        ech
+        
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 

@@ -496,7 +496,7 @@ elif [[ "$inputs" == "none" ]]; then
     rows=`( wc -l $jobRecordDir/stats/$software.$ref.mem.stat.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
     #echo rows  $rows >&2
     # empty or more than 60 minutes but less than 4 records
-    if test `find $jobRecordDir/stats/$software.$ref.mem.stat.noInput -mmin +60` && [ $rows -lt 3 ] || [ $rows -eq 0 ]; then  
+    if test `find $jobRecordDir/stats/$software.$ref.mem.stat.noInput -mmin +60 2>/dev/null` && [ $rows -lt 3 ] || [ $rows -eq 0 ]; then  
         mkdir -p $jobRecordDir/stats/
         #cat /home/*/smartSlurm/stats/myJobRecord.txt > $jobRecordDir/stats/jobRecord.txt 
         #test `find $jobRecordDir/jobRecord.txt -mmin +20` && echo jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
