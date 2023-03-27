@@ -8,8 +8,8 @@
 
 echo Running $0 $@
 
-if [ -f ~/.smartSlurm/config.txt]; then 
-    source ~/.smartSlurm/confige.txt
+if [ -f ~/.smartSlurm/config.txt ]; then 
+    source ~/.smartSlurm/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi
@@ -22,7 +22,6 @@ else
     out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
 fi 
 
-sleep 5
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -64,6 +63,8 @@ case "$jobStat" in
         
 *CANCELLED*	) jobStatus="Cancelled";;
 
+*FAILED*	) jobStatus="Fail";;
+
 *          )  jobStatus="Unknown";;
 
 
@@ -101,7 +102,7 @@ if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
     fi
 fi    
     
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,$1,$2,$3,$4,$6,${node},$err,`date`"
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,,$2,$3,$4,$6,`date`"
 
     
 if [ ! -z "$record" ]; then
@@ -258,7 +259,7 @@ if [ ! -f $succFile ]; then
 
                 hours=$((($mins * 2 + 59) / 60))
 
-                partition=`adjustPartition $hours $partition`
+                adjustPartition $hours $partition
 
                 seconds=$(($mins * 2 * 60))
 
@@ -295,7 +296,7 @@ if [ ! -f $succFile ]; then
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/log $4     
+    adjustDownStreamJobs.sh $1/log 
 fi
 
 echo "Sending email..."

@@ -20,8 +20,8 @@ echo $0 $@
 #    [ ! -z "`find $jobRecordDir/jobRecord.txt -mmin -2`" ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
 #fi
 
-if [ -f ~/.smartSlurm/config.txt]; then 
-    source ~/.smartSlurm/confige.txt
+if [ -f ~/.smartSlurm/config.txt ]; then 
+    source ~/.smartSlurm/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi

@@ -2,7 +2,7 @@
 
 #set -x 
 
-Usage="Usage: $0 full_path_to_flag_folder  flag(job name) \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
+Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 
 echo 
 
@@ -11,55 +11,53 @@ extraMem=500
 
 echo Running: $0  $@
 
-if [ -f ~/.smartSlurm/config.txt]; then 
-    source ~/.smartSlurm/confige.txt
+if [ -f ~/.smartSlurm/config.txt ]; then 
+    source ~/.smartSlurm/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi
 
 path=$1
 
-[ -z "$2" ] && { echo -e "$Usage"; exit; }
-
-[ -f $1/allJobs.txt ] || { echo -e "job id file $path/allJobs.txt does not exist\n$Usage"; exit 1; }
+[ -f $path/allJobs.txt ] || { echo -e "job id file $path/allJobs.txt does not exist\n$Usage"; exit 1; }
 
 # jobid, deps, flag, software, ref, input, inputSize
 text=`cat $path/allJobs.txt`
  
-job=$2
+#job=$2
 
 IFS=$' ';  
 
 # check the third column for the job name, then find the the job id in column 1
-id=`echo $text | awk '{if ($3 ~ /'"$job/"') print $1;}' | tail -n 1`
+#id=`echo $text | awk '{if ($3 ~ /'"$job/"') print $1;}' | tail -n 1`
 
-echo -e "Find current job id (flag: $job):\n$id"
-[ -z "$id" ] && { echo -e "job id for job name $job not found in $path/allJobs.txt!"; exit; }
+#echo -e "Find current job id (flag: $job):\n$id"
+#[ -z "$id" ] && { echo -e "job id for job name $job not found in $path/allJobs.txt!"; exit; }
 
-echo 
+#echo 
 
-idNames=`echo $text | awk '{if ($2 ~ /'"$id/"') print $2, $3;}'`
+# todo, can directly get id, software, ref, and input here, if input is none, directly skip this job
+idNames=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $2, $3;}'`
 
 echo -e "Jobs on the same dependency level with current job:\n$idNames"
-[ -z "$idNames" ] && { echo -e "Downstream job ids not found for $id"; exit; }
-
-# sleep for a random number of seconds to avoid race condition
-#sleep $(( ( RANDOM % 120)  + 1 ))
+[ -z "$idNames" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; exit; }
 
 IFS=$'\n';
 for i in $idNames; do
     echo 1working on $i
-    id1=${i% *}; name=${i#* };
+    id=${i% *}; name=${i#* };
     allDone=""
     IFS=$' '; 
-    for j in ${id1//\./ }; do 
+    for j in ${id//\./ }; do 
         echo 2working on $j
         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
-        [ -f "$path/$job.success" ] && echo -e This job was done! || { echo This job is not done yet: $job; allDone=no; }         
+        [ -f "$path/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; }         
     done
     if [ -z "$allDone" ]; then
+        date 
+        #ls -lrt $path 
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
         
         # look for the downstream job info:                            jobID,software, ref, inputs
@@ -69,7 +67,7 @@ for i in $idNames; do
         echo $output 
         IFS=' ' read -a arrIN <<< "$output"
     
-        id2=${arrIN[0]}
+        id=${arrIN[0]}
         software=${arrIN[1]}   
         ref=${arrIN[2]}
         inputs=${arrIN[3]}    
@@ -155,7 +153,7 @@ for i in $idNames; do
                 rm -r $OUT 2>/dev/null
 
                 echo got files in $jobRecordDir/stats:  
-                ls -lrt $jobRecordDir/stats
+                #ls -lrt $jobRecordDir/stats
                 
                 if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
                     output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
@@ -178,16 +176,16 @@ for i in $idNames; do
 
         echo looking partition for hour: $hours
         
-        setPartition $hours partition
+        adjustPartition $hours partition
         
         seconds=$(($time * 60))
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-        scontrol show job $id2                
-        echo running: scontrol update jobid=$id2 timelimit=$time partition=$partition MinMemoryNode=${mem}
-        scontrol update JobId=$id2 TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
-        scontrol show job $id2
+        #scontrol show job $id 
+        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
+        scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
+        #scontrol show job $id
 
-        #echo "scontrol update JobId=$id2 TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
+        #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else 
         echo Need wait for other jobs to finish before we can ajust mem and runtime...
     fi           

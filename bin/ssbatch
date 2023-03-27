@@ -48,8 +48,8 @@ usage() { echo -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-S s
 
 [[ "--help" == "$1" ]] && usage
 
-if [ -f ~/.smartSlurm/config.txt]; then 
-    source ~/.smartSlurm/confige.txt
+if [ -f ~/.smartSlurm/config.txt ]; then 
+    source ~/.smartSlurm/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi
@@ -335,37 +335,38 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #ls -l $flagDir/ 1>&2 
     elif [ -f log/keepRunningJobs.txt ]; then 
      
-        #set -x    
+        set -x    
         #cat log/allJobs.txt >&2
 
         #echo $flag >&2
         # check the third column for the job name, then find the the job id in column 1
-        id=`cat log/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1;}' | tail -n 1`
-        
+        out=`cat log/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
+        id=${out%% *}; de=${out##* }    
     
         if [ ! -z "$id" ]; then   
-            
-            # need re-run because it has upsteam needs to run 
-            if [ ! -z "$deps" ]; then 
-                #still runing, kill it
-                grep ^$id log/keepRunningJobs.txt 2>/dev/null && scancel $id 
-                echo $deps
+            if `grep ^$id log/keepRunningJobs.txt 2>/dev/null`; then 
+                # the dependency is not changed from the last submit 
+                if [[ "$depsO" == "$de" ]]; then 
+                    echo thisJobStillRunning $id here&& exit
+                else    
+                    scancel $id 
+                fi
+                #echo $deps
+
+                # comment out because deps can include the upstream jobs
                 # check if the upseam jobs still running
-                dep=`grep ^$id log/keepRunningJobs.txt 2>/dev/null | cut -d' ' -f2`
+                # dep=`grep ^$id log/keepRunningJobs.txt | cut -d' ' -f2`
                 
-                if [[ "$dep" != "null" ]]; then 
-                    for t in ${dep//\./ }; do
-                        #still runnig, add to the dependency
-                        grep ^$t log/keepRunningJobs.txt 2>/dev/null && deps=$deps:$t && depsO=$depsO.$t
-                    done
+                # if [[ "$dep" != "null" ]]; then 
+                #     for t in ${dep//\./ }; do
+                #         #still runnig, add to the dependency
+                #         grep ^$t log/keepRunningJobs.txt 2>/dev/null && deps=$deps:$t && depsO=$depsO.$t
+                #     done
                 
-                fi 
-                
-            else       
-                echo thisJobStillRunning && exit
-            fi    
+                # fi  
+            fi 
         fi
-        #set +x 
+        set +x 
     fi    
     #ls $flagDir/$flag.* 1>&2
     rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
@@ -471,7 +472,7 @@ if [ -z "$deps" ] &&  [[ "$inputs" != "none" ]]; then
                 rm -r $OUT 2>/dev/null
 
                 echo got files in $jobRecordDir/stats:  
-                ls -lrt $jobRecordDir/stats
+                #ls -lrt $jobRecordDir/stats
                 
                 if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
                     output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
@@ -519,7 +520,7 @@ elif [[ "$inputs" == "none" ]]; then
             convert $OUT/timeMem.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.stat.noInput.pdf 2>/dev/null
             pdftoppm $jobRecordDir/stats/$software.$ref.stat.noInput.pdf  -png > $jobRecordDir/stats/$software.$ref.stat.noInput.png 2>/dev/null
             
-            rows=`wc -l $jobRecordDir/stats/$software.$ref.mem.stat.noInput 2>/dev/null || echo 0 | cut -f 1 -d " "` 
+            rows=`{ wc -l $jobRecordDir/stats/$software.$ref.mem.stat.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "` 
         
             rm -r $OUT 2>/dev/null 
         fi
@@ -567,7 +568,7 @@ hours=$(($day * 24 + $hour + ($min + 59 + ($sec + 59) / 60 ) / 60))
 
 #echo looking partition for hour: $hours 
 
-partition=`adjustPartition $hours $partition`
+adjustPartition $hours $partition
 
 time=$day-$hour:$min:$sec
 
@@ -619,7 +620,7 @@ fi
 
 # echo "emailAndRecord.sh \"$software\" \"${ref//\//-}\" \"$flag\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$time\"" >> $job #  >/dev/null" >> $job 
 
-# echo "adjustDownStreamJobs.sh $flagDir $flag" >> $job 
+# echo "adjustDownStreamJobs.sh $flagDir" >> $job 
 
 # echo "[ -f $succFlag ] ||  { touch $failFlag; exit 1; }" >> $job
 

@@ -8,8 +8,8 @@ usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn me
 
 echoerr Running: estimateMemTime.sh $@
 
-if [ -f ~/.smartSlurm/config.txt]; then 
-    source ~/.smartSlurm/confige.txt
+if [ -f ~/.smartSlurm/config.txt ]; then 
+    source ~/.smartSlurm/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi

@@ -66,7 +66,7 @@ echo "[ -f log/allJobs.txt ] && [ ! -f log/keepRunningJobs.txt ] && mv log/allJo
 
 echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt log/*requeued* 2>/dev/null" >> $run
 
-echo "[ ! -f log/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs> log/allJobs.txt" >> $run 
+echo "[ ! -f log/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs  > log/allJobs.txt || echo Resubmitting >> log/allJobs.txt" >> $run  
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
@@ -227,7 +227,7 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
 
-        echo "${splace} echo -e \"get output fom ssbatch: \$id\"" >> $run 
+        echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run 
         
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 
@@ -235,13 +235,15 @@ for t in `cat ${1%% *}`; do
 
         echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
 
+        echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
+
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
         
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
-        echo "${space}    jobID[$step]=\"\"; echo This job was submitted earlier, and is still running."  >> $run
-        
+        echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run  
+        ech
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 

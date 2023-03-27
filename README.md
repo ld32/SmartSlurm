@@ -119,7 +119,7 @@ ________________________________________________________________________________
 
 2) Auto choose partition according to run-time request
 
-smartSlrm/config/confige.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
+smartSlrm/config/config.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
 \# Genernal partions, ordered by maximum allowed run-time in hours 
 
@@ -629,7 +629,7 @@ start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
 jobStatus: COMPLETED
 Added this line to $jobRecordDir/myJobRecord.txt:
 46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useSomeMemTimeAccordingInputSize.sh,none,1.0.useSomeMemTimeAccordingInputSize.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useSomeMemTimeAccordingInputSize.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useSomeMemTimeAccordingInputSize.sh -R none -F 1.0.useSomeMemTimeAccordingInputSize.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useSomeMemTimeAccordingInputSize.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
-Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log 1.0.useSomeMemTimeAccordingInputSize.sh.1
+Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log
 Find current job id (flag: 1.0.useSomeMemTimeAccordingInputSize.sh.1):
 46631
 
@@ -1525,7 +1525,7 @@ ________________________________________________________________________________
 
 2) Auto choose partition according to run-time request
 
-smartSlrm/config/confige.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
+smartSlrm/config/config.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
 
 \# Genernal partions, ordered by maximum allowed run-time in hours 
 

@@ -37,23 +37,20 @@ adjustPartition() {
         partition=partition${i}Name
         partition=${!partition}
         [ -z "$partition" ] && continue
-        #partitionTime=partition${i}TimeLimit  
         if [[ "$partition" ==  "$partitionO" ]]; then 
-            echo $partition
             return
         fi        
     done 
-    
+   
     for i in {1..5}; do 
         partition=partition${i}Name
         [ -z ""${!partition}"" ] && continue
         partitionTime=partition${i}TimeLimit  
-        if [ $hours -le  "${!partitionTime}" ]; then 
-            [ -z "$partitionN" ] && partitionN=${!partition}
-            [[ "$partitionO" == "${!partition}" ]] && partitionN=$partitionO && break
+        if [ $hours -le  "${!partitionTime}" ]; then  
+            partition=${!partition}
+            break
         fi        
-    done    
-    echo ${partitionN}
+    done
 } 
 export -f adjustPartition
 
