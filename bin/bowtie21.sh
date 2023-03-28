@@ -19,7 +19,7 @@ echo Current loaded modules: `module list`
 
 # set up bowtie2 index paths 
 path=`which sbatchRun`
-source ${path%\/bin\/sbatchRun}/config/config.txt
+source ${path%\/bin\/ssbatch}/config/config.txt
 
 if [ -z "${reference}" ]; then
     if [ ! -z "$bowtieIndex" ]; then 

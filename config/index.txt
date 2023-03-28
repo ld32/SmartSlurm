@@ -1,0 +1,80 @@
+SHARED_DATABASES=/n/shared_db/igenome/03032016
+
+#### Bowtie Indexes:
+Bowtie2mm10="$SHARED_DATABASES/Mus_musculus/UCSC/mm10/Sequence/Bowtie2Index/genome"
+Bowtie2dm3="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm3/Sequence/Bowtie2Index/genome"
+Bowtie2dm6="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm6/Sequence/Bowtie2Index/genome"
+Bowtie2hg18="$SHARED_DATABASES/Homo_sapiens/UCSC/hg18/Sequence/Bowtie2Index/genome"
+Bowtie2hg19="$SHARED_DATABASES/Homo_sapiens/UCSC/hg19/Sequence/Bowtie2Index/genome"
+Bowtie2hg38="$SHARED_DATABASES/Homo_sapiens/UCSC/hg38/Sequence/Bowtie2Index/genome"
+    
+#### bwa indexes:     
+bwamm10="$SHARED_DATABASES/Mus_musculus/UCSC/mm10/Sequence/BWAIndex/genome.fa"
+bwadm3="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm3/Sequence/BWAIndex/genome.fa"
+bwadm6="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm6/Sequence/BWAIndex/genome.fa"
+bwahg18="$SHARED_DATABASES/Homo_sapiens/UCSC/hg18/Sequence/BWAIndex/genome.fa"
+bwahg19="$SHARED_DATABASES/Homo_sapiens/UCSC/hg19/Sequence/BWAIndex/genome.fa"
+bwahg38="$SHARED_DATABASES/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa"
+
+#### gtf files:     
+gtfmm10="$SHARED_DATABASES/Mus_musculus/UCSC/mm10/Annotation/Genes/genes.gtf"
+gtfdm3="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm3/Annotation/Genes/genes.gtf"
+gtfdm6="$SHARED_DATABASES/Drosophila_melanogaster/UCSC/dm6/Annotation/Genes/genes.gtf"
+gtfhg18="$SHARED_DATABASES/Homo_sapiens/UCSC/hg18/Annotation/Genes/genes.gtf"
+gtfhg19="$SHARED_DATABASES/Homo_sapiens/UCSC/hg19/Annotation/Genes/genes.gtf"
+gtfhg38="$SHARED_DATABASES/Homo_sapiens/UCSC/hg38/Annotation/Genes/genes.gtf"
+
+#### kallisto/0.43.1 index 
+kallisto0_43_1GRCh38="/n/shared_db/GRCh38/91/kallisto/0.43.1/GRCh38"
+kallisto0_43_1GRCm38="/n/shared_db/GRCm38/91/kallisto/0.43.1/GRCm38"
+kallisto0_43_1BDGP6="/n/shared_db/BDGP6/91/kallisto/0.43.1/BDGP6"
+kallisto0_43_1GRCz10="/n/shared_db/GRCz10/91/kallisto/0.43.1/GRCz10"
+
+#### rsem bowtie2 indexes
+rsemBowtie2mm10="/n/shared_db/mm10/rsem/1.3.0/mm10"
+rsemBowtie2hg19="/n/shared_db/hg19/rsem/1.3.0/hg19" 
+rsemBowtie2GRCz10="/n/shared_db/GRCz10/rsem/1.3.0/GRCz10"
+    
+#### hisat2 files
+hisat2dm6Index="/n/shared_db/dm6/hisat2/2.1.0/genome"
+hisat2dm6Splice="/n/shared_db/dm6/hisat2/2.1.0/splicesites.txt"
+hisat2dm6GTF="/n/shared_db/dm6/hisat2/2.1.0/genes.gtf"
+
+hisat2mm10Index="/n/shared_db/mm10/hisat2/2.1.0/genome"
+hisat2mm10Splice="/n/shared_db/mm10/hisat2/2.1.0/splicesites.txt"
+hisat2mm10GTF="/n/shared_db/mm10/hisat2/2.1.0/genes.gtf"
+
+hisat2hg19Index="/n/shared_db/hg19/hisat2/2.1.0/genome"
+hisat2hg19Splice="/n/shared_db/hg19/hisat2/2.1.0/splicesites.txt"
+hisat2hg19GTF="/n/shared_db/hg19/hisat2/2.1.0/genes.gtf"
+
+hisat2GRCz10Index="/n/shared_db/GRCz10/hisat2/2.1.0/genome"
+hisat2GRCz10Splice="/n/shared_db/GRCz10/hisat2/2.1.0/splicesites.txt"
+hisat2GRCz10GTF="/n/shared_db/GRCz10/hisat2/2.1.0/genes.gtf"
+
+hisat2GRCz11Index="/n/shared_db/GRCz11/hisat2/2.1.0/genome"
+hisat2GRCz11Splice="/n/shared_db/GRCz11/hisat2/2.1.0/splicesites.txt"
+hisat2GRCz11GTF="/n/shared_db/GRCz11/hisat2/2.1.0/genes.gtf"
+
+#### star index 
+starmm10index="$SHARED_DATABASES/Mus_musculus/UCSC/mm10/Sequence/starIndex"
+starmm10gtf="$SHARED_DATABASES/Mus_musculus/UCSC/mm10/Annotation/Genes/genes.gtf"
+
+starhg18index="$SHARED_DATABASES/Homo_sapiens/UCSC/hg18/Sequence/starIndex"
+starhg18gtf="$SHARED_DATABASES/Homo_sapiens/UCSC/hg18/Annotation/Genes/genes.gtf"
+
+starhg19index="$SHARED_DATABASES/Homo_sapiens/UCSC/hg19/Sequence/starIndex"
+starhg19gtf="$SHARED_DATABASES/Homo_sapiens/UCSC/hg19/Annotation/Genes/genes.gtf"
+
+starhg38index="/n/shared_db/igenome/03032016/Homo_sapiens/UCSC/hg38/Sequence/star2.5.4a"
+starhg38gtf="/n/shared_db/igenome/03032016/Homo_sapiens/UCSC/hg38/Annotation/Genes/genes.gtf"
+
+
+
+
+
+
+
+
+    
+    

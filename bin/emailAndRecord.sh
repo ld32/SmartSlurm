@@ -5,7 +5,7 @@
 # to call this:  0     1         2        3         4          5     6     7       8    9    
 #emailAndRecord.sh "$software" "$ref" "$flag" "$inputSize"   $core $memO  $timeO  $mem  $time 
                 
-para="$USER $1 $2 $3 $4 $5 $6 $7 $8 $9";  out=flag/"${3}.out"; err=flag/"${3}.err"; script=flag/"${3}.sh"; succFile=flag/"${3}.success";   
+para="$USER $1 $2 $3 $4 $5 $6 $7 $8 $9";  out=log/"${3}.out"; err=log/"${3}.err"; script=log/"${3}.sh"; succFile=log/"${3}.success";   
 
 if [[ "$4" != "0" ]]; then
 

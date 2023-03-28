@@ -34,8 +34,8 @@ if [ ! -z "${ids/ /}" ]; then
     if [[ "$x" == "y" ]]; then
         for id in $ids; do 
           scancel $id
-          echo touching flag/${nmap[$id]}.user.killed
-          touch flag/${nmap[$id]}.user.killed
+          echo touching log/${nmap[$id]}.user.killed
+          touch log/${nmap[$id]}.user.killed
         done
     else
         exit 1

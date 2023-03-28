@@ -32,8 +32,8 @@ if [ ! -z "${ids/ /}" ]; then
     echo the following jobs are not finished yet:
     echo -e "$notDone"
     echo -e "Do you want to cancell all running jobs? " >&2
-    echo -e "y:        Cancel all running jobs and re-run the whole pipiline (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
-    echo -e "n:        Not cancel the running jobs, only submit other jobs (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
+    echo -e "y:        Cancel all pending/running jobs and re-run the whole pipiline (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
+    echo -e "n:        Not cancel the pending/running jobs, only submit other jobs (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
     echo -e "Enter:    Quit, don't anything." >&2
     read -p "" x </dev/tty
 
@@ -41,11 +41,11 @@ if [ ! -z "${ids/ /}" ]; then
         for id in $ids; do #`echo -e "$ids" | cut -d' ' -f1`; do
           scancel $id
           echo ${nmap[$id]} cancelled.
-          touch logs/${nmap[$id]}.user.killed
+          touch log/${nmap[$id]}.user.killed
         done
     elif [[ "$x" == "n" ]]; then 
-        #cat logs/allJobs.txt.old >> logs/allJobs.txt
-        #echo -e  "$notDone" > logs/keepRunningJobs.txt
+        #cat log/allJobs.txt.old >> log/allJobs.txt
+        echo -e  "$notDone" > log/keepRunningJobs.txt
         echo This is still under development!
         exit 1
     else
