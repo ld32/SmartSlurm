@@ -47,7 +47,7 @@ if [ ! -z "${ids/ /}" ]; then
         #cat log/allJobs.txt.old >> log/allJobs.txt
         echo -e  "$notDone" > log/keepRunningJobs.txt
         echo This is still under development!
-        #exit 1
+        exit 1
     else
         exit 1
     fi

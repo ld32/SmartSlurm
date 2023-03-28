@@ -344,7 +344,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         id=${out%% *}; de=${out##* }    
     
         if [ ! -z "$id" ]; then   
-            if `grep ^$id log/keepRunningJobs.txt 2>/dev/null`; then 
+            if grep ^$id log/keepRunningJobs.txt 1>/dev/null; then 
                 # the dependency is not changed from the last submit 
                 if [[ "$depsO" == "$de" ]]; then 
                     echo thisJobStillRunning $id here&& exit
