@@ -2,8 +2,8 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6       7        8       9    10      11       12           13    14 
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO    $mem  $time  $partition slurmAcc  inputs original.sbatch.command
+# to call this:  0     1           2           3       4         5          6       7        8    9    10      11       12           13 
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
 
 
 echo Running $0 $@
@@ -14,6 +14,7 @@ else
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi
 
+#touch /tmp/job_$SLURM_JOB_ID.done
 if [[ -z "$1" ]]; then 
 
    #out=$4.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed; 
@@ -26,6 +27,9 @@ fi
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
 #sacct=`cat ~/fakeSacct.txt`
+
+#sacct report is not accurate, let us use the total memory
+totalM=${sacct##*,mem=}; totalM=${totalM%%M,n*}
 
 echo -e "\nJob summary:\n$sacct"
 # echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
@@ -47,7 +51,7 @@ FINISH=`date -d "$FINISH" +%s`
 mins=$((($FINISH - $START + 59)/60))
 
 # memory in M
-mem=`echo $jobStat | cut -d" " -f5`
+memSacct=`echo $jobStat | cut -d" " -f5`
 
 # node
 node=`echo $jobStat | cut -d" " -f7`
@@ -76,8 +80,17 @@ esac
 [[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && rm $succFile
 
 echo -e  "Last row of job summary: $jobStat" 
-echo start: $START finish: $FINISH mem: $mem mins: $mins
-echo jobStatus: $jobStatus
+echo start: $START finish: $FINISH mem: $memSacct mins: $mins
+
+# sacct actually give very not accurate result. Let's use cgroup report
+#mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
+
+mem=`cat /tmp/job_$SLURM_JOBID.maxMem.txt`
+mem=$((mem / 1024 / 1024 ))M
+
+rm /tmp/job_$SLURM_JOBID.*
+
+echo jobStatus: $jobStatus cgroupMaxMem: $mem 
 
 # sometimes, the last row say srun cancelled, but the job is actually out of memory or out
 if [[ $jobStatus == "Cancelled" ]]; then  
@@ -91,7 +104,7 @@ if [[ $jobStatus == "Cancelled" ]]; then
 fi
 
 inputs=${13}
-inputSize=$5     # input doe snot exist when job was submitted.
+inputSize=$5     # input does not exist when job was submitted.
 if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
@@ -101,8 +114,8 @@ if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
         exit 
     fi
 fi    
-    
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,,$2,$3,$4,$6,`date`"
+                                #defult,  given,      cGroupUsed                        acct used      
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,${10},${mem%M},${mins},$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,`date`"
 
     
 if [ ! -z "$record" ]; then
@@ -110,7 +123,7 @@ if [ ! -z "$record" ]; then
         
     if [[ $jobStatus == "COMPLETED" ]]; then 
         memm=${mem%M*}
-        if [ "$inputSize" == 0 ]; then # || "$2" == "regularSbatch" ]] ; then
+        if [ "$inputSize" == 0 ] && [[ "$mins" != 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
             maxMem=`cat $jobRecordDir/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
             maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
             
@@ -136,7 +149,7 @@ if [ ! -z "$record" ]; then
         fi
     else
         # todo: may not need failed job records?
-        echo # $record >> $jobRecordDir/jobRecord.txt
+        echo $record >> $jobRecordDir/jobRecord.txt
         #echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
     fi
     echo Final mem usage: $mem, time usage: $mins minutes
@@ -152,18 +165,19 @@ if [ ! -f $succFile ]; then
         
         
 
-        jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
+        #jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
 
-        mem=${jobStat#*mem=}; mem=${mem%M*}
-
-
-        [ "$mem" -lt 500 ] && mem=500 # at least 500M
+        #mem=${jobStat#*mem=}; mem=${mem%M*}
 
 
-        if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
-            mem=$(( $mem * 2 ))
+        #[ "$mem" -lt 1024 ] && mem=1024 # at least 500M
+        
+        
+
+        #if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
             
-            echo Trying to re-queue the job with memory: $mem
+            
+            #echo Trying to re-queue the job with memory: $mem
             
             # submit a small job to requeue the job, because it can not requeue itself
 #             p=`adjustPartition 1 short`
@@ -179,33 +193,44 @@ if [ ! -f $succFile ]; then
             # ) &
             # this works but need ssh to login nodes to run scontrol
             # put this block of code in to background and sleep, so that email run first before requeue 
-            ( sleep 5; 
+
+            echo Will re-queue after sending email...
             
+           
+            
+            ( sleep 5; 
             for try in {1..8}; do
                 if [ ! -f $failFile.requeued.$try ]; then
-                    echo trying to requeue $try
+                    mem=${mem%M}
+                    #mem=$(( $mem * ( 2 ^ $try ) ))
+                    [ $totalM -lt $mem ] && totalM=$mem
+
+                    # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
+                    mem=$(( $totalM * (1 + 1/e(0.1 * $try))))
+                    echo trying to requeue $try with $mem M
                     touch $failFile.requeued.$try 
                    
                     # 80G memory
                     #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
             
-        
-                    # let's try to requeue using login nodes
-                    for nodeIdx in {1..2}; do
-                        echo trying ssh to node $nodeIdx
-                        if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
-                            echo Requeued successfully from computer login0$nodeIdx
-                            [ -f $failFile ] && rm $failFile
-                            break
-                        fi    
-                    done  
-                    #break
+                    
+                        # let's try to requeue using login nodes
+                        for nodeIdx in {1..2}; do
+                            echo trying ssh to node $nodeIdx
+                            if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
+                                echo Requeued successfully from computer login0$nodeIdx
+                                [ -f $failFile ] && rm $failFile
+                                break
+                            fi    
+                        done  
+                    # ) &
+                    break
                 fi
             done ) &
-        else
-            echo Could not find the original mem value.
-            echo Job failed of out-of-memory. Please resubmit with more memory check youself.
-        fi  
+        #else
+           # echo Could not find the original mem value.
+        #    echo Job failed of out-of-memory. Please resubmit with more memory check youself.
+        #fi  
         
         # delete stats and redo them
         if [ "$inputSize" == 0 ]; then
@@ -252,16 +277,19 @@ if [ ! -f $succFile ]; then
 
                 # echo $day $day,  $hour hour,  $min min,  $sec sec
 
+                factor=$((1 + 1/e(0.1 * $try)))
                 # # how many hours for sbatch command if we double the time
                 # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
+                #mins=${10} # the orignal estimated time
+
                 [ "$mins" -lt 20 ] && mins=20 # at least 20 minutes
 
-                hours=$((($mins * 2 + 59) / 60))
+                hours=$((($mins * $factor + 59) / 60))
 
                 adjustPartition $hours $partition
 
-                seconds=$(($mins * 2 * 60))
+                seconds=$(($mins * $factor  * 60))
 
                 #[ $seconds -le 60 ] && time=11:0 && seconds=60
 
@@ -289,6 +317,8 @@ if [ ! -f $succFile ]; then
          # delete stats and redo them
         if [ "$inputSize" == 0 ]; then
             rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
+
+            #[ -f $jobRecordDir/stats/$2.$3.mem.stat.noInput ] && mv $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.mem.stat.noInput.$(stat -c %y $jobRecordDir/stats/$2.$3.mem.stat.noInput | tr " " ".")
         else 
             rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 2>/dev/null
         fi 
@@ -303,7 +333,7 @@ echo "Sending email..."
 
 minimumsize=9000
 
-actualsize=`wc -c $out`
+actualsize=`wc -c $out || echo 0`
 
 [ -f $succFile ] && s="Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME" 
 
@@ -337,6 +367,8 @@ echo
 
 # wait for email to be sent
 sleep 20
+
+#rm /tmp/job_$SLURM_JOB_ID.*
 
 #[ -f $succFile ] && exit 0  
 

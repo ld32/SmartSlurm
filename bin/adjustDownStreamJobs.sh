@@ -6,9 +6,6 @@ Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through 
 
 echo 
 
-extraMin=20
-extraMem=500
-
 echo Running: $0  $@
 
 if [ -f ~/.smartSlurm/config.txt ]; then 
@@ -179,7 +176,7 @@ for i in $output; do
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
         
-        touch logs/$name.adjusted
+        touch log/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else 
         echo Need wait for other jobs to finish before we can ajust mem and runtime...
