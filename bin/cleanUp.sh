@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x 
+set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8    9    10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
@@ -29,7 +29,7 @@ sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,
 #sacct=`cat ~/fakeSacct.txt`
 
 #sacct report is not accurate, let us use the total memory
-totalM=${sacct##*,mem=}; totalM=${totalM%%M,n*}
+totalM=${sacct#*,mem=}; totalM=${totalM%%M,n*}
 
 echo -e "\nJob summary:\n$sacct"
 # echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
@@ -115,7 +115,7 @@ if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
     fi
 fi    
                                 #defult,  given,      cGroupUsed                        acct used      
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,${10},${mem%M},${mins},$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,`date`"
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,`date`"
 
     
 if [ ! -z "$record" ]; then
@@ -196,36 +196,55 @@ if [ ! -f $succFile ]; then
 
             echo Will re-queue after sending email...
             
-           
+           [ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
             
             ( sleep 5; 
             for try in {1..8}; do
                 if [ ! -f $failFile.requeued.$try ]; then
                     mem=${mem%M}
                     #mem=$(( $mem * ( 2 ^ $try ) ))
-                    [ $totalM -lt $mem ] && totalM=$mem
+                    [ "$totalMC" -gt $mem ] && mem="$totalMC"
+                    [ "$totalM" -gt "$mem" ] && mem=$totalM
 
+                    [ ! -z "$lastTotal" ] && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
+                    #alpha=1
+                    #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
+                    
+                    if [ $mem -lt 1024 ]; then 
+                        mem=1024
+                        newFactor=5
+                    elif [ $mem -lt 10240 ]; then 
+                        newFactor=2
+                    elif [ $mem -lt 51200 ]; then 
+                        newFactor=1.5
+                    else 
+                        newFactor=1.2
+                    fi            
+                    
+                    mem=`echo "$mem*$newFactor/1" | bc`
                     # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
-                    mem=$(( $totalM * (1 + 1/e(0.1 * $try))))
+                    #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
+                    #mem=4000
                     echo trying to requeue $try with $mem M
-                    touch $failFile.requeued.$try 
+                    echo $mem > $failFile.requeued.$try 
                    
                     # 80G memory
                     #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
-            
                     
-                        # let's try to requeue using login nodes
-                        for nodeIdx in {1..2}; do
-                            echo trying ssh to node $nodeIdx
-                            if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then 
-                                echo Requeued successfully from computer login0$nodeIdx
-                                [ -f $failFile ] && rm $failFile
-                                break
-                            fi    
-                        done  
-                    # ) &
-                    break
-                fi
+                    #if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+
+                    if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
+                        echo Requeued successfully from computer login0$nodeIdx
+                        [ -f $failFile ] && rm $failFile
+
+                        s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
+                        echo -e "" | mail -s "$s" $USER
+
+                        break
+                    fi    
+                else 
+                    lastTotal=`cat $failFile.requeued.$try`
+                fi    
             done ) &
         #else
            # echo Could not find the original mem value.
@@ -233,11 +252,29 @@ if [ ! -f $succFile ]; then
         #fi  
         
         # delete stats and redo them
-        if [ "$inputSize" == 0 ]; then
+        if [ "$inputs" == "none" ]; then
             rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
         else 
-            rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 2>/dev/null
+            # remove bad records
+            if [ -f $jobRecordDir/stats/$2.$3.mem.stat ]; then 
+                .  $jobRecordDir/stats/$2.$3.mem.stat 
+                Finala=`printf "%.15f\n" $Finala`
+                Finalb=`printf "%.15f\n" $Finalb`
+                Maximum=`printf "%.15f\n" $Maximum`
+                echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+
+                awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $7)) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
+                mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
+                rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 
+            fi
         fi 
+
+        # awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' /home/ld32/.smartSlurm/jobRecord.txt
+
+# awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+
+
         #rm $jobRecordDir/stats/$2.$3.mem.stat* $jobRecordDir/stats/$2.$3.time.stat* 2>/dev/null
         #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
         #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
@@ -277,13 +314,14 @@ if [ ! -f $succFile ]; then
 
                 # echo $day $day,  $hour hour,  $min min,  $sec sec
 
-                factor=$((1 + 1/e(0.1 * $try)))
+                factor=2 #$((1 + 1/e(0.1 * $try)))
+
                 # # how many hours for sbatch command if we double the time
                 # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
                 #mins=${10} # the orignal estimated time
 
-                [ "$mins" -lt 20 ] && mins=20 # at least 20 minutes
+                [ "$mins" -lt 60 ] && mins=60 # at least 20 minutes
 
                 hours=$((($mins * $factor + 59) / 60))
 
@@ -303,7 +341,7 @@ if [ ! -f $succFile ]; then
                     scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
                 else 
                     scontrol update jobid=$SLURM_JOBID TimeLimit=$time
-                    scontrol update jobstep=123456.2 TimeLimit=02:00:00
+                    #scontrol update jobstep=123456.2 TimeLimit=02:00:00
 
                 fi 
 
@@ -311,16 +349,32 @@ if [ ! -f $succFile ]; then
 
                 [ -f $failFile ] && rm $failFile
 
+
+                s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
+                echo -e "" | mail -s "$s" $USER
+
                 break
             fi
         done 
          # delete stats and redo them
-        if [ "$inputSize" == 0 ]; then
+        if [[ "$inputs" == "none" ]]; then
             rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
 
             #[ -f $jobRecordDir/stats/$2.$3.mem.stat.noInput ] && mv $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.mem.stat.noInput.$(stat -c %y $jobRecordDir/stats/$2.$3.mem.stat.noInput | tr " " ".")
         else 
-            rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 2>/dev/null
+             # remove bad records
+            if [ -f $jobRecordDir/stats/$2.$3.time.stat ]; then 
+                .  $jobRecordDir/stats/$2.$3.time.stat
+                Finala=`printf "%.15f\n" $Finala`
+                Finalb=`printf "%.15f\n" $Finalb`
+                Maximum=`printf "%.15f\n" $Maximum`
+                echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+
+                awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $8 ) ) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
+                mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
+                rm $jobRecordDir/stats/$2.$3.time.stat $jobRecordDir/stats/$2.$3.time.stat
+            fi
         fi 
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.

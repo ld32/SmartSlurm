@@ -1,0 +1,6 @@
+Group1 1 2
+Group1 2 4
+Group1 3 5
+Group2 1 1
+Group2 2 3
+Group2 3 4

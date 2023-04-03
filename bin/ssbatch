@@ -610,14 +610,26 @@ echo Building new sbatch command ... >&2
 
 echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$timeO\" \"$mem\" \"$(($day * 24 * 60 + $hour * 60 + $min + 1))\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\"; }\" EXIT\ngetMaxMem.sh &\n" > $job
 
+[[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
+
+#echo "set -x" >> $job
+echo "if [ ! -f log/$flag.failed.requeued.1 ]; then" >> $job
+echo "   totalM=$totalM" >> $job
+echo "else " >> $job
+echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " >> $job
+echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
+echo "fi" >> $job 
+echo "srunM=\$((\$totalM - 10))M" >> $job
+echo "[ \${srunM%M} -le 1 ] && mem=20M && srunM=10M" >> $job
+
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    echo "srun -n 1 $slurmAcc bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
+    echo "srun --mem \$srunM -n 1 $slurmAcc bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
 else 
     grep "^#SBATCH" $slurmScript >> $job || : >> $job
     #echo "touch $startFlag" >> $job
-    echo "srun -n 1 $slurmAcc bash -e -c \"{ sh $slurmScript $slurmScriptParas; } && touch $succFlag\"" >> $job 
+    echo "srun -mem \$srunM -n 1 $slurmAcc bash -e -c \"{ sh $slurmScript $slurmScriptParas; } && touch $succFlag\"" >> $job 
 fi
 #echo "kill -9 \$mypid" >> $job
 #echo "sleep 15 # wait slurm get the job status into its database" >> $job 
@@ -643,7 +655,7 @@ fi
 # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
 # testing
-#mem=50M
+#mem=2000M
 
 if [ -z "$logDir" ]; then
     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
