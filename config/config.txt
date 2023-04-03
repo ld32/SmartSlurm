@@ -60,4 +60,4 @@ defaultTime=2:0:0
 jobRecordDir=~/.smartSlurm
 
 extraMin=5      # in min. extra minutes than the estimated time
-extraMem=500  # in M. extra memory than the estinated memory
+extraMem=500    # in M. extra memory than the estinated memory
