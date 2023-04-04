@@ -625,7 +625,7 @@ echo "   totalM=\`cat log/$flag.adjust\`" >> $job
 #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 echo "fi" >> $job 
 echo "srunM=\$((\$totalM - 15))M" >> $job
-
+ 
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
