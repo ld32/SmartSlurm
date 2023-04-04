@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x 
+#set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8    9    10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
@@ -196,17 +196,16 @@ if [ ! -f $succFile ]; then
 
             echo Will re-queue after sending email...
             
-           [ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
+           [[ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
             
             ( sleep 5; 
             for try in {1..8}; do
-                if [ ! -f $failFile.requeued.$try ]; then
+                if [ ! -f $failFile.requeued.$try.mem ]; then
                     mem=${mem%M}
                     #mem=$(( $mem * ( 2 ^ $try ) ))
                     [ "$totalMC" -gt $mem ] && mem="$totalMC"
                     [ "$totalM" -gt "$mem" ] && mem=$totalM
-
-                    [ ! -z "$lastTotal" ] && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
+                    [ -f ${out%.out}.adjust ] && lastTotal=`cat ${out%.out}.adjust` && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
                     #alpha=1
                     #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
                     
@@ -226,7 +225,7 @@ if [ ! -f $succFile ]; then
                     #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
                     #mem=4000
                     echo trying to requeue $try with $mem M
-                    echo $mem > $failFile.requeued.$try 
+                    echo $mem > ${out%.out}.adjust
                    
                     # 80G memory
                     #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
@@ -234,7 +233,7 @@ if [ ! -f $succFile ]; then
                     #if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
 
                     if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
-                        echo Requeued successfully from computer login0$nodeIdx
+                        echo Requeued successfully
                         [ -f $failFile ] && rm $failFile
 
                         s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
@@ -242,8 +241,7 @@ if [ ! -f $succFile ]; then
 
                         break
                     fi    
-                else 
-                    lastTotal=`cat $failFile.requeued.$try`
+            
                 fi    
             done ) &
         #else
@@ -264,6 +262,7 @@ if [ ! -f $succFile ]; then
                 echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
                 awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $7)) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                echo diff output:
                 diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
                 mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
                 rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 
@@ -297,14 +296,14 @@ if [ ! -f $succFile ]; then
     elif [[ "$jobStatus" == "OOT" ]]; then
         
         for try in {1..8}; do
-            if [ ! -f $failFile.requeued.$try ]; then
+            if [ ! -f $failFile.requeued.$try.time ]; then
                 echo trying to requeue $try
-                touch $failFile.requeued.$try 
+                touch $failFile.requeued.$try.time 
 
                 # 80G memory
                 #[ "${mem%M}" -gt 81920 ] && [ "$try" -gt 2 ] && break
 
-                touch $failFile.requeued.$try 
+             
                 scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
 
                 # time=${10}
@@ -371,6 +370,7 @@ if [ ! -f $succFile ]; then
                 echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
                 awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $8 ) ) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                echo diff output: 
                 diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
                 mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
                 rm $jobRecordDir/stats/$2.$3.time.stat $jobRecordDir/stats/$2.$3.time.stat

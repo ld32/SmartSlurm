@@ -335,7 +335,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #ls -l $flagDir/ 1>&2 
     elif [ -f log/keepRunningJobs.txt ]; then 
      
-        set -x    
+        #set -x    
         #cat log/allJobs.txt >&2
 
         #echo $flag >&2
@@ -545,7 +545,8 @@ elif [ -z "$deps" ]; then
                     elif [ ! -z "$output" ]; then
                         mem=$((${output% *}+extraMem))M; time=$((${output#* }+extraMin));     
                         resAjust="$resAjust#Give ${extraMem}M extra memory and $extraMin more minutes. \n#So use this to submit the job: $mem  ${time}m"
-                    fi 
+                    fi
+                    #echo got estimation $output  
                 fi        
             fi
             rm -r $OUT 2>/dev/null
@@ -612,15 +613,18 @@ echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$softwa
 
 [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
+[ $totalM -lt 20 ] && totalM=20
+
 #echo "set -x" >> $job
-echo "if [ ! -f log/$flag.failed.requeued.1 ]; then" >> $job
+echo "if [ ! -f log/$flag.adjust ]; then" >> $job
 echo "   totalM=$totalM" >> $job
 echo "else " >> $job
-echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " >> $job
-echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
+echo "   totalM=\`cat log/$flag.adjust\`" >> $job
+## todo: this might work if cluster is bussy, may need sleep more or get the data from a text file
+#echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " #>> $job
+#echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 echo "fi" >> $job 
-echo "srunM=\$((\$totalM - 10))M" >> $job
-echo "[ \${srunM%M} -le 1 ] && mem=20M && srunM=10M" >> $job
+echo "srunM=\$((\$totalM - 15))M" >> $job
 
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
@@ -658,9 +662,9 @@ fi
 #mem=2000M
 
 if [ -z "$logDir" ]; then
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
+    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem ${totalM}M -t $time --open-mode=append $slurmAcc"
 else
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem ${totalM}M -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || : 
 fi
 if [ -z "$slurmScript" ]; then 
@@ -673,6 +677,8 @@ fi
 
 echo -e "\n#Command used to submit the job:" >> $job
 echo "#$cmd" >> $job 
+
+#echo $resAjust
 
 echo New sbatch command to submit job: 
 echo $cmd 

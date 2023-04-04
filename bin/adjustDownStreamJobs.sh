@@ -161,6 +161,8 @@ for i in $output; do
         fi
     
         [ -z "$mem" ] && continue
+
+        [ "$mem" -lt 20 ] && mem=20 # at least 20M
         
         echo Got estimation inputsize: $inputSize mem: $mem  time: $time
         hours=$((($time + 59) / 60))
@@ -176,7 +178,8 @@ for i in $output; do
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
         
-        touch log/$name.adjusted
+        echo $mem > log/$name.adjust
+        #touch log/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else 
         echo Need wait for other jobs to finish before we can ajust mem and runtime...
