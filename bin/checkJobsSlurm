@@ -13,7 +13,7 @@ out=`squeue --noheader -u $USER -o "%.18i"`
 
 declare -A nmap
 
-lines=`tail -n +1  $1`
+lines=`tail -n -1  $1`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`

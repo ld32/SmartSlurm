@@ -2,7 +2,7 @@
 
 #set -x 
 
-# to call this:  0     1           2           3       4         5          6       7        8    9    10      11       12           13 
+# to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
 
 
@@ -29,7 +29,7 @@ sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,
 #sacct=`cat ~/fakeSacct.txt`
 
 #sacct report is not accurate, let us use the total memory
-totalM=${sacct#*,mem=}; totalM=${totalM%%M,n*}
+#totalM=${sacct#*,mem=}; totalM=${totalM%%M,n*}
 
 echo -e "\nJob summary:\n$sacct"
 # echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.
@@ -47,8 +47,10 @@ FINISH=`echo $jobStat | cut -d" " -f4`
 
 FINISH=`date -d "$FINISH" +%s`
 
+[ -z "$FINISH" ] && FINISH=`date +%s` && [ ]
+
 # time in minutes
-mins=$((($FINISH - $START + 59)/60))
+min=$((($FINISH - $START + 59)/60))
 
 # memory in M
 memSacct=`echo $jobStat | cut -d" " -f5`
@@ -77,20 +79,21 @@ esac
 # for testing
 #jobStatus="OOM"
 
-[[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && rm $succFile
+# sacct might give wrong resules
+[[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
 
 echo -e  "Last row of job summary: $jobStat" 
-echo start: $START finish: $FINISH mem: $memSacct mins: $mins
+echo start: $START finish: $FINISH mem: $memSacct min: $min
 
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-mem=`cat /tmp/job_$SLURM_JOBID.maxMem.txt`
-mem=$((mem / 1024 / 1024 ))M
+srunM=`cat /tmp/job_$SLURM_JOBID.maxMem.txt`
+srunM=$((srunM / 1024 / 1024 ))
 
 rm /tmp/job_$SLURM_JOBID.*
 
-echo jobStatus: $jobStatus cgroupMaxMem: $mem 
+echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
 
 # sometimes, the last row say srun cancelled, but the job is actually out of memory or out
 if [[ $jobStatus == "Cancelled" ]]; then  
@@ -114,46 +117,56 @@ if [ "$inputs" != "none" ] && [ "$5" == "0" ]; then
         exit 
     fi
 fi    
-                                #defult,  given,      cGroupUsed                        acct used      
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$9,${10},${mem%M},${mins},$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,`date`"
 
+[ -f ${out%.out}.adjust ] && totalM=`cat ${out%.out}.adjust | cut -d' ' -f1` || totalM=$9
+
+[ -f ${out%.out}.adjust ] && totalT=`cat ${out%.out}.adjust | cut -d' ' -f2` || totalT=${10}
+
+
+[ -f $jobRecordDir/stats/$2.$3.extraMem ] && extraMem=`cat $jobRecordDir/stats/$2.$3.extraMem`
+
+                                #defult, given,  cGroupUsed                 acct used      
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMem,$extraMin,`date`"
+echo dataToPlot,$record
     
-if [ ! -z "$record" ]; then
-    #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
+#if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
+    
+if [[ $jobStatus == "COMPLETED" ]] && [[ "$min" != 0 ]]; then 
+   
+    #if [[ "$inputSize" == 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
+        memRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '` 
+        timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
+    
+        #maxMem=`cat $jobRecordDir/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
+        #maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
+
+        if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
+            echo $record >> $jobRecordDir/jobRecord.txt
+            echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+            rm $jobRecordDir/stats/$2.$3.*  2>/dev/null
+        else 
+            echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
+        fi  
+    # else         
+    #     maxMem=`cat $jobRecordDir/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
         
-    if [[ $jobStatus == "COMPLETED" ]]; then 
-        memm=${mem%M*}
-        if [ "$inputSize" == 0 ] && [[ "$mins" != 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
-            maxMem=`cat $jobRecordDir/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
-            maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
-            
-            if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
-                echo $record >> $jobRecordDir/jobRecord.txt
-                echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
-                rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null
-            else 
-                echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
-            fi  
-        else         
-            maxMem=`cat $jobRecordDir/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
-            
-            maxTime=`cat $jobRecordDir/stats/$2.$3.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
-    
-            if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${memm%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$mins" ]; then
-                echo $record >> $jobRecordDir/jobRecord.txt
-                echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
-                rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat  2>/dev/null
-            else 
-                echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
-            fi  
-        fi
-    else
-        # todo: may not need failed job records?
-        echo $record >> $jobRecordDir/jobRecord.txt
-        #echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
-    fi
-    echo Final mem usage: $mem, time usage: $mins minutes
-fi    
+    #     maxTime=`cat $jobRecordDir/stats/$2.$3.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
+
+    #     if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${srunM%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$min" ]; then
+    #         echo $record >> $jobRecordDir/jobRecord.txt
+    #         echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+    #         rm $jobRecordDir/stats/$2.$3.*  2>/dev/null
+    #     else 
+    #         echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
+    #     fi  
+    # fi
+#else
+    # todo: may not need failed job records?
+#    echo $record >> $jobRecordDir/jobRecord.txt
+    #echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+fi
+echo Final mem usage: $srunM, time usage: $min minutes
+   
 
 # for testing
 #rm $succFile; jobStatus=OOM 
@@ -162,6 +175,7 @@ if [ ! -f $succFile ]; then
     touch $failFile
 
     if [[ "$jobStatus" == "OOM" ]]; then
+        
         
         
 
@@ -194,45 +208,51 @@ if [ ! -f $succFile ]; then
             # this works but need ssh to login nodes to run scontrol
             # put this block of code in to background and sleep, so that email run first before requeue 
 
-            echo Will re-queue after sending email...
+           echo Will re-queue after sending email...
+           #srunM=mem
+           
+
+            #[[ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
+            #[ "$totalMC" -gt $mem ] && mem="$totalMC"
+            #[ "$totalM" -gt "$mem" ] && mem=$totalM
             
-           [[ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
+            #[ -f ${out%.out}.adjust ] && lastTotal=`cat ${out%.out}.adjust | cut -d' ' -f1` && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
+            
+            extraMem=$(( totalM - srunM ))
+            [ ! -f $jobRecordDir/stats/$2.$3.extraMem ] || [`cat $jobRecordDir/stats/$2.$3.extraMem` -gt $extraMem ] || echo $extraMem  > $jobRecordDir/stats/$2.$3.extraMem  
             
             ( sleep 5; 
             for try in {1..8}; do
                 if [ ! -f $failFile.requeued.$try.mem ]; then
-                    mem=${mem%M}
                     #mem=$(( $mem * ( 2 ^ $try ) ))
-                    [ "$totalMC" -gt $mem ] && mem="$totalMC"
-                    [ "$totalM" -gt "$mem" ] && mem=$totalM
-                    [ -f ${out%.out}.adjust ] && lastTotal=`cat ${out%.out}.adjust` && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
+                    
                     #alpha=1
                     #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
                     
-                    if [ $mem -lt 1024 ]; then 
-                        mem=1024
+                    if [ $totalM -lt 1024 ]; then 
+                        totalM=1024
                         newFactor=5
-                    elif [ $mem -lt 10240 ]; then 
+                    elif [ $totalM -lt 10240 ]; then 
                         newFactor=2
-                    elif [ $mem -lt 51200 ]; then 
+                    elif [ $totalM -lt 51200 ]; then 
                         newFactor=1.5
                     else 
                         newFactor=1.2
                     fi            
                     
-                    mem=`echo "$mem*$newFactor/1" | bc`
+                    mem=`echo "$totalM*$newFactor/1" | bc`
                     # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
                     #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
                     #mem=4000
                     echo trying to requeue $try with $mem M
-                    echo $mem > ${out%.out}.adjust
+                    echo $mem $totalT > ${out%.out}.adjust
                    
                     # 80G memory
                     #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
                     
-                    #if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                    if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
 
-                    if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
+                    #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
                         echo Requeued successfully
                         [ -f $failFile ] && rm $failFile
 
@@ -251,21 +271,21 @@ if [ ! -f $succFile ]; then
         
         # delete stats and redo them
         if [ "$inputs" == "none" ]; then
-            rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.* 2>/dev/null
         else 
             # remove bad records
             if [ -f $jobRecordDir/stats/$2.$3.mem.stat ]; then 
-                .  $jobRecordDir/stats/$2.$3.mem.stat 
-                Finala=`printf "%.15f\n" $Finala`
-                Finalb=`printf "%.15f\n" $Finalb`
-                Maximum=`printf "%.15f\n" $Maximum`
-                echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+                # .  $jobRecordDir/stats/$2.$3.mem.stat 
+                # Finala=`printf "%.15f\n" $Finala`
+                # Finalb=`printf "%.15f\n" $Finalb`
+                # Maximum=`printf "%.15f\n" $Maximum`
+                # echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
-                awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $7)) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
-                echo diff output:
-                diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
-                mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
-                rm $jobRecordDir/stats/$2.$3.mem.stat $jobRecordDir/stats/$2.$3.time.stat 
+                # awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $7)) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                # echo diff output:
+                # diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
+                # mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
+                rm $jobRecordDir/stats/$2.$3.mem.* $jobRecordDir/stats/$2.$3.time.* 
             fi
         fi 
 
@@ -318,15 +338,15 @@ if [ ! -f $succFile ]; then
                 # # how many hours for sbatch command if we double the time
                 # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
 
-                #mins=${10} # the orignal estimated time
+                #min=${10} # the orignal estimated time
 
-                [ "$mins" -lt 60 ] && mins=60 # at least 20 minutes
+                [ "$min" -lt 20 ] && min=20 # at least 20 minutes
 
-                hours=$((($mins * $factor + 59) / 60))
+                hours=$((($min * $factor + 59) / 60))
 
                 adjustPartition $hours $partition
 
-                seconds=$(($mins * $factor  * 60))
+                seconds=$(($min * $factor  * 60))
 
                 #[ $seconds -le 60 ] && time=11:0 && seconds=60
 
@@ -343,7 +363,7 @@ if [ ! -f $succFile ]; then
                     #scontrol update jobstep=123456.2 TimeLimit=02:00:00
 
                 fi 
-
+                echo $totalM $(( min * factor )) > ${out%.out}.adjust
                 echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
 
                 [ -f $failFile ] && rm $failFile
@@ -357,23 +377,23 @@ if [ ! -f $succFile ]; then
         done 
          # delete stats and redo them
         if [[ "$inputs" == "none" ]]; then
-            rm $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.time.stat.noInput 2>/dev/null
+            rm $jobRecordDir/stats/$2.$3.* 2>/dev/null
 
             #[ -f $jobRecordDir/stats/$2.$3.mem.stat.noInput ] && mv $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.mem.stat.noInput.$(stat -c %y $jobRecordDir/stats/$2.$3.mem.stat.noInput | tr " " ".")
         else 
              # remove bad records
             if [ -f $jobRecordDir/stats/$2.$3.time.stat ]; then 
-                .  $jobRecordDir/stats/$2.$3.time.stat
-                Finala=`printf "%.15f\n" $Finala`
-                Finalb=`printf "%.15f\n" $Finalb`
-                Maximum=`printf "%.15f\n" $Maximum`
-                echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+                # .  $jobRecordDir/stats/$2.$3.time.stat
+                # Finala=`printf "%.15f\n" $Finala`
+                # Finalb=`printf "%.15f\n" $Finalb`
+                # Maximum=`printf "%.15f\n" $Maximum`
+                # echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
 
-                awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $8 ) ) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
-                echo diff output: 
-                diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
-                mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
-                rm $jobRecordDir/stats/$2.$3.time.stat $jobRecordDir/stats/$2.$3.time.stat
+                # awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $8 ) ) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+                # echo diff output: 
+                # diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
+                # mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
+                rm $jobRecordDir/stats/$2.$3.*
             fi
         fi 
     else 

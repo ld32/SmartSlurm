@@ -51,6 +51,8 @@ for i in $output; do
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]} 
     [[ "$inputs" == "none" ]] && continue
+
+    [ -f $jobRecordDir/stats/$software.$ref.extraMem ] && extraMem=`cat $jobRecordDir/stats/$software.$ref.extraMem`
     
     allDone=""
     IFS=$' '; 
@@ -74,8 +76,8 @@ for i in $output; do
                 echo "Input size is too big for the curve to estimate! Use default mem and runtime to submit job."
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
-                mem=$((${output% *}+extraMem)); time=$((${output#* }+extraMin));     
-                echo "Give ${extraMem}M extra memory and $extraMin more minutes. \nSo use this to submit the job: $mem M  ${time}m"
+                mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
+                echo "Give ${extraMem}M extra memory and $extraMin more minutes. \nSo use this to submit the job: $mem M  ${min} m"
             fi 
         
         fi
@@ -153,7 +155,7 @@ for i in $output; do
                         echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
                     elif [ ! -z "$output" ]; then
-                        mem=$((${output% *}+extraMem)); time=$((${output#* }+extraMin));     
+                        mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
                         echo Give ${extraMem}M extra memory and $extraMin more minutes. 
                     fi 
                 fi        
@@ -164,21 +166,22 @@ for i in $output; do
 
         [ "$mem" -lt 20 ] && mem=20 # at least 20M
         
-        echo Got estimation inputsize: $inputSize mem: $mem  time: $time
-        hours=$((($time + 59) / 60))
+        echo Got estimation inputsize: $inputSize mem: $mem  time: $min
+        hours=$((($min + 59) / 60))
 
         echo looking partition for hour: $hours
         
         adjustPartition $hours partition
         
-        seconds=$(($time * 60))
+        seconds=$(($min * 60))
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
         #scontrol show job $id 
         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
         
-        echo $mem > log/$name.adjust
+        echo $mem $min> log/$name.adjust
+        #echo $mem $min> log/$name.adjust
         #touch log/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else 

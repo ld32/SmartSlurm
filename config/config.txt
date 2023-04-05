@@ -54,8 +54,8 @@ adjustPartition() {
 } 
 export -f adjustPartition
 
-defaultMem=2G
-defaultTime=2:0:0
+defaultMem=2048  # in M
+defaultTime=120 # in min 
 
 jobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm/
 
