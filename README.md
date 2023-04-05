@@ -19,9 +19,15 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useSomeMemTimeAccordingInputSize.sh.none.time.png)
 
+##As the figure shown above, the memory usage is roughly co-related to the input size. We can use input size to allocate memory when submit new jobs.
+
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMem.png)
 
+##As the figure shown above, we Smart Slurm run the first 5 jobs, it use default memory, then based on the first five jobs, it estimate memory future jobs. The wasted memory is dramatially decreased for the last jobs.
+
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartTime.png)
+
+##As the figure shown above, we Smart Slurm run the first 5 jobs, it use default time, then based on the first five jobs, it estimate time future jobs. The wasted time is dramatially decreased for the last jobs.
 
 ## ssbatch features:
 1) Auto adjust memory and run-time according to statistics from earlier jobs
