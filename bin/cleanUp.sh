@@ -430,14 +430,19 @@ if [ -f "$err" ]; then
     fi
 fi    
 
+summarizeRun.sh log/allJobs.txt
+
 #echo -e "tosend:\n$toSend"
 echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
+echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "$toSend \nEmail not send out. Try again..." | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 echo 
+
+
+
 
 # wait for email to be sent
 sleep 20
