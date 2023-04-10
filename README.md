@@ -48,7 +48,6 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 createBigTextFiles.sh
 
 # Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
-export SSBATCH_S=useSomeMemTimeNoInput.sh # This is optional because the software name is the same as the slurm script
 for i in {1..3}; do
     ssbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
 done
@@ -57,21 +56,17 @@ done
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
 ssbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
 
-# Run 5 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
-for i in {1..5}; do
-    export SSBATCH_I=bigText$i.txt # This is to tell ssbatch the input file to calculate input file size
-    ssbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
+# Run 3 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
+for i in {1..3}; do
+    ssbatch -t 2:0:0 --mem 2G -I bigText$i.txt --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-export SSBATCH_S=useSomeMemTimeAccordingInputSize.sh # This is optional because the software name is the same as the slurm script
-export SSBATCH_I=bigText1.txt,bigText2.txt # This is required to tell ssbatch the input file name to calculate input file size 
-ssbatch -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+ssbatch -t 2:0:0 --mem 2G -I bigText1.txt,bigText2.txt --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
-# The second way to tell the input file name and software name: 
-ssbatch --comment="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt" \
+# The second way to tell the input file name: 
+ssbatch --comment="SSBATCH_I=bigText1.txt,bigText2.txt" \
     -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
 
 # The third way to tell the input file name and software name: 
@@ -87,8 +82,7 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 
 # After you finish using ssbatch, run these command to disable ssbatch:    
 unset sbatch
-unset SSBATCH_S
-unset SSBATCH_I
+
 ```
 
 ## How does ssbatch work
