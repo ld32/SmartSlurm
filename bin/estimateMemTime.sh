@@ -22,45 +22,58 @@ inputSize=$3
 #ls -l ~/.rcbio 1>&2  
 
 echoerr Estimating mem: 
-        
-.  $jobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+if [ -s $jobRecordDir/stats/$software.$ref.mem.stat ]; then   
+    .  $jobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
-#echoerr content: $software.$ref.mem.stat.final:
+    #echoerr content: $software.$ref.mem.stat.final:
 
-#cat ~/.rcbio/$software.$ref.mem.stat.final 1>&2
+    #cat ~/.rcbio/$software.$ref.mem.stat.final 1>&2
 
-Finala=`printf "%.15f\n" $Finala`
-Finalb=`printf "%.15f\n" $Finalb`
-Maximum=`printf "%.15f\n" $Maximum`
-echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+    Finala=`printf "%.15f\n" $Finala`
+    Finalb=`printf "%.15f\n" $Finalb`
+    Maximum=`printf "%.15f\n" $Maximum`
+    STDFIT=`printf "%.15f\n" $STDFIT`
+    
+    echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-echoerr "mem formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
+    echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT) x 1.0"
 
-if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
-    mem=`echo "( $Finala * $inputSize + $Finalb ) * 1.0" |bc `
+    if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
+        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT) * 1.0" |bc `
+    else
+        echoerr outOfRange 
+        echo outOfRange
+        exit  
+    fi
+    echoerr
 else
-    echoerr outOfRange 
-    echo outOfRange
-    exit  
+    mem=0
 fi
-echoerr
+
 echoerr Estimating time: 
 
-.  $jobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
+    .  $jobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
-#echoerr content: $software.$ref.time.stat.final:
+    #echoerr content: $software.$ref.time.stat.final:
 
-#cat ~/.rcbio/$software.$ref.time.stat.final 1>&2
+    #cat ~/.rcbio/$software.$ref.time.stat.final 1>&2
 
-Finala=`printf "%.15f\n" $Finala`
-Finalb=`printf "%.15f\n" $Finalb`
-Maximum=`printf "%.15f\n" $Maximum`
-echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum
+    Finala=`printf "%.15f\n" $Finala`
+    Finalb=`printf "%.15f\n" $Finalb`
+    Maximum=`printf "%.15f\n" $Maximum`
+    STDFIT=`printf "%.15f\n" $STDFIT`
+    
+    echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-time=`echo "( $Finala * $inputSize + $Finalb ) * 1.0" |bc`
+    echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT) x 1.0"
 
-echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
-
+    time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT) * 1.0" |bc `
+    
+    #echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
+else 
+    time=0
+fi
 echoerr Got  $mem $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5

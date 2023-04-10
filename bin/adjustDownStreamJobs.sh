@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#set -x 
+set -x 
 
 Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 
@@ -50,10 +50,15 @@ for i in $output; do
     software=${arrIN[3]}
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]} 
+    
+    # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
     [[ "$inputs" == "none" ]] && continue
 
-    [ -f $jobRecordDir/stats/$software.$ref.extraMem ] && extraMem=`cat $jobRecordDir/stats/$software.$ref.extraMem`
-    
+
+    [ -f log/$name.adjust ] && continue
+
+    [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
+
     allDone=""
     IFS=$' '; 
     for j in ${deps//\./ }; do 
@@ -76,8 +81,9 @@ for i in $output; do
                 echo "Input size is too big for the curve to estimate! Use default mem and runtime to submit job."
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
-                mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
-                echo "Give ${extraMem}M extra memory and $extraMin more minutes. \nSo use this to submit the job: $mem M  ${min} m"
+                [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
+                [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
             fi 
         
         fi
@@ -92,7 +98,6 @@ for i in $output; do
             OUT="$(mktemp -d)"
 
             #filter by software and reference
-            # todo: maybe able to replace / in ref at begaining of the script?
             
             grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/mem.txt
             grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $OUT/time.txt
@@ -121,11 +126,11 @@ for i in $output; do
                 mv $OUT/time.stat.txt $jobRecordDir/stats/$software.$ref.time.stat  
                 echo There are more than $ref jobs already run for this software, statics is ready for current job: 
                 echo Memeory statisics:
-                echo "inputsize mem(M)"
+                echo "inputsize vs. mem(M)"
                 cat $jobRecordDir/stats/$software.$ref.mem.stat
                 echo
                 echo Time statistics:
-                echo "inputsize time(minute)"
+                echo "inputsize  vs. time(minute)"
                 cat $jobRecordDir/stats/$software.$ref.time.stat
  
                 mv $OUT/mem.txt $jobRecordDir/stats/$software.$ref.mem.txt
@@ -143,7 +148,7 @@ for i in $output; do
                 
                 cd -
 
-                rm -r $OUT 2>/dev/null
+                
 
                 echo got files in $jobRecordDir/stats:  
                 #ls -lrt $jobRecordDir/stats
@@ -155,18 +160,22 @@ for i in $output; do
                         echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
                     elif [ ! -z "$output" ]; then
-                        mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
-                        echo Give ${extraMem}M extra memory and $extraMin more minutes. 
+                        [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
+                        [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                        resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
                     fi 
                 fi        
             fi
+            rm -r $OUT 2>/dev/null
         fi
     
         [ -z "$mem" ] && continue
 
         [ "$mem" -lt 20 ] && mem=20 # at least 20M
         
-        echo Got estimation inputsize: $inputSize mem: $mem  time: $min
+        echo Got estimation inputsize: $inputSize mem: $mem  time: $min 
+        
+        echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> log/$name.out
         hours=$((($min + 59) / 60))
 
         echo looking partition for hour: $hours
@@ -180,7 +189,11 @@ for i in $output; do
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
         
-        echo $mem $min> log/$name.adjust
+        echo $mem $min $extraMem > log/$name.adjust
+
+        echo Adjust mem: $mem time: $min exralMem: $extraMem >> log/$name.out
+        echo By job: >> log/$name.out
+        grep ^$SLURM_JOB_ID log/allJobs.txt >> log/$name.out 
         #echo $mem $min> log/$name.adjust
         #touch log/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh

@@ -18,6 +18,8 @@ echo Running: $0 $@
 
 module list 
 
+[ -f out.log ] && mv out.log out.log.$(stat -c %y out.log | tr " " ".") 
+
 [ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c %y log | tr " " ".") 
 
 mkdir -p log

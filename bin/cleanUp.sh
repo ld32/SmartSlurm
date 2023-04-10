@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x 
+set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
@@ -23,6 +23,8 @@ else
     out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
 fi 
 
+# wait for slurm database update
+sleep 10
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID` 
 
@@ -47,10 +49,14 @@ FINISH=`echo $jobStat | cut -d" " -f4`
 
 FINISH=`date -d "$FINISH" +%s`
 
-[ -z "$FINISH" ] && FINISH=`date +%s` && [ ]
+[ -z "$FINISH" ] && FINISH=`date +%s`
+
+echo  start: $START fisnish: $FINISH
 
 # time in minutes
 min=$((($FINISH - $START + 59)/60))
+
+#[[ "$mim" == 0 ]] && min=1
 
 # memory in M
 memSacct=`echo $jobStat | cut -d" " -f5`
@@ -79,8 +85,10 @@ esac
 # for testing
 #jobStatus="OOM"
 
+echo jobStatus: $jobStatus 
+
 # sacct might give wrong resules
-[[ $jobStatus != "COMPLETED" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
+[[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
 
 echo -e  "Last row of job summary: $jobStat" 
 echo start: $START finish: $FINISH mem: $memSacct min: $min
@@ -91,7 +99,7 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 srunM=`cat /tmp/job_$SLURM_JOBID.maxMem.txt`
 srunM=$((srunM / 1024 / 1024 ))
 
-rm /tmp/job_$SLURM_JOBID.*
+rm /tmp/job_$SLURM_JOBID.maxMem.txt
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
 
@@ -121,29 +129,33 @@ fi
 [ -f ${out%.out}.adjust ] && totalM=`cat ${out%.out}.adjust | cut -d' ' -f1` || totalM=$9
 
 [ -f ${out%.out}.adjust ] && totalT=`cat ${out%.out}.adjust | cut -d' ' -f2` || totalT=${10}
+[ -f ${out%.out}.adjust ] && extraMemC=`cat ${out%.out}.adjust | cut -d' ' -f3` || extraMemC=${14}
 
+[ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`cat $jobRecordDir/stats/extraMem.$2.$3`
 
-[ -f $jobRecordDir/stats/$2.$3.extraMem ] && extraMem=`cat $jobRecordDir/stats/$2.$3.extraMem`
-
-                                #defult, given,  cGroupUsed                 acct used      
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMem,$extraMin,`date`"
+                                #3defult, 5given,  7cGroupUsed                 acct used      
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
 echo dataToPlot,$record
     
 #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
     
-if [[ $jobStatus == "COMPLETED" ]] && [[ "$min" != 0 ]]; then 
+if [[ $jobStatus == "COMPLETED" ]]; then 
    
     #if [[ "$inputSize" == 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
-        memRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '` 
-        timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
+        records=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2 }}' | sort -u -nr | tr '\n' ' '` 
+        #timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
+        #memRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '` 
+        #timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
+    
     
         #maxMem=`cat $jobRecordDir/stats/$2.$3.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
         #maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
-
-        if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
+        #if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
+        
+        if [ "$(echo $records | wc -w)" -lt 20 ] || [ "${records%% *}" -lt "$inputSize" ] && ! echo $records | grep "\b$inputSize\b"; then
             echo $record >> $jobRecordDir/jobRecord.txt
             echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
-            rm $jobRecordDir/stats/$2.$3.*  2>/dev/null
+            mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
         else 
             echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
         fi  
@@ -165,7 +177,7 @@ if [[ $jobStatus == "COMPLETED" ]] && [[ "$min" != 0 ]]; then
 #    echo $record >> $jobRecordDir/jobRecord.txt
     #echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
 fi
-echo Final mem usage: $srunM, time usage: $min minutes
+echo Final mem: $srunM, time: $min minutes
    
 
 # for testing
@@ -218,20 +230,26 @@ if [ ! -f $succFile ]; then
             
             #[ -f ${out%.out}.adjust ] && lastTotal=`cat ${out%.out}.adjust | cut -d' ' -f1` && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
             
-            extraMem=$(( totalM - srunM ))
-            [ ! -f $jobRecordDir/stats/$2.$3.extraMem ] || [`cat $jobRecordDir/stats/$2.$3.extraMem` -gt $extraMem ] || echo $extraMem  > $jobRecordDir/stats/$2.$3.extraMem  
+            extraMemN=$(( totalM - srunM ))
+            [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && [ `sort $jobRecordDir/stats/extraMem.$2.$3 | tail -n1` -ge $extraMemN ] || { [ $extraMemN -gt 0 ] && echo $extraMemN  >> $jobRecordDir/stats/extraMem.$2.$3 &&  extraMem=$extraMemN; }
             
             ( sleep 5; 
             for try in {1..8}; do
                 if [ ! -f $failFile.requeued.$try.mem ]; then
+                    sleep 2
                     #mem=$(( $mem * ( 2 ^ $try ) ))
-                    
+                    touch $failFile.requeued.$try.mem
                     #alpha=1
                     #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
-                    
-                    if [ $totalM -lt 1024 ]; then 
-                        totalM=1024
+                    if [ $totalM -lt 200 ]; then 
+                        totalM=200
                         newFactor=5
+                    elif [ $totalM -lt 512 ]; then 
+                        totalM=512
+                        newFactor=4
+                    elif [ $totalM -lt 1024 ]; then 
+                        totalM=1024
+                        newFactor=3
                     elif [ $totalM -lt 10240 ]; then 
                         newFactor=2
                     elif [ $totalM -lt 51200 ]; then 
@@ -240,17 +258,20 @@ if [ ! -f $succFile ]; then
                         newFactor=1.2
                     fi            
                     
-                    mem=`echo "$totalM*$newFactor/1" | bc`
+                    #newFactor=2
+                    mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
                     # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
                     #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
                     #mem=4000
                     echo trying to requeue $try with $mem M
-                    echo $mem $totalT > ${out%.out}.adjust
+                    echo $mem $totalT $extraMem > ${out%.out}.adjust
                    
                     # 80G memory
                     #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
+
+                    [[ "$SLURM_CLUSTER_NAME" == "o2-dev" ]] && loginHost=login00
                     
-                    if `ssh login00 "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                    if `ssh $loginHost "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
 
                     #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
                         echo Requeued successfully
@@ -271,7 +292,7 @@ if [ ! -f $succFile ]; then
         
         # delete stats and redo them
         if [ "$inputs" == "none" ]; then
-            rm $jobRecordDir/stats/$2.$3.* 2>/dev/null
+            mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
         else 
             # remove bad records
             if [ -f $jobRecordDir/stats/$2.$3.mem.stat ]; then 
@@ -285,7 +306,7 @@ if [ ! -f $succFile ]; then
                 # echo diff output:
                 # diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
                 # mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
-                rm $jobRecordDir/stats/$2.$3.mem.* $jobRecordDir/stats/$2.$3.time.* 
+                mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi 
 
@@ -317,6 +338,7 @@ if [ ! -f $succFile ]; then
         
         for try in {1..8}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
+                sleep 2 
                 echo trying to requeue $try
                 touch $failFile.requeued.$try.time 
 
@@ -340,7 +362,7 @@ if [ ! -f $succFile ]; then
 
                 #min=${10} # the orignal estimated time
 
-                [ "$min" -lt 20 ] && min=20 # at least 20 minutes
+                #[ "$min" -lt 20 ] && min=20 # at least 20 minutes
 
                 hours=$((($min * $factor + 59) / 60))
 
@@ -363,7 +385,8 @@ if [ ! -f $succFile ]; then
                     #scontrol update jobstep=123456.2 TimeLimit=02:00:00
 
                 fi 
-                echo $totalM $(( min * factor )) > ${out%.out}.adjust
+                
+                echo $totalM $(( min * factor )) $extraMemC > ${out%.out}.adjust
                 echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
 
                 [ -f $failFile ] && rm $failFile
@@ -377,7 +400,7 @@ if [ ! -f $succFile ]; then
         done 
          # delete stats and redo them
         if [[ "$inputs" == "none" ]]; then
-            rm $jobRecordDir/stats/$2.$3.* 2>/dev/null
+            mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
 
             #[ -f $jobRecordDir/stats/$2.$3.mem.stat.noInput ] && mv $jobRecordDir/stats/$2.$3.mem.stat.noInput $jobRecordDir/stats/$2.$3.mem.stat.noInput.$(stat -c %y $jobRecordDir/stats/$2.$3.mem.stat.noInput | tr " " ".")
         else 
@@ -393,14 +416,17 @@ if [ ! -f $succFile ]; then
                 # echo diff output: 
                 # diff $jobRecordDir/jobRecord.txt $jobRecordDir/jobRecord.txt1
                 # mv $jobRecordDir/jobRecord.txt1 $jobRecordDir/jobRecord.txt
-                rm $jobRecordDir/stats/$2.$3.*
+                mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi 
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/log 
+    adjustDownStreamJobs.sh $1/log
+    rm $failFile 2>/dev/null
+else 
+    rm $failFile 2>/dev/null
 fi
 
 echo "Sending email..."
@@ -437,7 +463,7 @@ echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
-    { echo Email not sent.; echo -e "$toSend \nEmail not send out. Try again..." | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 echo 
 

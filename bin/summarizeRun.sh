@@ -41,16 +41,18 @@ fi
 
 
 
-rm log/barchartMem.png  log/barchartTime.png 
-echo Category,Used,Wasted > log/dataMem.csv
+cd log 
+rm barchartMem.png  barchartTime.png 
+echo Category,Used,Wasted > dataMem.csv
+                                                                            
+ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17,   $6-$8-$17}' | sed 's/,-.*/,0/' >> dataMem.csv
 
-grep ^dataToPlot log/*.out | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,3), substr($2, length($2)-3), substr($10,1,3),  $8 + $17,   $6-$8-$17/2}' | sort >> log/dataMem.csv
-
+#ls * | sort -n | xargs -d '\n' grep hello
 
 #awk -F, '{sum=$4+$5; substr($3,1,3); printf "%s%s,%s,%s,%s,%s\n", $2, $3, $4, $5, substr($3,1,3), sum}' input.csv > output.csv
 
 
-gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'log/barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot 'log/dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
+gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot 'dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
 
 
 # gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 1; set style fill solid border rgb 'black'; set xtics ('A' 0, 'B' 1, 'C' 2, 'D' 3, 'E' 4) rotate by -45; set terminal png size 800,600; set output 'barchart.png'; set title 'Sample vs. Time'; plot 'data.csv' using 2:xtic(1) title 'Value1' lc rgb 'green', '' using 3:xtic(1) title 'Value2' lc rgb 'red'"
@@ -59,14 +61,14 @@ gnuplot -e "set datafile separator ','; set style data histogram; set style hist
 echo To see the plot: 
 echo display log/barchartMem.png 
 
-echo Category,Used,Wasted > log/dataTime.csv
+echo Category,Used,Wasted > dataTime.csv
 
-grep ^dataToPlot log/*.out | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,3), substr($2, length($2)-3), substr($10,1,3),  $9,   $7-$9}' | sort >> log/dataTime.csv
+ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9,   $7-$9}' >> dataTime.csv
 
-gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'log/barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot 'log/dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
+gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot 'dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
 
 echo To see the plot: 
 echo display log/barchartTime.png 
 
 # check running jobs 
-checkJobsSlurm  log/allJobs.txt
+checkJobsSlurm  allJobs.txt

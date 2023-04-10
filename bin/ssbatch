@@ -30,9 +30,11 @@
 # Auto requeue job with double memory when out of memory
 # Keep good log and send informative email
 
-# todo:
 
-# the logic, if has input, check if stat file exist, if not make one. Then estimate mem/time  
+# the logic: 
+# If job does not depends on other job, and has input, estimate mem/timed and submit 
+# If a job has no inputs, directly submit 
+# Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well? 
 
 #set -e
 #set -x 
@@ -93,6 +95,9 @@ for (( i=0; i<$(($#)); i++ )); do
         *               )   sbatchLocation=$i && break
     esac
 done 
+
+
+
 
 [ -z "$logDir" ] && set -- "$@" run && testRun=run
 
@@ -381,7 +386,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
 
-[ -f $jobRecordDir/stats/$software.$ref.extraMem ] && extraMem=`cat $jobRecordDir/stats/$software.$ref.extraMem`
+[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
 
 # original mem and time 
 memO=$mem; minO=$min
@@ -439,10 +444,10 @@ if [[ "$inputs" == "none" ]]; then
 #       mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + extraMem))M
 
         min=`cat $jobRecordDir/stats/$software.$ref.time.stat.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
-        min=$((${min/\.*/} + extraMin))
+        min=$((${min/\.*/} + extraTime))
         
         resAjust="$resAjust#Got estimation based on software.reference: $software.$ref.\n" 
-        resAjust="$resAjust#Give ${extraMem}M extra memory and $extraMin more minutes. \n#So use this to submit the job: $mem M  ${min} min"
+        resAjust="$resAjust#Give ${extraMem}M extra memory and $extraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
         
     else 
         resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
@@ -471,8 +476,9 @@ elif [ -z "$deps" ]; then
                 resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
-                mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
-                resAjust="$resAjust#Give ${extraMem}M extra memory and $extraMin more minutes. \n#So use this to submit the job: $mem M  ${min} mins"
+                [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
+                [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
             fi 
         
         fi
@@ -507,10 +513,10 @@ elif [ -z "$deps" ]; then
                 cd $OUT
 
                 # make plot and calculate statistics
-                gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "mem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "mem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "mem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > mem.stat.txt
+                gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "mem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "mem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "mem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > mem.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> mem.stat.txt
 
                 # make plot and calculate statistics
-                gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt
+                gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> time.stat.txt
                 
                 mv $OUT/mem.stat.txt $jobRecordDir/stats/$software.$ref.mem.stat 
                 mv $OUT/time.stat.txt $jobRecordDir/stats/$software.$ref.time.stat  
@@ -550,8 +556,9 @@ elif [ -z "$deps" ]; then
                         resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
                     elif [ ! -z "$output" ]; then
-                        mem=$((${output% *}+extraMem)); min=$((${output#* }+extraMin));     
-                        resAjust="$resAjust#Give ${extraMem}M extra memory and $extraMin more minutes. \n#So use this to submit the job: $mem M ${min} mins"
+                        [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
+                        [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                        resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
                     fi
                     #echo got estimation $output  
                 fi        
@@ -613,7 +620,7 @@ echo
 echo Building new sbatch command ... >&2
 #echo "#!/bin/bash" > $job   
 
-echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\"; }\" EXIT\ngetMaxMem.sh &\n" > $job
+echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\ngetMaxMem.sh &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
@@ -624,7 +631,7 @@ echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$softwa
 # echo "   totalM=$totalM" >> $job
 # echo "else " >> $job
 # echo "   totalM=\`cat log/$flag.adjust\`" >> $job
-# ## todo: this might work if cluster is bussy, may need sleep more or get the data from a text file
+# ## this might work if cluster is bussy, may need sleep more or get the data from a text file
 # #echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " #>> $job
 # #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 # echo "fi" >> $job 
@@ -633,11 +640,11 @@ echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$softwa
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    echo "srun -n 1 $slurmAcc bash -e -c \"{ $wrapCMD; } && touch $succFlag\"" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
 else 
     grep "^#SBATCH" $slurmScript >> $job || : >> $job
     #echo "touch $startFlag" >> $job
-    echo "srun -n 1 $slurmAcc bash -e -c \"{ sh $slurmScript $slurmScriptParas; } && touch $succFlag\"" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
 fi
 #echo "kill -9 \$mypid" >> $job
 #echo "sleep 15 # wait slurm get the job status into its database" >> $job 
