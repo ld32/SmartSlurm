@@ -201,14 +201,13 @@ Smart pipeline was originally designed to run bash script as pipelie on Slurm cl
 ## How to use smart pipeline
 ``` bash
 # Download
-cd $HOME 
 git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
+export PATH=$PWD/smartSlurm/bin:$PATH  
 
 # Take a look at a regular exmaple bash script
-cat $jobRecordDir/bin/bashScriptV1.sh
+cat $PWD/smartSlurm/bin/bashScriptV1.sh
 
 # Below is the content of a regular bashScriptV1.sh
 1 #!/bin/sh
