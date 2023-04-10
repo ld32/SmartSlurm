@@ -3,8 +3,10 @@
 #set -x 
 #set -e 
 
-jobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm/
+#jobRecordDir=~/.smartSlurm
+jobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm
 
+# Used to ssh and requeue oom and oot jobs
 loginHost=o2.hms.harvard.edu
 
 defaultMem=2048  # in M
