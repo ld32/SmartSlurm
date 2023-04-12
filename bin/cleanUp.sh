@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x 
+#set -x 
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13 
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs 
@@ -131,7 +131,7 @@ fi
 [ -f ${out%.out}.adjust ] && totalT=`cat ${out%.out}.adjust | cut -d' ' -f2` || totalT=${10}
 [ -f ${out%.out}.adjust ] && extraMemC=`cat ${out%.out}.adjust | cut -d' ' -f3` || extraMemC=${14}
 
-[ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`cat $jobRecordDir/stats/extraMem.$2.$3`
+[ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
 
                                 #3defult, 5given,  7cGroupUsed                 acct used      
 record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
@@ -152,7 +152,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then
         #maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
         #if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
         
-        if [ "$(echo $records | wc -w)" -lt 20 ] || [ "${records%% *}" -lt "$inputSize" ] && ! echo $records | grep "\b$inputSize\b"; then
+        if [ "$(echo $records | wc -w)" -lt 20 ] || [ "${records%% *}" -lt "$inputSize" ] && ( ! echo $records | grep "\b$inputSize\b" || [[ "$inputsize" == "0" ]] ); then
             echo $record >> $jobRecordDir/jobRecord.txt
             echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
@@ -188,103 +188,63 @@ if [ ! -f $succFile ]; then
 
     if [[ "$jobStatus" == "OOM" ]]; then
         
+        echo Will re-queue after sending email...
+    
+        extraMemN=$(( totalM - srunM ))
+        [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && [ `sort $jobRecordDir/stats/extraMem.$2.$3 | tail -n1` -ge $extraMemN ] || { [ $extraMemN -gt 0 ] && echo $extraMemN  >> $jobRecordDir/stats/extraMem.$2.$3 &&  extraMem=$extraMemN; }
         
-        
+        ( sleep 5; 
+        for try in {1..8}; do
+            if [ ! -f $failFile.requeued.$try.mem ]; then
+                sleep 2
+                #mem=$(( $mem * ( 2 ^ $try ) ))
+                touch $failFile.requeued.$try.mem
+                #alpha=1
+                #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
+                if [ $totalM -lt 200 ]; then 
+                    totalM=200
+                    newFactor=5
+                elif [ $totalM -lt 512 ]; then 
+                    totalM=512
+                    newFactor=4
+                elif [ $totalM -lt 1024 ]; then 
+                    totalM=1024
+                    newFactor=3
+                elif [ $totalM -lt 10240 ]; then 
+                    newFactor=2
+                elif [ $totalM -lt 51200 ]; then 
+                    newFactor=1.5
+                else 
+                    newFactor=1.2
+                fi            
+                
+                #newFactor=2
+                mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
+                # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
+                #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
+                #mem=4000
+                echo trying to requeue $try with $mem M
+                echo $mem $totalT $extraMem > ${out%.out}.adjust
+                
+                # 80G memory
+                #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
 
-        #jobStat=`echo -e "$sacct" | head -n 3 | tail -n 1`
+                loginHost=`hostname`
+                
+                if `ssh $loginHost "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
 
-        #mem=${jobStat#*mem=}; mem=${mem%M*}
+                #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
+                    echo Requeued successfully
+                    [ -f $failFile ] && rm $failFile
 
+                    s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
+                    echo -e "" | mail -s "$s" $USER
 
-        #[ "$mem" -lt 1024 ] && mem=1024 # at least 500M
-        
-        
-
-        #if [ -n "$mem" ] && [ "$mem" -eq "$mem" ] 2>/dev/null; then
-            
-            
-            #echo Trying to re-queue the job with memory: $mem
-            
-            # submit a small job to requeue the job, because it can not requeue itself
-#             p=`adjustPartition 1 short`
-#             echo /usr/bin/sbatch --parsable -p $p -t 5 -A ${12} --mail-type=NONE --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"
-#             jobID=`/usr/bin/sbatch -o /dev/null -e /dev/null --parsable --mail-type=NONE -p $p -t 5 -A ${12} --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`
-            
-            # does work, can not update memory for job steps
-            # ( sleep 5; 
-            #     scontrol requeue $SLURM_JOBID 
-            #     scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem
-            #     scontrol update JobId=$SLURM_JOBID 1 Memory=$(( $mem - 10 )) 
-            
-            # ) &
-            # this works but need ssh to login nodes to run scontrol
-            # put this block of code in to background and sleep, so that email run first before requeue 
-
-           echo Will re-queue after sending email...
-           #srunM=mem
-           
-
-            #[[ "$9" == *G ]] && totalMC=$(( 1024 * ${9%G})) || totalMC=${9%M}
-            #[ "$totalMC" -gt $mem ] && mem="$totalMC"
-            #[ "$totalM" -gt "$mem" ] && mem=$totalM
-            
-            #[ -f ${out%.out}.adjust ] && lastTotal=`cat ${out%.out}.adjust | cut -d' ' -f1` && [ "$lastTotal" -gt "$mem" ] && mem=$lastTotal
-            
-            extraMemN=$(( totalM - srunM ))
-            [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && [ `sort $jobRecordDir/stats/extraMem.$2.$3 | tail -n1` -ge $extraMemN ] || { [ $extraMemN -gt 0 ] && echo $extraMemN  >> $jobRecordDir/stats/extraMem.$2.$3 &&  extraMem=$extraMemN; }
-            
-            ( sleep 5; 
-            for try in {1..8}; do
-                if [ ! -f $failFile.requeued.$try.mem ]; then
-                    sleep 2
-                    #mem=$(( $mem * ( 2 ^ $try ) ))
-                    touch $failFile.requeued.$try.mem
-                    #alpha=1
-                    #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
-                    if [ $totalM -lt 200 ]; then 
-                        totalM=200
-                        newFactor=5
-                    elif [ $totalM -lt 512 ]; then 
-                        totalM=512
-                        newFactor=4
-                    elif [ $totalM -lt 1024 ]; then 
-                        totalM=1024
-                        newFactor=3
-                    elif [ $totalM -lt 10240 ]; then 
-                        newFactor=2
-                    elif [ $totalM -lt 51200 ]; then 
-                        newFactor=1.5
-                    else 
-                        newFactor=1.2
-                    fi            
-                    
-                    #newFactor=2
-                    mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
-                    # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
-                    #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
-                    #mem=4000
-                    echo trying to requeue $try with $mem M
-                    echo $mem $totalT $extraMem > ${out%.out}.adjust
-                   
-                    # 80G memory
-                    #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
-
-                    [[ "$SLURM_CLUSTER_NAME" == "o2-dev" ]] && loginHost=login00
-                    
-                    if `ssh $loginHost "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
-
-                    #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
-                        echo Requeued successfully
-                        [ -f $failFile ] && rm $failFile
-
-                        s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
-                        echo -e "" | mail -s "$s" $USER
-
-                        break
-                    fi    
-            
+                    break
                 fi    
-            done ) &
+        
+            fi    
+        done ) &
         #else
            # echo Could not find the original mem value.
         #    echo Job failed of out-of-memory. Please resubmit with more memory check youself.
@@ -462,8 +422,19 @@ summarizeRun.sh log/allJobs.txt
 echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
-    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then 
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+
+else 
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }        
+
+fi
+
 
 echo 
 

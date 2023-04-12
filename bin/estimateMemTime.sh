@@ -36,10 +36,10 @@ if [ -s $jobRecordDir/stats/$software.$ref.mem.stat ]; then
     
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT) x 1.0"
+    echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
     if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
-        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT) * 1.0" |bc `
+        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
     else
         echoerr outOfRange 
         echo outOfRange
@@ -66,9 +66,9 @@ if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
     
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT) x 1.0"
+    echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
-    time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT) * 1.0" |bc `
+    time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
     
     #echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
 else 
