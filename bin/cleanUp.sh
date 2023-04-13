@@ -216,24 +216,24 @@ if [ ! -f $succFile ]; then
                 touch $failFile.requeued.$try.mem
                 #alpha=1
                 #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
-                # if [ $totalM -lt 200 ]; then 
-                #     totalM=200
-                #     newFactor=5
-                # elif [ $totalM -lt 512 ]; then 
-                #     totalM=512
-                #     newFactor=4
-                # elif [ $totalM -lt 1024 ]; then 
-                #     totalM=1024
-                #     newFactor=3
-                # elif [ $totalM -lt 10240 ]; then 
-                #     newFactor=2
-                # elif [ $totalM -lt 51200 ]; then 
-                #     newFactor=1.5
-                # else 
-                #     newFactor=1.2
-                # fi            
+                if [ $totalM -lt 200 ]; then 
+                    totalM=200
+                    newFactor=5
+                elif [ $totalM -lt 512 ]; then 
+                    totalM=512
+                    newFactor=4
+                elif [ $totalM -lt 1024 ]; then 
+                    totalM=1024
+                    newFactor=3
+                elif [ $totalM -lt 10240 ]; then 
+                    newFactor=2
+                elif [ $totalM -lt 51200 ]; then 
+                    newFactor=1.5
+                else 
+                    newFactor=1.2
+                fi            
                 
-                newFactor=2
+                #newFactor=2
                 mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
                 # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
                 #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
