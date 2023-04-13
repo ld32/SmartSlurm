@@ -21,7 +21,8 @@ inputSize=$3
 #echoerr content of .rcbio
 #ls -l ~/.rcbio 1>&2  
 
-echoerr Estimating mem: 
+echoerr Estimating mem:
+memFormu=memFormu:
 if [ -s $jobRecordDir/stats/$software.$ref.mem.stat ]; then   
     .  $jobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
@@ -40,6 +41,7 @@ if [ -s $jobRecordDir/stats/$software.$ref.mem.stat ]; then
 
     if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
         mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
+        memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
     else
         echoerr outOfRange 
         echo outOfRange
@@ -51,6 +53,7 @@ else
 fi
 
 echoerr Estimating time: 
+timeFormu=timeFormu:
 
 if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
     .  $jobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
@@ -69,7 +72,7 @@ if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
     echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
     time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
-    
+    timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb+$STDFIT*2
     #echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
 else 
     time=0
@@ -78,6 +81,6 @@ echoerr Got  $mem $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
-output="$((${mem%.*} + 1)) $((${time%.*} + 1))" 
+output="$((${mem%.*} + 1)) $((${time%.*} + 1)) $memFormu\n$timeFormu" 
       
 echo $output

@@ -7,10 +7,10 @@
 jobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm
 
 defaultMem=2048  # in M
-defaultTime=120 # in min 
+defaultTime=120  # in min 
 
 extraTime=5     # in min. extra minutes than the estimated time
-extraMem=5    # in M. extra memory than the estinated memory
+extraMem=5      # in M. extra memory than the estinated memory
 
 # Genernal partions, ordered by maximum allowed run-time in hours 
 partition1Name=short   
@@ -62,5 +62,3 @@ adjustPartition() {
     done
 } 
 export -f adjustPartition
-
-

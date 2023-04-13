@@ -18,9 +18,9 @@ echo Running: $0 $@
 
 module list 
 
-[ -f out.log ] && mv out.log out.log.$(stat -c %y out.log | tr " " ".") 
+[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-") 
 
-[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c %y log | tr " " ".") 
+[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c '%.19z' log | tr " " "." | tr ":" "-") 
 
 mkdir -p log
 

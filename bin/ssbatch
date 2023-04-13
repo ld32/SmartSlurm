@@ -386,7 +386,9 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
 
-[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
+[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
+
+ #extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
 
 # original mem and time 
 memO=$mem; minO=$min
@@ -447,7 +449,7 @@ if [[ "$inputs" == "none" ]]; then
         min=$((${min/\.*/} + extraTime))
         
         resAjust="$resAjust#Got estimation based on software.reference: $software.$ref.\n" 
-        resAjust="$resAjust#Give ${extraMem}M extra memory and $extraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
+        resAjust="$resAjust#Give ${extraMem} M extra memory and $extraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
         
     else 
         resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
@@ -471,13 +473,16 @@ elif [ -z "$deps" ]; then
     
         if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
             output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
-            resAjust="$resAjust#Output from estimateMemTime.sh: $output \n"
+            #resAjust="$resAjust\n`cat $jobRecordDir/stats/$software.${ref//\//-}.mem.stat`\n"
+            resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
+            #resAjust="$resAjust#Output from estimateMemTime.sh: $output \n"
             if [[ "$output" == "outOfRange" ]]; then 
                 resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
-                [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
-                [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                output=${output% *}
+                [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. " 
+                [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime mins more time."
                 resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
             fi 
         
@@ -551,14 +556,17 @@ elif [ -z "$deps" ]; then
                 
                 if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
                     output=`estimateMemTime.sh $software ${ref//\//-} $inputSize`
-                    resAjust="$resAjust#Output from estimateMemTime.sh: $output \n"
+                    #resAjust="$resAjust\n`cat $jobRecordDir/stats/$software.${ref//\//-}.mem.stat`\n"
+                    resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
                     if [[ "$output" == "outOfRange" ]]; then 
                         resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
                     elif [ ! -z "$output" ]; then
-                        [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
+                        output=${output% *}
+                        [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. " 
                         [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
                         resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
+
                     fi
                     #echo got estimation $output  
                 fi        
@@ -569,7 +577,7 @@ elif [ -z "$deps" ]; then
     fi
 else
     echo Has input, but depends on other jobs
-    resAjust="$resAjust#Use default mem and time. Has input, but this job depends on other job."
+    resAjust="$resAjust#Use default mem and time. Has input, but this job depends on $deps."
 fi
 
 #echo
@@ -616,11 +624,12 @@ time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
 #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
 
+echo -e "$resAjust\n" > $outFlag
 echo 
 echo Building new sbatch command ... >&2
 #echo "#!/bin/bash" > $job   
 
-echo -e "#!/bin/bash\n$resAjust\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\ngetMaxMem.sh &\n" > $job
+echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\ngetMaxMem.sh &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 

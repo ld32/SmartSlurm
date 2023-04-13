@@ -57,7 +57,9 @@ for i in $output; do
 
     [ -f log/$name.adjust ] && continue
 
-    [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
+    #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
+    [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
+
 
     allDone=""
     IFS=$' '; 
@@ -73,14 +75,22 @@ for i in $output; do
         #ls -lrt $path 
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
         
+        echo -e "Re-adjust resource by upsteam job job:" >> log/$name.out
+        grep ^$SLURM_JOB_ID log/allJobs.txt | awk '{print $1,  $2,  $3}' >> log/$name.out 
+
+
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
         if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
             output=`estimateMemTime.sh $software $ref $inputSize`
+            #resAjust="$resAjust`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+            resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
             echo "Output from estimateMemTime.sh: $output"
+
             if [[ "$output" == "outOfRange" ]]; then 
-                echo "Input size is too big for the curve to estimate! Use default mem and runtime to submit job."
+                echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
+                output=${output% *}
                 [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
                 [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
                 resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
@@ -155,11 +165,15 @@ for i in $output; do
                 
                 if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
                     output=`estimateMemTime.sh $software $ref $inputSize`
+                    #resAjust="$resAjust`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+                    resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
                     echo "Output from estimateMemTime.sh: $output"
+
                     if [[ "$output" == "outOfRange" ]]; then 
                         echo Input size is too big for the curve to estimate! Use default mem and runtime to submit job.
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
                     elif [ ! -z "$output" ]; then
+                        output=${output% *}
                         [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. " 
                         [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
                         resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
@@ -171,11 +185,13 @@ for i in $output; do
     
         [ -z "$mem" ] && continue
 
-        [ "$mem" -lt 20 ] && mem=20 # at least 20M
+        echo -e "$resAjust" 
         
-        echo Got estimation inputsize: $inputSize mem: $mem  time: $min 
+        #[ "$mem" -lt 20 ] && mem=20 # at least 20M
         
-        echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> log/$name.out
+        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min 
+        
+        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> log/$name.out
         hours=$((($min + 59) / 60))
 
         echo looking partition for hour: $hours
@@ -190,10 +206,12 @@ for i in $output; do
         #scontrol show job $id
         
         echo $mem $min $extraMem > log/$name.adjust
+         
+         
+        
+        echo -e "$resAjust\n" >> log/$name.out
+        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> log/$name.out
 
-        echo Adjust mem: $mem time: $min exralMem: $extraMem >> log/$name.out
-        echo By job: >> log/$name.out
-        grep ^$SLURM_JOB_ID log/allJobs.txt >> log/$name.out 
         #echo $mem $min> log/$name.adjust
         #touch log/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh

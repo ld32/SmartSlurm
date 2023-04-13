@@ -129,6 +129,7 @@ fi
 [ -f ${out%.out}.adjust ] && totalM=`cat ${out%.out}.adjust | cut -d' ' -f1` || totalM=$9
 
 [ -f ${out%.out}.adjust ] && totalT=`cat ${out%.out}.adjust | cut -d' ' -f2` || totalT=${10}
+
 [ -f ${out%.out}.adjust ] && extraMemC=`cat ${out%.out}.adjust | cut -d' ' -f3` || extraMemC=${14}
 
 [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
@@ -142,7 +143,7 @@ echo dataToPlot,$record
 if [[ $jobStatus == "COMPLETED" ]]; then 
    
     #if [[ "$inputSize" == 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
-        records=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2 }}' | sort -u -nr | tr '\n' ' '` 
+        records=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -u -n` 
         #timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
         #memRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '` 
         #timeRecords=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
@@ -152,7 +153,8 @@ if [[ $jobStatus == "COMPLETED" ]]; then
         #maxTime=`cat $jobRecordDir/stats/$2.$3.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
         #if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
         
-        if [ "$(echo $records | wc -w)" -lt 20 ] || [ "${records%% *}" -lt "$inputSize" ] && ( ! echo $records | grep "\b$inputSize\b" || [[ "$inputsize" == "0" ]] ); then
+        #   less than 20 records                  # or current one is larger than all old data   # and not exist already
+        if [ "$(echo $records | wc -l)" -lt 200 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
             echo $record >> $jobRecordDir/jobRecord.txt
             echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
@@ -188,10 +190,23 @@ if [ ! -f $succFile ]; then
 
     if [[ "$jobStatus" == "OOM" ]]; then
         
+        set -x
         echo Will re-queue after sending email...
     
-        extraMemN=$(( totalM - srunM ))
-        [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && [ `sort $jobRecordDir/stats/extraMem.$2.$3 | tail -n1` -ge $extraMemN ] || { [ $extraMemN -gt 0 ] && echo $extraMemN  >> $jobRecordDir/stats/extraMem.$2.$3 &&  extraMem=$extraMemN; }
+        echo old extraMem: 
+        cat $jobRecordDir/stats/extraMem.$2.$3
+
+        #extraMemN=$(( ( totalM - srunM ) *2 ))
+        extraMemN=$(( totalM - srunM + 1 ))
+        #[[ "$extraMemN" == 0 ]] && extraMemN=1
+        echo $extraMemN $totalM $inputSize >> $jobRecordDir/stats/extraMem.$2.$3
+        oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
+        maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
+        extraMem=$(( $maxExtra * $oomCount ))
+        
+        echo new extraMem: 
+        cat $jobRecordDir/stats/extraMem.$2.$3
+        set +x
         
         ( sleep 5; 
         for try in {1..8}; do
@@ -201,24 +216,24 @@ if [ ! -f $succFile ]; then
                 touch $failFile.requeued.$try.mem
                 #alpha=1
                 #newFactor=`echo "1.2+1/e($alpha*$mem/1000)" | bc -l | xargs printf "%.2f"`
-                if [ $totalM -lt 200 ]; then 
-                    totalM=200
-                    newFactor=5
-                elif [ $totalM -lt 512 ]; then 
-                    totalM=512
-                    newFactor=4
-                elif [ $totalM -lt 1024 ]; then 
-                    totalM=1024
-                    newFactor=3
-                elif [ $totalM -lt 10240 ]; then 
-                    newFactor=2
-                elif [ $totalM -lt 51200 ]; then 
-                    newFactor=1.5
-                else 
-                    newFactor=1.2
-                fi            
+                # if [ $totalM -lt 200 ]; then 
+                #     totalM=200
+                #     newFactor=5
+                # elif [ $totalM -lt 512 ]; then 
+                #     totalM=512
+                #     newFactor=4
+                # elif [ $totalM -lt 1024 ]; then 
+                #     totalM=1024
+                #     newFactor=3
+                # elif [ $totalM -lt 10240 ]; then 
+                #     newFactor=2
+                # elif [ $totalM -lt 51200 ]; then 
+                #     newFactor=1.5
+                # else 
+                #     newFactor=1.2
+                # fi            
                 
-                #newFactor=2
+                newFactor=2
                 mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
                 # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
                 #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
@@ -229,9 +244,9 @@ if [ ! -f $succFile ]; then
                 # 80G memory
                 #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
 
-                loginHost=`hostname`
+                hostName=`hostname`
                 
-                if `ssh $loginHost "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
 
                 #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
                     echo Requeued successfully
@@ -272,7 +287,7 @@ if [ ! -f $succFile ]; then
 
         # awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' /home/ld32/.smartSlurm/jobRecord.txt
 
-# awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
+        # awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1 
 
 
         #rm $jobRecordDir/stats/$2.$3.mem.stat* $jobRecordDir/stats/$2.$3.time.stat* 2>/dev/null
@@ -347,7 +362,7 @@ if [ ! -f $succFile ]; then
                 fi 
                 
                 echo $totalM $(( min * factor )) $extraMemC > ${out%.out}.adjust
-                echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition
+                echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition, mem is not changed
 
                 [ -f $failFile ] && rm $failFile
 
@@ -398,11 +413,12 @@ actualsize=`wc -c $out || echo 0`
 [ -f $succFile ] && s="Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
-   toSend=`echo Job script content:; cat $script;`
+   #toSend=`echo Job script content:; cat $script;`
    toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
    toSend="$toSend\n...\nLast 10 row of output:\n`tail -n 10 $out`"
 else
-   toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
+   #toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
+   toSend=`echo; echo Job log:; cat $out;`
    #toSend="$s\n$toSend"
 fi
 
@@ -435,19 +451,18 @@ else
 
 fi
 
+if [[ $USER != ld32 ]]; then
+    if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then 
+        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png ld32 
+    elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png ld32 
+
+    else 
+        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png ld32
+    fi
+fi
 
 echo 
 
-
-
-
 # wait for email to be sent
 sleep 20
-
-#rm /tmp/job_$SLURM_JOB_ID.*
-
-#[ -f $succFile ] && exit 0  
-
-#exit 1; 
-
-
