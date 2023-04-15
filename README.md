@@ -37,39 +37,34 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 
 ## How to use ssbatch
 ``` bash
-# Download
-cd $HOME 
+# Download 
 git clone https://github.com/ld32/smartSlurm.git  
 
 # Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
+export PATH=$PWD/smartSlurm/bin:$PATH  
 
 # Create some text files for testing
 createBigTextFiles.sh
 
 # Run 3 jobs to get memory and run-time statistics for useSomeMemTimeNoInput.sh
 for i in {1..3}; do
-    ssbatch --mem 2G -t 2:0:0 --wrap="useSomeMemTimeNoInput.sh $i"
+    ssbatch --mem 2G -t 2:0:0 --commen="SSBATCH_S=useSomeMemTimeNoInput.sh" --wrap="useSomeMemTimeNoInput.sh $i"
 done
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-ssbatch --mem 2G -t 2:0:0 --mem 2G --wrap="useSomeMemTimeNoInput.sh 1"
+ssbatch --mem 2G -t 2:0:0 --mem 2G --commen="SSBATCH_S=useSomeMemTimeNoInput.sh" --wrap="useSomeMemTimeNoInput.sh 1"
 
 # Run 3 jobs to get memory and run-time statistics for useSomeMemTimeAccordingInputSize.sh
 for i in {1..3}; do
-    ssbatch -t 2:0:0 --mem 2G -I bigText$i.txt --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
+    ssbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText$i.txt" --wrap="useSomeMemTimeAccordingInputSize.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-ssbatch -t 2:0:0 --mem 2G -I bigText1.txt,bigText2.txt --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
+ssbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useSomeMemTimeAccordingInputSize.sh SSBATCH_I=bigText1.txt,bigText2.txt" --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText2.txt"
 
 # The second way to tell the input file name: 
-ssbatch --comment="SSBATCH_I=bigText1.txt,bigText2.txt" \
-    -t 2:0:0 --mem 2G --wrap="useSomeMemTimeAccordingInputSize.sh bigText1.txt bigText$2.txt"
-
-# The third way to tell the input file name and software name: 
 ssbatch -t 2:0:0 --mem 2G job.sh
 
 cat job.sh
