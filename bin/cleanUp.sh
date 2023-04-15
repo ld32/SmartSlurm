@@ -8,8 +8,8 @@
 
 echo Running $0 $@
 
-if [ -f ~/.smartSlurm/config.txt ]; then 
-    source ~/.smartSlurm/config.txt
+if [ -f ~/.smartSlurm/config/config.txt ]; then 
+    source ~/.smartSlurm/config/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi

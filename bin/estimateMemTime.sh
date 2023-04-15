@@ -8,8 +8,8 @@ usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn me
 
 echoerr Running: estimateMemTime.sh $@
 
-if [ -f ~/.smartSlurm/config.txt ]; then 
-    source ~/.smartSlurm/config.txt
+if [ -f ~/.smartSlurm/config/config.txt ]; then 
+    source ~/.smartSlurm/config/config.txt
 else     
     source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
 fi
@@ -66,6 +66,7 @@ if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
     Finalb=`printf "%.15f\n" $Finalb`
     Maximum=`printf "%.15f\n" $Maximum`
     STDFIT=`printf "%.15f\n" $STDFIT`
+    RSquare=`printf "%.15f\n" $RSquare`
     
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
@@ -81,6 +82,6 @@ echoerr Got  $mem $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
-output="$((${mem%.*} + 1)) $((${time%.*} + 1)) $memFormu\n$timeFormu" 
+output="$((${mem%.*} + 1)) $((${time%.*} + 1)) \n$memFormu\n$timeFormu\nRSquare=$RSquare" 
       
 echo $output

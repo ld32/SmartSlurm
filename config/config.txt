@@ -3,7 +3,12 @@
 #set -x 
 #set -e 
 
+# note: user can have their own copy of config as: ~/.smartSlurm/config/config.txt, then modify it.
+
+# each user has their own job record folder
 #jobRecordDir=~/.smartSlurm
+
+# share a folder with a group of users.
 jobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm
 
 defaultMem=2048  # in M
