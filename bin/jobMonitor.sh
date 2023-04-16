@@ -55,7 +55,7 @@ while true; do
             min=$(( $original - ($CURRENT - $START + 59)/60))
 
             if [[ -z "$cancelMailSent" ]] && [ $min -le 5 ]; then 
-                echo "$SLURM_JOB_ID is running out of time" | mail $USER
+                echo "$SLURM_JOB_ID is running out of time" | mail -s "$SLURM_JOB_ID is running out of time" $USER
                 cancelMailSent=yes
             fi    
 
