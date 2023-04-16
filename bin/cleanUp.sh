@@ -97,7 +97,7 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
 srunM=`sort -n /tmp/job_$SLURM_JOBID.mem.txt | tail -n1`
-srunM=$((srunM / 1024 / 1024 ))
+#srunM=$((srunM / 1024 / 1024 ))
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
 

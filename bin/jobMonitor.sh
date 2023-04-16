@@ -41,6 +41,7 @@ while true; do
     counter=$((counter - 1))
 
     if [ "$counter" -eq 0 ]; then 
+        MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
         echo $counter1,$MAX_MEMORY_USAGE,$(($originalMem - $MAX_MEMORY_USAGE)) >> /tmp/job_$SLURM_JOB_ID.mem.txt
 
         if [ $originalTime -lt 0 ]; then 
