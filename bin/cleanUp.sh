@@ -96,7 +96,7 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-srunM=`sort -n /tmp/job_$SLURM_JOBID.mem.txt | tail -n1 | cut -d' ' -f2`
+srunM=`sort -n log/job_$SLURM_JOBID.mem.txt | tail -n1 | cut -d' ' -f2`
 #srunM=$((srunM / 1024 / 1024 ))
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
@@ -432,12 +432,12 @@ fi
 
 
 
-cp /tmp/job_$SLURM_JOBID.mem.txt log/
+#cp /tmp/job_$SLURM_JOBID.mem.txt log/
 
 summarizeRun.sh log/allJobs.txt $flag
 
 
-rm /tmp/job_$SLURM_JOBID.mem.txt
+
 
 
 #echo -e "tosend:\n$toSend"
@@ -469,6 +469,7 @@ if [[ $USER != ld32 ]]; then
 fi
 
 echo 
+
 
 # wait for email to be sent
 sleep 20
