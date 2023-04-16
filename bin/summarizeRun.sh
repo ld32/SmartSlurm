@@ -70,5 +70,13 @@ gnuplot -e "set datafile separator ','; set style data histogram; set style hist
 echo To see the plot: 
 echo display log/barchartTime.png 
 
+if [ -f /tmp/job_$SLURM_JOBID.mem.txt ]; then
+   #gnuplot -e "set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'log/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Memory'; set ylabel 'Mem (M)'; set xlabel 'Time (m)';  plot '/tmp/job_$SLURM_JOBID.mem.txt' using 2:xtic(1) lc rgb 'green'"
+
+   gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'log/job_$SLURM_JOBID.mem.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '/tmp/job_$SLURM_JOBID.mem.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
+
+fi
+
 # check running jobs 
 checkJobsSlurm  allJobs.txt
+

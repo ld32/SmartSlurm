@@ -96,10 +96,8 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-srunM=`cat /tmp/job_$SLURM_JOBID.maxMem.txt`
+srunM=`sort -n /tmp/job_$SLURM_JOBID.mem.txt | tail -n1`
 srunM=$((srunM / 1024 / 1024 ))
-
-rm /tmp/job_$SLURM_JOBID.maxMem.txt
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
 
@@ -432,21 +430,23 @@ if [ -f "$err" ]; then
     fi
 fi    
 
-summarizeRun.sh log/allJobs.txt
+summarizeRun.sh log/allJobs.txt $flag
+
+rm /tmp/job_$SLURM_JOBID.mem.txt
 
 #echo -e "tosend:\n$toSend"
 echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then 
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 else 
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }        
 
 fi
