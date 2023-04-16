@@ -14,6 +14,7 @@ counter1=0;
 jobName=$1 
 originalMem=$2
 originalTime=$3
+
 [ -f log/$jobName.adjust ] && originalMem=`cat log/$jobName.adjust | cut -d' ' -f1`
 [ -f log/$jobName.adjust ] && originalTime=`cat log/$jobName.adjust | cut -d' ' -f2`
 
@@ -38,28 +39,26 @@ while true; do
     # Wait for 10 seconds before checking again
     sleep 1
     counter=$((counter - 1))
-    if [ "$counter" -eq 0 ]; then 
-        counter1=$(($counter1 + 1))
-        
-        counter=30
-        MAX_MEMORY_USAGE=0
 
-        #echo $mem $min $extraMem > log/$name.adjust         
-       
+    if [ "$counter" -eq 0 ]; then 
         echo $counter1,$MAX_MEMORY_USAGE,$(($originalMem - $MAX_MEMORY_USAGE)) >> /tmp/job_$SLURM_JOB_ID.mem.txt
 
-        if [ $originalTime -lt 60 ]; then 
+        if [ $originalTime -lt 0 ]; then 
             continue
         else     
             CURRENT=`date +%s`
-            min=$(( $original - ($CURRENT - $START + 59)/60))
+            min=$(( $originalTime - ($CURRENT - $START + 59)/60))
 
             if [[ -z "$cancelMailSent" ]] && [ $min -le 5 ]; then 
                 echo "$SLURM_JOB_ID is running out of time" | mail -s "$SLURM_JOB_ID is running out of time" $USER
                 cancelMailSent=yes
             fi    
 
-        fi 
+        fi
+
+        counter1=$(($counter1 + 1))    
+        counter=30
+        MAX_MEMORY_USAGE=0 
     fi
 done
 
