@@ -430,9 +430,15 @@ if [ -f "$err" ]; then
     fi
 fi    
 
+
+
+cp /tmp/job_$SLURM_JOBID.mem.txt log/
+
 summarizeRun.sh log/allJobs.txt $flag
 
+
 rm /tmp/job_$SLURM_JOBID.mem.txt
+
 
 #echo -e "tosend:\n$toSend"
 echo -e "$toSend" >> ${err%.err}.email
