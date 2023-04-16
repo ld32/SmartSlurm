@@ -2,6 +2,8 @@
 
 set -x 
 
+wait 2 
+
 # Set the cgroup path
 CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
 
@@ -42,7 +44,7 @@ while true; do
 
     if [ "$counter" -eq 0 ]; then 
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
-        echo $counter1,$MAX_MEMORY_USAGE,$(($originalMem - $MAX_MEMORY_USAGE)) >> /tmp/job_$SLURM_JOB_ID.mem.txt
+        echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE))" >> /tmp/job_$SLURM_JOB_ID.mem.txt
 
         if [ $originalTime -lt 0 ]; then 
             continue
@@ -58,7 +60,7 @@ while true; do
         fi
 
         counter1=$(($counter1 + 1))    
-        counter=30
+        counter=10
         MAX_MEMORY_USAGE=0 
     fi
 done

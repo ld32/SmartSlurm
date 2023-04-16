@@ -96,7 +96,7 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-srunM=`sort -n /tmp/job_$SLURM_JOBID.mem.txt | tail -n1`
+srunM=`sort -n /tmp/job_$SLURM_JOBID.mem.txt | tail -n1 | cut -d' ' -f2`
 #srunM=$((srunM / 1024 / 1024 ))
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
