@@ -639,7 +639,7 @@ echo
 echo Building new sbatch command ... >&2
 #echo "#!/bin/bash" > $job   
 
-echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\njobMonitor.sh \$flag $mem $min &\n" > $job
+echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\njobMonitor.sh $flag $mem $min &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
