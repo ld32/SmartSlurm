@@ -8,7 +8,7 @@ CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
 # Initialize the maximum memory usage to zero
 MAX_MEMORY_USAGE=0
 
-counter=0
+counter=1
 counter1=0; 
 
 jobName=$1 
@@ -36,12 +36,12 @@ while true; do
     
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again
-    sleep 2
-    counter=$((counter + 1))
-    if [ "$counter" -eq 60 ]; then 
+    sleep 1
+    counter=$((counter - 1))
+    if [ "$counter" -eq 0 ]; then 
         counter1=$(($counter1 + 1))
         
-        counter=0
+        counter=30
         MAX_MEMORY_USAGE=0
 
         #echo $mem $min $extraMem > log/$name.adjust         
