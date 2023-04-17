@@ -188,7 +188,7 @@ if [ ! -f $succFile ]; then
 
     if [[ "$jobStatus" == "OOM" ]]; then
         
-        set -x
+        #set -x
         echo Will re-queue after sending email...
     
         echo old extraMem: 
@@ -204,7 +204,7 @@ if [ ! -f $succFile ]; then
         
         echo new extraMem: 
         cat $jobRecordDir/stats/extraMem.$2.$3
-        set +x
+        #set +x
         
         ( sleep 5; 
         for try in {1..8}; do
@@ -445,14 +445,14 @@ echo -e "$toSend" >> ${err%.err}.email
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then 
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 else 
-    echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a log/job_$SLURM_JOBID.mem.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }        
 
 fi

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -x 
+#set -x 
 
-wait 2 
+sleep 2 
 
 # Set the cgroup path
 CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
@@ -39,7 +39,7 @@ while true; do
     
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again
-    sleep 1
+    sleep 2
     counter=$((counter - 1))
 
     if [ "$counter" -eq 0 ]; then 
@@ -59,7 +59,7 @@ while true; do
         fi
 
         counter1=$(($counter1 + 1))    
-        counter=10
+        counter=30
         MAX_MEMORY_USAGE=0 
     fi
 done
