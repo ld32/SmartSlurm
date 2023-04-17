@@ -198,9 +198,9 @@ if [ ! -f $succFile ]; then
         extraMemN=$(( totalM - srunM + 1 ))
         #[[ "$extraMemN" == 0 ]] && extraMemN=1
         echo $extraMemN $totalM $inputSize >> $jobRecordDir/stats/extraMem.$2.$3
-        oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
+        #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
         maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
-        extraMem=$(( $maxExtra * $oomCount ))
+        extraMem=$(( $maxExtra * 2 ))
         
         echo new extraMem: 
         cat $jobRecordDir/stats/extraMem.$2.$3
