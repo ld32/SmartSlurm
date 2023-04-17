@@ -46,14 +46,14 @@ while true; do
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
         echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE))" >> log/job_$SLURM_JOB_ID.mem.txt
 
-        if [ $originalTime -lt 0 ]; then 
+        if [ $originalTime -lt 120 ]; then 
             continue
         else     
             CURRENT=`date +%s`
             min=$(( $originalTime - ($CURRENT - $START + 59)/60))
 
-            if [[ -z "$cancelMailSent" ]] && [ $min -le 5 ]; then 
-                echo "$SLURM_JOB_ID is running out of time" | mail -s "$SLURM_JOB_ID is running out of time" $USER
+            if [[ -z "$cancelMailSent" ]] && [ $min -le 15 ]; then 
+                echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
                 cancelMailSent=yes
             fi
         fi

@@ -55,6 +55,8 @@ fi
 
 mkdir -p $jobRecordDir/stats
 
+[ -f  $jobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12software,13reference,14flag,15core,16extraMem,17extraTime,18date > $jobRecordDir/jobRecord.txt
+
 echo Running: $0 $@ 1>&2
 
 cmd="ssbatch"
@@ -386,7 +388,9 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     rm $flagDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
 
-[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
+#[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
+
+[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
 
  #extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
 
@@ -409,7 +413,7 @@ if [[ "$inputs" == "none" ]]; then
     # empty or more than 60 minutes but less than 4 records
     if test `find $jobRecordDir/stats/$software.$ref.mem.stat.noInput -mmin +60 2>/dev/null` && [ $rows -lt 3 ] || [ $rows -eq 0 ]; then  
         mkdir -p $jobRecordDir/stats/
-        #cat /home/*/smartSlurm/stats/myJobRecord.txt > $jobRecordDir/stats/jobRecord.txt 
+        #cat /home/*/smartSlurm/stats/myJobRecord.txt > $jobRecordDir/jobRecord.txt 
         #test `find $jobRecordDir/jobRecord.txt -mmin +20` && echo jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
 
         # todo: could use single file here

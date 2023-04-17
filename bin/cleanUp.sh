@@ -157,7 +157,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then
             echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
         else 
-            echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
+            echo Did not add this record to $jobRecordDir/jobRecord.txt
         fi  
     # else         
     #     maxMem=`cat $jobRecordDir/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
@@ -169,7 +169,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then
     #         echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
     #         rm $jobRecordDir/stats/$2.$3.*  2>/dev/null
     #     else 
-    #         echo Did not add this record to $jobRecordDir/stats/jobRecord.txt
+    #         echo Did not add this record to $jobRecordDir/jobRecord.txt
     #     fi  
     # fi
 #else
