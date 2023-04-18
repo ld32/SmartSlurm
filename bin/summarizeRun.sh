@@ -45,7 +45,7 @@ cd log
 rm barchartMem.png  barchartTime.png 
 echo Category,Used,Wasted > dataMem.csv
                                                                             
-ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17,   $6-$8-$17}' | sed 's/,-.*/,0/' >> dataMem.csv
+ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17,   $6-$8-$17}' | sed 's/,-.*/,0/' | sed s/-COM//g | sed s/-OO/-/g >> dataMem.csv
 
 #ls * | sort -n | xargs -d '\n' grep hello
 
@@ -63,7 +63,7 @@ echo display log/barchartMem.png
 
 echo Category,Used,Wasted > dataTime.csv
 
-ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9,   $7-$9}' >> dataTime.csv
+ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9,   $7-$9}' | sed s/-COM//g | sed s/-OO/-/g >> dataTime.csv
 
 gnuplot -e "set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot 'dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red'"
 

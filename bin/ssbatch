@@ -39,7 +39,9 @@
 #set -e
 #set -x 
 
-usage() { echo -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+echoerr() { echo "$@" >&2; }
+
+usage() { echoerr -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
 [ -z "$1" ] && usage
 
@@ -50,14 +52,14 @@ usage() { echo -e "Short Usage: \n${0##*/} [-L logDir (for smartPipline)]  [-S s
 if [ -f ~/.smartSlurm/config/config.txt ]; then 
     source ~/.smartSlurm/config/config.txt
 else     
-    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+    source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 fi
 
 mkdir -p $jobRecordDir/stats
 
 [ -f  $jobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12software,13reference,14flag,15core,16extraMem,17extraTime,18date > $jobRecordDir/jobRecord.txt
 
-echo Running: $0 $@ 1>&2
+echoerr Running: $0 $@ 
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -67,19 +69,19 @@ for i in "$@"; do
     fi
     cmd="$cmd  $i"
 done
-echo $cmd
+echoerr $cmd
 
 #comment="${SSBATCH_I}${SSBATCH_R}${SSBATCH_S}${SSBATCH_D}"
 
 testRun=${@: -1} 
 
-echo 
+echoerr 
 array=( "$@" )
 
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
-#  	echo $i " / " $(($#)) " : " ${array[$i]}
+#  	echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
         --comment=*     )   comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
   	    "-L"            )   logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; 
@@ -103,16 +105,16 @@ done
 
 [ -z "$logDir" ] && set -- "$@" run && testRun=run
 
-echo options before sbatch options: slurmAcc: $slurmAcc logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
+echoerr options before sbatch options: slurmAcc: $slurmAcc logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
 
 #exit
 
 depsO=$deps 
 
-echo Parsing sbatch command... 
+echoerr Parsing sbatch command... 
 for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || echo $(($#))`; i++ )); do
     [ -z "${array[$i]}" ] && continue
-#  	echo $i " / " $(($#)) " : " ${array[$i]}    
+#  	echoerr $i " / " $(($#)) " : " ${array[$i]}    
   	case "${array[$i]}" in
   	    "-p"            )   partition="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; # will set partition later
   		--partition=*   )   partition="${array[$i]}" && partition=${partition/--partition=/} && array[$i]="";;
@@ -137,77 +139,77 @@ for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || ec
   		
     esac
  
-    [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echo Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]="" 
-  	[ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echo Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
-    [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echo Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
+    [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]="" 
+  	[ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
+    [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
     [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
 done 
 
-echo 
-echo Parsing result from sbatch commandline: 
-echo sbatch options: partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
+echoerr 
+echoerr Parsing result from sbatch commandline: 
+echoerr sbatch options: partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
 
 if [ -z "$slurmScript" ]; then
-    echo wrapCMD: $wrapCMD 
-    echo additional sbatch parameter: $CMDWithoutWrap 
+    echoerr wrapCMD: $wrapCMD 
+    echoerr additional sbatch parameter: $CMDWithoutWrap 
 else 
-    echo additional sbatch parameter: $CMDWithoutSlurmCMD
-    echo slurmScript: $slurmScript 
-    echo slurmScriptParas: $slurmScriptParas
+    echoerr additional sbatch parameter: $CMDWithoutSlurmCMD
+    echoerr slurmScript: $slurmScript 
+    echoerr slurmScriptParas: $slurmScriptParas
 fi
-echo test or run: $testRun
+echoerr test or run: $testRun
 
 if [ ! -z "$slurmScript" ]; then 
-  echo Validating slurmScript: 
+  echoerr Validating slurmScript: 
   firstRow=`head -n 1 $slurmScript`
-  echo FirstRow of the script: $firstRow
-  [[ "$firstRow" =~ ^#\!/bin/bash ]] || [[ "$firstRow" =~ ^#\!/usr/bin/bash ]] || [[ "$firstRow" =~ ^#\!/bin/sh ]] || [[ "$firstRow" =~ ^#\!/usr/bin/sh ]]|| { echo "Error: first row of the slurm script ($slurmScript) does not start with #!/bin/bash, #!/usr/bin/bash, #!/bin/sh, #!/usr/bin/sh";  exit 1;}
+  echoerr FirstRow of the script: $firstRow
+  [[ "$firstRow" =~ ^#\!/bin/bash ]] || [[ "$firstRow" =~ ^#\!/usr/bin/bash ]] || [[ "$firstRow" =~ ^#\!/bin/sh ]] || [[ "$firstRow" =~ ^#\!/usr/bin/sh ]]|| { echoerr "Error: first row of the slurm script ($slurmScript) does not start with #!/bin/bash, #!/usr/bin/bash, #!/bin/sh, #!/usr/bin/sh";  exit 1;}
 fi
 
-[ -z "$wrapCMD" ] && [ -z "$slurmScript" ] && echo Error: Did not find --wrap, did not find slurmScript either. && exit 1 
+[ -z "$wrapCMD" ] && [ -z "$slurmScript" ] && echoerr Error: Did not find --wrap, did not find slurmScript either. && exit 1 
 
 if [[ ! -z "$slurmScript" ]]; then 
-    echo 
-    echo Parsing slurm script ... 
+    echoerr 
+    echoerr Parsing slurm script ... 
     while IFS=$'\n' read line; do
-        echo Got line: $line
+        echoerr Got line: $line
         arr=($line)
         if [[ ${arr[0]} == "#SBATCH" ]]; then 
             case "${arr[1]}" in 
-                --comment=*    )   echo found --comment && comment="${arr[1]}" && ar=(${comment/--comment=/}) && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
+                --comment=*    )   echoerr found --comment && comment="${arr[1]}" && ar=(${comment/--comment=/}) && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
                 
-                "-A"   )   echo Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
-                "--mem" ) [ -z "$mem" ] && echo Found --mem && mem="${arr[2]}";;
-                --mem=* ) [ -z "$mem" ] && echo Found --mem= && mem="${arr[1]}" && mem="${mem/--mem=/}";;
-                "--mem-per-cpu") [ -z "$mem1" ] && echo Found --mem-per-cpu && mem1="${arr[2]}";;
-                --mem-per-cpu=*) [ -z "$mem1" ] && echo Found --mem-per-cpu= && mem1="${arr[1]}" && mem1="${mem1/--mem-per-cpu=/}";; 
-                "-c"    ) [ -z "$core" ] && echo Found -c && core="${arr[2]}";;
-                --cpus-per-task=* ) [ -z "$core" ] && echo Found --cpus-per-task= && core="${arr[1]}" && core="${core/--cpus-per-task=/}";;
-                "-n"    ) [ -z "$task" ] && echo Found -n && task="${arr[2]}";;
-                --ntasks=* ) [ -z "$task" ] && echo Found --ntasks= && task="${arr[1]}" && task="${task/--ntasks=/}";;
-                "-N"    ) [ -z "$node" ] && echo Found -N && node="${arr[2]}";;
-                --nodes=*   ) [ -z "$node" ] && echo Found --nodes= && node="${arr[1]}" && node="${node/--nodes=/}";;
-                "-t"    ) [ -z "$time" ] && echo Found -t && time="${arr[2]}";;
-                --time=* ) [ -z "$time" ] && echo Found --time= && time="${arr[1]}" && time="${time/--time=/}";;    
-                "-o"    ) [ -z "$out" ] && echo Found -o && out="${arr[2]}";;
-                --output=* ) [ -z "$out" ] && echo Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
-                "-e" ) [ -z "$err" ] && echo Found -e && err="${arr[2]}";;
-                --error=* ) [ -z "$err" ] && echo Found --error= && err="${arr[1]}" && err="${err/--error=/}";;
+                "-A"   )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
+                "--mem" ) [ -z "$mem" ] && echoerr Found --mem && mem="${arr[2]}";;
+                --mem=* ) [ -z "$mem" ] && echoerr Found --mem= && mem="${arr[1]}" && mem="${mem/--mem=/}";;
+                "--mem-per-cpu") [ -z "$mem1" ] && echoerr Found --mem-per-cpu && mem1="${arr[2]}";;
+                --mem-per-cpu=*) [ -z "$mem1" ] && echoerr Found --mem-per-cpu= && mem1="${arr[1]}" && mem1="${mem1/--mem-per-cpu=/}";; 
+                "-c"    ) [ -z "$core" ] && echoerr Found -c && core="${arr[2]}";;
+                --cpus-per-task=* ) [ -z "$core" ] && echoerr Found --cpus-per-task= && core="${arr[1]}" && core="${core/--cpus-per-task=/}";;
+                "-n"    ) [ -z "$task" ] && echoerr Found -n && task="${arr[2]}";;
+                --ntasks=* ) [ -z "$task" ] && echoerr Found --ntasks= && task="${arr[1]}" && task="${task/--ntasks=/}";;
+                "-N"    ) [ -z "$node" ] && echoerr Found -N && node="${arr[2]}";;
+                --nodes=*   ) [ -z "$node" ] && echoerr Found --nodes= && node="${arr[1]}" && node="${node/--nodes=/}";;
+                "-t"    ) [ -z "$time" ] && echoerr Found -t && time="${arr[2]}";;
+                --time=* ) [ -z "$time" ] && echoerr Found --time= && time="${arr[1]}" && time="${time/--time=/}";;    
+                "-o"    ) [ -z "$out" ] && echoerr Found -o && out="${arr[2]}";;
+                --output=* ) [ -z "$out" ] && echoerr Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
+                "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}";;
+                --error=* ) [ -z "$err" ] && echoerr Found --error= && err="${arr[1]}" && err="${err/--error=/}";;
                 
-                "-d"    ) [ -z "$dep" ] && echo Found -d && dep="${arr[2]}";;
-                --dependency=* ) [ -z "$dep" ] && echo Found --dependency= && dep="${arr[1]}" && dep"${dep/--dependency=/}";;
+                "-d"    ) [ -z "$dep" ] && echoerr Found -d && dep="${arr[2]}";;
+                --dependency=* ) [ -z "$dep" ] && echoerr Found --dependency= && dep="${arr[1]}" && dep"${dep/--dependency=/}";;
             esac
         fi     
     done < $slurmScript 
 
 
-    echo
-    echo Parsing result from slurm script:  
-    echo time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
+    echoerr
+    echoerr Parsing result from slurm script:  
+    echoerr time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
 
-    echo slurmScript: $slurmScript 
-    echo additional sbatch parameter: $CMDWithoutSlurmCMD
-    echo slurmScriptParas: $slurmScriptParas
+    echoerr slurmScript: $slurmScript 
+    echoerr additional sbatch parameter: $CMDWithoutSlurmCMD
+    echoerr slurmScriptParas: $slurmScriptParas
 fi
 
 [ -z "$software" ] && [ ! -z "$SSBATCH_S" ] && software="$SSBATCH_S"
@@ -245,8 +247,8 @@ if [ -z "$logDir" ]; then
     #echo -e "#!/bin/bash\n\n" > $job 
     ##SBATCH -e $err\n#SBATCH -o $out\n" > $job
 else 
-    [ -d "$logDir" ] || { echo Directory not exist: $logDir; usage; }
-    [ -z "$software" ] && { echo software is emtpty; usage; }
+    [ -d "$logDir" ] || { echoerr Directory not exist: $logDir; usage; }
+    [ -z "$software" ] && { echoerr software is emtpty; usage; }
     flag=${flag//\//-}
 
     # todo: this is confusing, need work to make it clear
@@ -301,7 +303,7 @@ else
     resAjust="#Depend on multiple jobs\n"
     tmp=""
     for t in ${deps//\./ }; do
-        #echo working on $t >&2  test
+        #echoerr working on $t  test
         tmp="$tmp:$t"
     done
     [ ! -z "$tmp" ] && deps="--dependency=afterok$tmp"
@@ -314,39 +316,39 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     if [ -f $succFlag ]; then
         stepID=${flag%%.*}
         if ([ -f $flagDir/skipAllSuccessJobs.txt ] || [ -f $flagDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then 
-            echo skipThisJob
+            echoerr skipThisJob
             exit    
         elif [ ! -f $flagDir/reRunAllSuccessJobs.txt ] && [ ! -f $flagDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ]; then
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
-            echo $flag was done before, do you want to re-run it? >&2
-            echo -e "y:        To re-run this job, press y, then enter key." >&2
-            echo -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key." >&2
-            echo -e "yall:     To re-run all jobs, type yall, then press enter key." >&2
-            echo -e "enter:    To not re-run this job, directly press enter key." >&2
-            echo -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key." >&2
-            echo -e "nall:     To not re-run all successful jobs, type nall, then press enter key." >&2
+            echoerr $flag was done before, do you want to re-run it? 
+            echoerr -e "y:        To re-run this job, press y, then enter key."
+            echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
+            echoerr -e "yall:     To re-run all jobs, type yall, then press enter key."
+            echoerr -e "enter:    To not re-run this job, directly press enter key."
+            echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
+            echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
             read -p "" x </dev/tty
 
             if [[ "$x" == "y" ]]; then
-                echo "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)." >&2 
+                echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
             elif [[ "$x" == "ystep" ]]; then 
                 touch $flagDir/reRunAllSuccessJobs$stepID.txt
             elif [[ "$x" == "nstep" ]]; then
                 touch $flagDir/skipAllSuccessJobs$stepID.txt
-                echo skipThisJob
+                echoerr skipThisJob
                 exit
             elif [[ "$x" == "yall" ]]; then 
                 touch $flagDir/reRunAllSuccessJobs.txt
             elif [[ "$x" == "nall" ]]; then
                 touch $flagDir/skipAllSuccessJobs.txt
-                echo skipThisJob
+                echoerr skipThisJob
                 exit    
             else
-                echo skipThisJob
+                echoerr skipThisJob
                 exit
             fi  
         fi
-        #echo
+        #echoerr
         #rm $succFlag
         #ls -l $flagDir/ 1>&2 
     elif [ -f log/keepRunningJobs.txt ]; then 
@@ -354,7 +356,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
         #set -x    
         #cat log/allJobs.txt >&2
 
-        #echo $flag >&2
+        #echoerr $flag 
         # check the third column for the job name, then find the the job id in column 1
         out=`cat log/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }    
@@ -363,11 +365,11 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
             if grep ^$id log/keepRunningJobs.txt 1>/dev/null; then 
                 # the dependency is not changed from the last submit 
                 if [[ "$depsO" == "$de" ]]; then 
-                    echo thisJobStillRunning $id here&& exit
+                    echoerr thisJobStillRunning $id here&& exit
                 else    
                     scancel $id 
                 fi
-                #echo $deps
+                #echoerr $deps
 
                 # comment out because deps can include the upstream jobs
                 # check if the upseam jobs still running
@@ -398,23 +400,23 @@ fi
 memO=$mem; minO=$min
 inputSize=0
 
-echo 
-echo Check if there input file list and this job does not depend on other jobs
+echoerr 
+echoerr Check if there input file list and this job does not depend on other jobs
 
 
 # do not have input file list    #todo: we can try to figure out the input from the software parameters here
 if [[ "$inputs" == "none" ]]; then
-    echo No inputs
+    echoerr No inputs
     resAjust="$resAjust#This job does not have input.\n"
     ref=${ref//\//-}
     
     rows=`( wc -l $jobRecordDir/stats/$software.$ref.mem.stat.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
-    #echo rows  $rows >&2
+    #echoerr rows  $rows
     # empty or more than 60 minutes but less than 4 records
     if test `find $jobRecordDir/stats/$software.$ref.mem.stat.noInput -mmin +60 2>/dev/null` && [ $rows -lt 3 ] || [ $rows -eq 0 ]; then  
         mkdir -p $jobRecordDir/stats/
         #cat /home/*/smartSlurm/stats/myJobRecord.txt > $jobRecordDir/jobRecord.txt 
-        #test `find $jobRecordDir/jobRecord.txt -mmin +20` && echo jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
+        #test `find $jobRecordDir/jobRecord.txt -mmin +20` && echoerr jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
 
         # todo: could use single file here
         grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | uniq > $jobRecordDir/stats/$software.$ref.mem.stat.noInput
@@ -462,12 +464,12 @@ if [[ "$inputs" == "none" ]]; then
 
 # not depends on other job, and there is input file list
 elif [ -z "$deps" ]; then
-    echo Does not depend on other jobs and have inputs.
+    echoerr Does not depend on other jobs and have inputs.
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then 
         resAjust="$resAjust#Some or all input files not exist: $inputs\n"
-        echo Error! missingInputFile: ${inputs//,/ }
+        echoerr Error! missingInputFile: ${inputs//,/ }
         exit 
     else 
         #inputSize=$(($inputSize/1024)); # convert to M      
@@ -495,7 +497,7 @@ elif [ -z "$deps" ]; then
         if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.${ref//\//-}.mem.stat -mmin +60` || [ ! -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then  
             resAjust="$resAjust#Do not have a formula, or it is old and out of range. Let us build one...\n"   
 
-            #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
+            #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echoerr jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt  
             
             #jobStatistics.sh $software ${ref//\//-} 4 1>&2 
             
@@ -507,14 +509,14 @@ elif [ -z "$deps" ]; then
 
             grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $jobRecordDir/stats/$software.$ref.time.txt
 
-            echo "Got mem data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.mem.txt):"
+            echoerr "Got mem data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.mem.txt):"
             cat $jobRecordDir/stats/$software.$ref.mem.txt
 
-            echo "Got time data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.time.txt):"
+            echoerr "Got time data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.time.txt):"
             cat $jobRecordDir/stats/$software.$ref.time.txt
 
             if [[ $(wc -l <$jobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
-                echo There are less than 3 records. No way to fit a curve. Exiting...
+                echoerr There are less than 3 records. No way to fit a curve. Exiting...
                 resAjust="$resAjust#There are less than 3 records. No way to fit a curve.\n"
                  
             else
@@ -538,13 +540,13 @@ elif [ -z "$deps" ]; then
                 # gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> time.stat.txt
                 # echo RSquare="$(gnuplot -e 'stats "time.txt" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> time.stat.txt
                 
-                echo There are more than 3 $software $ref jobs already run for this software, statics is ready for current job: 
-                # echo Memeory statisics:
-                # echo "inputsize mem(M)"
+                echoerr There are more than 3 $software $ref jobs already run for this software, statics is ready for current job: 
+                # echoerr Memeory statisics:
+                # echoerr "inputsize mem(M)"
                 # cat $jobRecordDir/stats/$software.$ref.mem.stat
-                # echo
-                # echo Time statistics:
-                # echo "inputsize time(minute)"
+                # echoerr
+                # echoerr Time statistics:
+                # echoerr "inputsize time(minute)"
                 # cat $jobRecordDir/stats/$software.$ref.time.stat
  
                 # mv $OUT/mem.txt $jobRecordDir/stats/$software.$ref.mem.txt
@@ -555,16 +557,16 @@ elif [ -z "$deps" ]; then
                 # pdftoppm $jobRecordDir/stats/$software.$ref.mem.pdf  -png > $jobRecordDir/stats/$software.$ref.mem.png
                 # pdftoppm $jobRecordDir/stats/$software.$ref.time.pdf  -png > $jobRecordDir/stats/$software.$ref.time.png
 
-                echo
-                echo You can see the plot using commands:
-                echo display $jobRecordDir/stats/$software.$ref.mem.png
-                echo display $jobRecordDir/stats/$software.$ref.time.png
+                echoerr
+                echoerr You can see the plot using commands:
+                echoerr display $jobRecordDir/stats/$software.$ref.mem.png
+                echoerr display $jobRecordDir/stats/$software.$ref.time.png
                 
                 # cd -
 
                 
 
-                #echo got files in $jobRecordDir/stats:  
+                #echoerr got files in $jobRecordDir/stats:  
                 #ls -lrt $jobRecordDir/stats
                 
                 if [ -f $jobRecordDir/stats/$software.${ref//\//-}.mem.stat ]; then    
@@ -581,7 +583,7 @@ elif [ -z "$deps" ]; then
                         resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
 
                     fi
-                    #echo got estimation $output  
+                    #echoerr got estimation $output  
                 fi        
                 
             fi
@@ -590,15 +592,15 @@ elif [ -z "$deps" ]; then
        
     fi
 else
-    echo Has input, but depends on other jobs
+    echoerr Has input, but depends on other jobs
     resAjust="$resAjust#Use default mem and time. Has input, but this job depends on $deps."
 fi
 
-#echo
+#echoerr
 
-[ -z "$min" ] && { echo did not find time limit >&2; exit 1; }
+[ -z "$min" ] && { echoerr did not find time limit; exit 1; }
  
-[ -z "$mem" ] && { echo did not find mem limit >&2; exit 1; } 
+[ -z "$mem" ] && { echoerr did not find mem limit; exit 1; } 
 
 [ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; } 
 
@@ -610,7 +612,7 @@ fi
 
 # resAjust="$resAjust#day $day,  hour $hour,  min $min,  sec $sec"
 
-#echo looking partition for hour: $hours 
+#echoerr looking partition for hour: $hours 
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -619,28 +621,28 @@ seconds=$(( $min * 60 ))
 
 #[ $seconds -le 60 ] && time=11:0 && seconds=60
 
-#echo srun seconds: $seconds
+#echoerr srun seconds: $seconds
 
 time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
-#echo New time for srun: $timeN
+#echoerr New time for srun: $timeN
 
-#echo 
+#echoerr 
 
 # mem for srun is 10M less than sbatch command
 #[[ "$mem" == *G ]] && memN=$(( 1024 * ${mem%G} -10 ))M || memN=$(( ${mem%M} -10 ))M
 
-#[ ${memN%M} -le 1 ] && { echo Error: --mem for sbatch command should bigger than 11M; usage; }
+#[ ${memN%M} -le 1 ] && { echoerr Error: --mem for sbatch command should bigger than 11M; usage; }
 #[ ${memN%M} -le 1 ] && mem=20M && memN=10M
 
-#echo Mew mem for srun: $memN
+#echoerr Mew mem for srun: $memN
 
 #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
 #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
 
 echo -e "$resAjust\n" > $outFlag
-echo 
-echo Building new sbatch command ... >&2
+echoerr 
+echoerr Building new sbatch command ... 
 #echo "#!/bin/bash" > $job   
 
 echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\njobMonitor.sh $flag $mem $min &\n" > $job
@@ -665,7 +667,7 @@ if [ -z "$slurmScript" ]; then
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
     echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
 else 
-    grep "^#SBATCH" $slurmScript >> $job || : >> $job
+    grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
     echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
 fi
@@ -712,22 +714,22 @@ fi
 echo -e "\n#Command used to submit the job:" >> $job
 echo "#$cmd" >> $job 
 
-#echo $resAjust
+#echoerr $resAjust
 
-echo New sbatch command to submit job: 
-echo $cmd 
+echoerr New sbatch command to submit job: 
+echoerr $cmd 
 if [[ "$testRun" == "run" ]]; then
-    echo Start submtting job...
+    echoerr Start submtting job...
     #output=`$cmd`
-    #echo $output
+    #echoerr $output
     jobID=`$cmd`
     
-    echo Output is: $jobID
+    echoerr Output is: $jobID
     #touch $submitFlag  
 else 
     jobID=$(date +"%4N")
-    #echo This is a testing, not really running a job...
-    echo "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
+    #echoerr This is a testing, not really running a job...
+    echoerr "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
     #jobID=
 fi    
 
@@ -735,7 +737,7 @@ fi
 echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job 
 
 # print out on screen
-#echo -e "Sbatch command output:\nSubmitted batch job $jobID"
+#echoerr -e "Sbatch command output:\nSubmitted batch job $jobID"
 
 #dep=${dep#afterok}; dep=${dep//:/.}; [ -z "$dep" ] && dep=null 
 
@@ -749,7 +751,7 @@ else
     printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs>> $flagDir/allJobs.txt;
 fi
 
-echo New slurmScirpt is ready. The content is: >&2
+echoerr New slurmScirpt is ready. The content is: 
 cat $job >&2
 
 echo Submitted batch job $jobID
