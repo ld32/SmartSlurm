@@ -61,6 +61,8 @@ min=$((($FINISH - $START + 59)/60))
 # memory in M
 memSacct=`echo $jobStat | cut -d" " -f5`
 
+[[ "$memSacct" == "RUNNING" ]] && memSacct=NA
+
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
