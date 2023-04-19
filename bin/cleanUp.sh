@@ -459,12 +459,12 @@ fi
 
 if [[ $USER != ld32 ]]; then
     if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then 
-        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png ld32 
+        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png ld32 
     elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png ld32 
+        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png ld32 
 
     else 
-        echo -e "$toSend" | mail -s "$s" -a log/barchartMem.png -a log/barchartTime.png ld32
+        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/barchartMem.png -a log/barchartTime.png ld32
     fi
 fi
 

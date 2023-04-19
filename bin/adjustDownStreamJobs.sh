@@ -226,11 +226,11 @@ for i in $output; do
             #rm -r $OUT 2>/dev/null
         fi
     
-        [ -z "$mem" ] && continue
-
         echo -e "$resAjust" 
         
         echo -e "$resAjust\n" >> log/$name.out
+
+        [ -z "$mem" ] && continue
 
         #[ "$mem" -lt 20 ] && mem=20 # at least 20M
         
