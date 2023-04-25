@@ -1,7 +1,7 @@
 #!/bin/sh
 
 usage(){
-    echo -e "Usage:\nsubsetFastq.sh <path to original fastq file in .tar.gz format> <number of reads, for example 500000 or 1000000>"; 
+    echo -e "Usage:\nsubsetFastq.sh <path to original fastq file in .fastq.gz format> <number of reads, for example 500000 or 1000000>"; 
     exit 1
 }
 
@@ -21,7 +21,10 @@ rowCount=$(( $readCount * 4 ))
 # cd -
 # for i in *.fastq; do 
 #     tar -cvzf $i.gz $i; 
+#     rm $i
 # done
+
+
 
 for i in $inputDir/*.fastq.gz; do 
     echo Working on $i ... 
