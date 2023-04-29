@@ -316,7 +316,7 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
     if [ -f $succFlag ]; then
         stepID=${flag%%.*}
         if ([ -f $flagDir/skipAllSuccessJobs.txt ] || [ -f $flagDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then 
-            echoerr skipThisJob
+            echo skipThisJob
             exit    
         elif [ ! -f $flagDir/reRunAllSuccessJobs.txt ] && [ ! -f $flagDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ]; then
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
@@ -329,22 +329,24 @@ if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then
             echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
             read -p "" x </dev/tty
 
+            echoerr You typed: \"$x\"
+
             if [[ "$x" == "y" ]]; then
                 echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
             elif [[ "$x" == "ystep" ]]; then 
                 touch $flagDir/reRunAllSuccessJobs$stepID.txt
             elif [[ "$x" == "nstep" ]]; then
                 touch $flagDir/skipAllSuccessJobs$stepID.txt
-                echoerr skipThisJob
+                echo skipThisJob
                 exit
             elif [[ "$x" == "yall" ]]; then 
                 touch $flagDir/reRunAllSuccessJobs.txt
             elif [[ "$x" == "nall" ]]; then
                 touch $flagDir/skipAllSuccessJobs.txt
-                echoerr skipThisJob
+                echo skipThisJob
                 exit    
             else
-                echoerr skipThisJob
+                echo skipThisJob
                 exit
             fi  
         fi
