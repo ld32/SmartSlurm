@@ -226,6 +226,10 @@ for i in $output; do
             #rm -r $OUT 2>/dev/null
         fi
     
+    # tet oom
+    mem=1412
+
+
         echo -e "$resAjust" 
         
         echo -e "$resAjust\n" >> log/$name.out

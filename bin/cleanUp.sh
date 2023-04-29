@@ -113,6 +113,14 @@ if [[ $jobStatus == "Cancelled" ]]; then
         jobStatus="OOM"
     fi
 fi
+set -x
+#vsome times, it reports unknown, but is it is oom
+if [[ $jobStatus == Unknown ]]; then
+    tLog=`tail -n 22 $out | grep ^srun`
+    [[ "$tLog" == *"task 0: Out Of Memory"* ]] && jobStatus="OOM" && echo The job is actually out-of-memory by according to the log: && echo $tLog
+fi  
+
+set +x 
 
 set -x
 
@@ -208,9 +216,10 @@ if [ ! -f $succFile ]; then
         #extraMemN=$(( ( totalM - srunM ) *2 ))
         extraMemN=$(( totalM - srunM + 1 ))
         #[[ "$extraMemN" == 0 ]] && extraMemN=1
-        echo $extraMemN $totalM $inputSize >> $jobRecordDir/stats/extraMem.$2.$3
+        [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize >> $jobRecordDir/stats/extraMem.$2.$3
         #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
         maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
+        [ -z "$maxExtra" ] && maxExtra=5
         extraMem=$(( $maxExtra * 2 ))
         
         echo new extraMem: 
@@ -483,4 +492,4 @@ echo
 
 
 # wait for email to be sent
-sleep 20
+sleep 10

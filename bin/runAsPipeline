@@ -18,7 +18,9 @@ echo Running: $0 $@
 
 module list 
 
-[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-") 
+[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-")
+
+[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-") 
 
 [ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c '%.19z' log | tr " " "." | tr ":" "-") 
 
@@ -227,7 +229,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
         echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run 
         

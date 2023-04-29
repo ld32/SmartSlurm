@@ -600,6 +600,9 @@ fi
 
 #echoerr
 
+# for OOM testing
+mem=1412
+
 [ -z "$min" ] && { echoerr did not find time limit; exit 1; }
  
 [ -z "$mem" ] && { echoerr did not find mem limit; exit 1; } 
@@ -615,6 +618,14 @@ fi
 # resAjust="$resAjust#day $day,  hour $hour,  min $min,  sec $sec"
 
 #echoerr looking partition for hour: $hours 
+
+# this is re-submit checkpoint job 
+if which dmtcp_command >/dev/null 2>&1 && [ -f log/$flag/reRun.adjust ]; then 
+    tText=`cat log/$flag/reRun.adjust`
+    mem=`echo $tText | cut -d' ' -f1`
+    min=`echo $tText | cut -d' ' -f4`
+    extraMem=`echo $tText | cut -d' ' -f3`    
+fi
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -667,12 +678,22 @@ echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
+    if which dmtcp_command >/dev/null 2>&1 && [ $mem -gt 5 ]; then
+        echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
+        echo "srun -n 1 $slurmAcc bash -e -c \"checkpoint.sh  \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem; \"" >> $job   
+    else 
+        echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
+    fi
 else 
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
-    echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
-fi
+
+    if which dmtcp_command >/dev/null 2>&1; then
+        echo "srun -n 1 $slurmAcc bash -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas\\\" $flag $mem $min $extraMem; \"" >> $job 
+    else
+        echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
+    fi
+fi    
 #echo "kill -9 \$mypid" >> $job
 #echo "sleep 15 # wait slurm get the job status into its database" >> $job 
 
