@@ -78,4 +78,4 @@ gnuplot -e "set datafile separator ' '; set style data histogram; set style hist
 #fi
 
 # check running jobs 
-checkJobsSlurm  allJobs.txt
+# checkJobsSlurm  allJobs.txt
