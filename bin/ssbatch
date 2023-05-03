@@ -311,6 +311,8 @@ fi
 
 resAjust="#Original mem $mem M, Original time: $min mins\n"
 
+spurce $dirname $0)/catach.sh
+
 # check job done before or not
 if [[ ! -z "$logDir" && "$testRun" == "run" ]]; then 
     if [ -f $succFlag ]; then
