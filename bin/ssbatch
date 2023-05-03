@@ -433,7 +433,7 @@ if [[ "$inputs" == "none" ]]; then
             #cp $jobRecordDir/stats/$software.$ref.timeMem.noInput.txt $OUT/timeMem.txt
             #cd $OUT
             # make plot and calculate statistics
-            gnuplot -e 'set term png; set output "'"$jobRecordDir/stats/$software.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $software.$ref.timeMem.stat.noInput.txt
+            gnuplot -e 'set term png; set output "'"$jobRecordDir/stats/$software.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.timeMem.noInput.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.timeMem.stat.noInput.txt
 
             # cd - 
             # convert $OUT/timeMem.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.stat.noInput.pdf 2>/dev/null
