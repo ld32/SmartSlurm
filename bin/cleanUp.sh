@@ -149,7 +149,7 @@ fi
 
 [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
 
-                                #3defult, 5given,  7cGroupUsed                 acct used      
+                                #3defult,  5given,  7cGroupUsed                 acct used      
 record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
 echo dataToPlot,$record
     
@@ -431,7 +431,8 @@ actualsize=`wc -c $out || echo 0`
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
    toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
-   toSend="$toSend\n...\nLast 10 row of output:\n`tail -n 10 $out`"
+   toSend="$toSend\n...\nFirst 20 row of output:\n`head -n 20 $out`"
+   toSend="$toSend\n...\nLast 20 row of output:\n`tail -n 20 $out`"
 else
    #toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
    toSend=`echo; echo Job log:; cat $out;`
@@ -488,6 +489,8 @@ fi
 
 echo 
 
+# create an empty file so that it is easier to match job name to job ID
+touch $out.$SLURM_JOB_ID
 
 # wait for email to be sent
 sleep 10

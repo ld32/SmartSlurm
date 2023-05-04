@@ -304,7 +304,8 @@ done
 #echo "cd \$cwd/.." >> $run
 
 echo "echo; echo All submitted jobs: " >> $run
-echo "cat \$cwd/log/allJobs.txt" >> $run 
+#echo "cat \$cwd/log/allJobs.txt" >> $run
+echo "awk '{print substr(\$0, 1, 150)}' \$cwd/log/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
 

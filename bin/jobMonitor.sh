@@ -17,6 +17,8 @@ jobName=$1
 originalMem=$2
 originalTime=$3
 
+defaultMem=$4
+
 [ -f log/$jobName.adjust ] && originalMem=`cat log/$jobName.adjust | cut -d' ' -f1`
 [ -f log/$jobName.adjust ] && originalTime=`cat log/$jobName.adjust | cut -d' ' -f2`
 
@@ -44,7 +46,7 @@ while true; do
 
     if [ "$counter" -eq 0 ]; then 
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
-        echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE))" >> log/job_$SLURM_JOB_ID.mem.txt
+        echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $((defaultMem - originalMem))" >> log/job_$SLURM_JOB_ID.mem.txt
 
         if [ $originalTime -lt 120 ]; then 
             continue

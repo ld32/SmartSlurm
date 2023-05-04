@@ -204,7 +204,7 @@ export PATH=$PWD/smartSlurm/bin:$PATH
 # Take a look at a regular exmaple bash script
 cat $PWD/smartSlurm/bin/bashScriptV1.sh
 
-# Below is the content of a regular bashScriptV1.sh
+# Below is the content of a regular bashScriptV1.sh 
 1 #!/bin/sh
 2
 3 for i in {1..1}; do
