@@ -64,14 +64,24 @@ else
     dmtcp_launch --ckptdir $checkpointDir -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT  $program &
 fi 
 
+taskPID="none"
+
 checkpointed=""
 
+sleep 5
+
+[ -f log/$flag/taskProcessID.txt ] && taskPID=`cat log/$flag/taskProcessID.txt` || taskPID=""
 while true; do
-    
     # todo: should move this to /tmp for less tranffic 
-    [ -f log/$flag.success ] && sleep 10 && exit
-    [ -f log/$flag.failed ] && sleep 10 && exit 1
+    #[ -f log/$flag.success ] && sleep 10 && exit
+    #[ -f log/$flag.failed ] && sleep 10 && exit 1
     
+    #if dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s; then
+    #    echo Still running
+    #else 
+    #    exit 0 
+    #fi     
+
     if [ -z "$checkpointed" ]; then
         CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
     
@@ -108,6 +118,9 @@ while true; do
                     #newFactor=2
                     mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
                     echo $mem $totalT $extraM > log/$flag/reRun.adjust
+                else 
+
+                    exit 0    
                 fi    
                 #break
             #else 
@@ -120,7 +133,31 @@ while true; do
     #    sacct -j $SLURM_JOBID 
     #    [ -f log/$flag.success ] && exit || { touch log/$flag.failed && exit 1; }
     fi
+    
     sleep 10
+    # oot and oot happens, command under dmtcp directly killed, trap does not work. So we need manually check the
+    # the task process status and tell the job step finished
+    
+    if [ ! -z "$taskPID" ]; then 
+        if ps -p $taskPID > /dev/null; then 
+            echo "$taskPID is running"
+        else 
+            sleep 2
+            # killed by cgroup
+            echo "$taskPID is finished"
+            if [ -f log/$flag/taskProcessStatus.txt ]; then
+                status=`cat log/$flag/taskProcessStatus.txt`
+                echo process status: $status;
+             #   if [[ "$status" == 0 ]]; then
+                    exit 0
+              #  else
+              #      exit 1
+               # fi        
+            else 
+                exit 1 # task was killed due to oom or oot
+            fi     
+        fi
+    fi 
 done
 
 # while  [ -z "$checkpointed" ]; do         

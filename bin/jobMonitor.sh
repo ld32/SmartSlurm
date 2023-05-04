@@ -62,5 +62,6 @@ while true; do
         counter=30
         MAX_MEMORY_USAGE=0 
     fi
+ 
 done
 

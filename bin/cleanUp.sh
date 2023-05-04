@@ -120,9 +120,7 @@ if [[ $jobStatus == Unknown ]]; then
     [[ "$tLog" == *"task 0: Out Of Memory"* ]] && jobStatus="OOM" && echo The job is actually out-of-memory by according to the log: && echo $tLog
 fi  
 
-set +x 
-
-set -x
+set -x 
 
 #some times, it reports unknown, but is it is oom
 if [[ $jobStatus == Unknown ]]; then

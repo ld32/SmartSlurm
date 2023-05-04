@@ -227,7 +227,7 @@ for i in $output; do
         fi
     
     # tet oom
-    mem=1412
+    #mem=1412
 
 
         echo -e "$resAjust" 
