@@ -512,10 +512,10 @@ elif [ -z "$deps" ]; then
             grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $jobRecordDir/stats/$software.$ref.time.txt
 
             echoerr "Got mem data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.mem.txt):"
-            cat $jobRecordDir/stats/$software.$ref.mem.txt
+            cat $jobRecordDir/stats/$software.$ref.mem.txt >&2
 
             echoerr "Got time data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.time.txt):"
-            cat $jobRecordDir/stats/$software.$ref.time.txt
+            cat $jobRecordDir/stats/$software.$ref.time.txt >&2
 
             if [[ $(wc -l <$jobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
                 echoerr There are less than 3 records. No way to fit a curve. Exiting...
