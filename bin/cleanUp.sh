@@ -430,11 +430,13 @@ actualsize=`wc -c $out || echo 0`
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
+   toSend="Log: $out"
    toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
    toSend="$toSend\n...\nFirst 20 row of output:\n`head -n 20 $out`"
    toSend="$toSend\n...\nLast 20 row of output:\n`tail -n 20 $out`"
 else
    #toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
+   toSend="Log: $out"
    toSend=`echo; echo Job log:; cat $out;`
    #toSend="$s\n$toSend"
 fi
@@ -490,7 +492,8 @@ fi
 echo 
 
 # create an empty file so that it is easier to match job name to job ID
-touch $out.$SLURM_JOB_ID
+#touch $out.$SLURM_JOB_ID
+# move this to job sbumission time, so that we have that file as early as possible
 
 # wait for email to be sent
 sleep 10
