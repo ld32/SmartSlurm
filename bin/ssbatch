@@ -726,7 +726,7 @@ if [[ "$testRun" == "run" ]]; then
     #echoerr $output
     #jobID=`$cmd`
 
- set -x   
+ #set -x   
     
     # try to submit the job three time in case it fails
     for i in {1..3}; do 
@@ -759,7 +759,7 @@ if [[ "$testRun" == "run" ]]; then
 
     echoerr final output is: $jobID
 
-    set +x
+  #  set +x
     
     #touch $submitFlag  
 else 
