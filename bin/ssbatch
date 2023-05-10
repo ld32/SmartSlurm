@@ -738,6 +738,7 @@ if [[ "$testRun" == "run" ]]; then
         echoerr err: .$jobErr.
         # no error and a number job ID
         if [ ! -z "$jobID" ] && [ "$jobID" -eq "$jobID" ]; then
+            touch $outFlag.$jobID
             break
         elif [ ! -z "$jobErr" ]; then 
             echoerr "Got error $jobErr"
@@ -746,6 +747,7 @@ if [[ "$testRun" == "run" ]]; then
             if [[ "jobErr" == *"Socket timed out"* ]]; then 
                 sleep 2
                 jobID=`sacct --name $flag --format jobid | head -n 1`
+                touch $outFlag.$jobID
                 break
             else 
                 echoerr "not sure what error it is: $jobErr"
