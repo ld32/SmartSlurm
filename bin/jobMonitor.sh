@@ -39,6 +39,9 @@ while true; do
         #echo $MAX_MEMORY_USAGE > /tmp/job_$SLURM_JOB_ID.maxMem.txt
     fi
     
+    ps -f -o pid,ppid,rss,vsz,args >> log/job_$SLURM_JOB_ID.ps.txt
+    echo $CURRENT_MEMORY_USAG >> log/job_$SLURM_JOB_ID.ps.txt
+
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again
     sleep 2
@@ -48,9 +51,9 @@ while true; do
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
         echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $((defaultMem - originalMem))" >> log/job_$SLURM_JOB_ID.mem.txt
 
-        if [ $originalTime -lt 120 ]; then 
+        #if [ $originalTime -lt 120 ]; then 
             continue
-        else     
+        #else     
             CURRENT=`date +%s`
             min=$(( $originalTime - ($CURRENT - $START + 59)/60))
 
@@ -58,10 +61,10 @@ while true; do
                 echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
                 cancelMailSent=yes
             fi
-        fi
+        #fi
 
         counter1=$(($counter1 + 1))    
-        counter=30
+        counter=15
         MAX_MEMORY_USAGE=0 
     fi
  

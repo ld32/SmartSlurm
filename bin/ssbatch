@@ -618,7 +618,7 @@ fi
 # resAjust="$resAjust#day $day,  hour $hour,  min $min,  sec $sec"
 
 #echoerr looking partition for hour: $hours ##
-set -x
+#set -x
 # this is re-submit checkpoint job 
 if which dmtcp_command >/dev/null 2>&1 && [ -f log/$flag/reRun.adjust ]; then 
     tText=`cat log/$flag/reRun.adjust`
@@ -628,9 +628,9 @@ if which dmtcp_command >/dev/null 2>&1 && [ -f log/$flag/reRun.adjust ]; then
 fi
 
 # at least 100M and 10
-[ "$mem" -lt 100 ] && mem=100
+#[ "$mem" -lt 100 ] && mem=100
 
-[ "$min" -lt 10 ] && min=10
+#[ "$min" -lt 10 ] && min=10
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -689,14 +689,14 @@ if [ -z "$slurmScript" ]; then
     if which dmtcp_command >/dev/null 2>&1; then
         #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
 
-        # echo -e "set -x\nps -u $USER\nsh -e -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
+        # echo -e "set -x\nps -u $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
         # echo -e "pid=\$$" >> ${job%.sh}.cmd
         # echo -e "echo \$pid > ${job%.sh}/taskProcessID.txt" >> ${job%.sh}.cmd
         # echo -e "ps -u $USER\nwait \$pid" >> ${job%.sh}.cmd
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
 
-        echo -e "set -x\nps -fu $USER\nsh -e -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
+        echo -e "set -x\nps -fu $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"log/$flag.cmd\"" >> ${job%.sh}.cmd
@@ -789,7 +789,7 @@ if [[ "$testRun" == "run" ]]; then
     #echoerr $output
     #jobID=`$cmd`
 
- set -x   
+ #set -x   
     
     # try to submit the job three time in case it fails
     for i in {1..3}; do 
@@ -822,7 +822,7 @@ if [[ "$testRun" == "run" ]]; then
 
     echoerr final output is: $jobID
 
-    set +x
+    #set +x
     
     #touch $submitFlag  
 else 
