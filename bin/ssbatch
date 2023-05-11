@@ -667,11 +667,11 @@ echo -e "#!/bin/bash\n\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${
 if [ -z "$slurmScript" ]; then 
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job 
 else 
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
-    #echo "touch $startFlag" >> $job
-    echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
+    #echo "touch $startFlag" >> $job 
+    echo "srun -n 1 $slurmAcc bash -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
 fi
 #echo "kill -9 \$mypid" >> $job
 #echo "sleep 15 # wait slurm get the job status into its database" >> $job 
