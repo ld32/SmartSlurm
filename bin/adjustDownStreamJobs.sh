@@ -81,6 +81,15 @@ for i in $output; do
         grep ^$SLURM_JOB_ID log/allJobs.txt | awk '{print $1,  $2,  $3}' >> log/$name.out 
 
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
+
+        if [[ "$inputSize" == "notExist" ]]; then 
+            scancel $id 
+            echo One or multiple inputs are missing for this job. Cancelling it... >> log/$name.out
+            touch 
+            touch log/$name.missingInnput.has.to.cancel
+            continue
+        fi
+
         if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
             output=`estimateMemTime.sh $software $ref $inputSize`
             resAjust="$resAjust\nInputSize: $inputSize\nHere is the fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
