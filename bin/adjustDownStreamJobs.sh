@@ -87,9 +87,10 @@ for i in $output; do
             echo One or multiple inputs are missing for this job. Cancelling it... >> log/$name.out
             echo ${inputs//,/ } >> log/$name.out
             touch log/$name.missingInnput.has.to.cancel
-            toSend="One or multiple inputs are missing for this job. Cancelling it...\n${inputs//,/ }"
+            toSend=`cat log/$name.out`
+            toSend="$toSend\nOne or multiple inputs are missing for this job. Cancelling it...\n${inputs//,/ }"
             s="Cancel:$id:MissingInput:${inputs//,/ }"
-            echo -e "$toSend" | mail -s "$s" $USER && && echo Cancel email sent by second try. || \
+            echo -e "$toSend" | mail -s "$s" $USER && echo Cancel email sent by second try. || \
             { echo Cancel email still not sent!! Try again.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Cancel email sent by second try. || echo Cancel email still not sent!!; } 
 
             continue
