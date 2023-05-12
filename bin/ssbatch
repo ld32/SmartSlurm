@@ -541,7 +541,7 @@ elif [ -z "$deps" ]; then
                
                 echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.time.stat 
 
-               sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.time.stat
+                sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.time.stat
 
 
 

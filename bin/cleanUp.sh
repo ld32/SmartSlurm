@@ -108,8 +108,8 @@ echo jobStatus: $jobStatus cgroupMaxMem: $srunM
 
 memSacct=${memSacct%M}; memSacct=${memSacct%.*} #remove M and decimals
 
-# some times, cgourp report less memory than sacct. 
-# todo: need debug why, there is only one row in job_$SLURM_JOBID.mem.txt!
+ 
+# Not sure if this is needed.
 [[ "$memSacct" != "NA" ]] && [ "$memSacct" -gt "$srunM" ] && srunM=$memSacct
 
 # sometimes, the last row say srun cancelled, but the job is actually out of memory or out
