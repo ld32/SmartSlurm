@@ -11,8 +11,9 @@ readCount="${@: -1}"
 test -n "$readCount" -a "$readCount" -ge 0 2>/dev/null || usage
 
 rowCount=$(( $readCount * 4000000 ))
-million=`echo "scale=1;$readCount/1000000"|bc`
-folder=fastq.$million.subset
+million=`echo "scale=6;$readCount/1000000"|bc| sed 's/^\./0./' | sed 's/0\{1,\}$//'`
+[[ million == 0* ]] && million="$million."
+folder=fastq.${million}subset
 
 mkdir -p $folder
 for i in $@; do 
