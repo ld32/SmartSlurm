@@ -222,7 +222,7 @@ for t in `cat ${1%% *}`; do
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
-        cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
+        #cmd="set -eo; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
        
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
