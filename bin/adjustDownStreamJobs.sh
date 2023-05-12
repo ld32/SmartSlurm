@@ -83,7 +83,8 @@ for i in $output; do
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
         if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
             output=`estimateMemTime.sh $software $ref $inputSize`
-            resAjust="$resAjust\nInputSize: $inputSize\nHere is the fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+            resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+            resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $jobRecordDir/stats/$software.$ref.time.stat`\n"
             resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
             echo "Output from estimateMemTime.sh: $output"
 
@@ -168,9 +169,13 @@ for i in $output; do
                
                 echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.mem.stat 
 
+              sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.mem.stat
+
                 gnuplot -e 'set term png; set output "'"$jobRecordDir/stats/$software.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.time.stat 
                
                 echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.time.stat 
+
+                sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.time.stat
 
 
                 # make plot and calculate statistics
@@ -209,7 +214,10 @@ for i in $output; do
                 if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then    
                     output=`estimateMemTime.sh $software $ref $inputSize`
                     #resAjust="$resAjust`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
-                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+
+                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $jobRecordDir/stats/$software.$ref.time.stat`\n"
+
                     resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
                     echo "Output from estimateMemTime.sh: $output"
 
