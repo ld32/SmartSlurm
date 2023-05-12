@@ -696,7 +696,7 @@ if [ -z "$slurmScript" ]; then
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
 
-        echo -e "set -x\nps -fu $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
+        echo -e "set -x\nps -fu $USER\nsh -e -o pipefail  -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"log/$flag.cmd\"" >> ${job%.sh}.cmd
@@ -722,18 +722,18 @@ if [ -z "$slurmScript" ]; then
 
 
 
-        echo "srun -n 1 $slurmAcc bash -e -c \"checkpoint.sh  \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem; \" && touch $succFlag" >> $job   
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh  \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem; \" && touch $succFlag" >> $job   
     else 
-        echo "srun -n 1 $slurmAcc bash -e -c \"$wrapCMD; \" && touch $succFlag" >> $job 
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job 
     fi
 else 
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
 
     if which dmtcp_command >/dev/null 2>&1; then
-        echo "srun -n 1 $slurmAcc bash -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas\\\" $flag $mem $min $extraMem; \"" >> $job 
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas\\\" $flag $mem $min $extraMem; \"" >> $job 
     else
-        echo "srun -n 1 $slurmAcc bash -e -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job 
     fi
 fi    
 #echo "kill -9 \$mypid" >> $job
@@ -822,7 +822,7 @@ if [[ "$testRun" == "run" ]]; then
 
     echoerr final output is: $jobID
 
-    #set +x
+  #  set +x
     
     #touch $submitFlag  
 else 
