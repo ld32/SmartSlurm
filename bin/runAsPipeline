@@ -42,6 +42,8 @@ if [ -f "$run" ]; then
     fi
 fi 
 
+which dmtcp_command >/dev/null 2>&1 && checkpoint="Checkpoint" || checkpoint=""
+
 echo converting $1 to $run
 
 echo "#!/bin/sh" > $run  
@@ -125,7 +127,7 @@ for t in `cat ${1%% *}`; do
     
         step=${arrIN[0]}
         de=${arrIN[1]}   
-        name=${arrIN[2]%%:*}
+        name=${arrIN[2]%%:*}$checkpoint
         indx=${arrIN[3]}
         ref=${arrIN[4]%%:*} # references files which need to rsync to tmp space
         inputs=${arrIN[5]}

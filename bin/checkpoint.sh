@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -x 
+#set -x 
 
 usage(){            #           1                    2             3              4             5
     echo "checkpoint.sh <one or more commands> <unique name> <total memory> <total time> <extra memory>"
@@ -69,7 +69,7 @@ else
 fi 
 
 # need check if resume or sart successful here. If not, requeeu job with more memory
-sleep 5
+sleep 10
 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
 if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then      
     echo Still running ...
@@ -94,6 +94,7 @@ else
     fi            
     totalM1=`echo "($totalM1*$newFactor+$extraM)/1" | bc`
     echo $totalM1 $totalT $extraM > log/$flag/reRun.adjust
+    touch log/$flag.likelyCheckpointOOM
     exit 1
 fi 
 
@@ -109,7 +110,7 @@ while true; do
             
             needCheckpoint="" 
             if [ $(( totalM - CURRENT_MEMORY_USAGE )) -lt $extraM ]; then # || 
-                echo mem low or runing out of time
+                echo mem low 
 
                 needCheckpoint="y"
                 # in case current run fails, rerun will use this mem, time, extra mem to re-submit job
@@ -135,12 +136,14 @@ while true; do
                 totalM1=`echo "($totalM1*$newFactor+$extraM)/1" | bc`
                 echo $totalM1 $totalT $extraM > log/$flag/reRun.adjust
             elif [ $(( totalT * 60 - $timeR )) -lt 300 ]; then
+                echo Run out of time...
+                
                 needCheckpoint="y"
                 echo $totalM $totalT $extraM > log/$flag/reRun.adjust
             fi
             
             if [ ! -z "$needCheckpoint" ]; then 
-
+                echo Doing checkpoint
                 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
                 if [[ $? == 0 ]] && [[ "$status" == *"RUNNING=yes"* ]]; then      
                     #rm -r $checkpointDir/ckpt_*.dmtcp dmtcp_restart_script*
@@ -165,7 +168,7 @@ while true; do
                         fi            
                         totalM1=`echo "($totalM1*$newFactor+$extraM)/1" | bc`
                         echo $totalM1 $totalT $extraM > log/$flag/reRun.adjust
-
+                        touch log/$flag.likelyCheckpointOOM
                         exit 1
                     else  
                         checkpointed=y

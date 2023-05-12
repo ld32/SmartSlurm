@@ -213,8 +213,12 @@ if [ ! -f $succFile ]; then
     touch $failFile
 
     # if checkpoint failed or out of memory
-    if  [[ "$jobStatus" == "Fail" ]] && [ -d "$checkpointDir" ] || [[ "$jobStatus" == "OOM" ]]; then
+    if  [ -f ${out%.out}.likelyCheckpointOOM ] || [[ "$jobStatus" == "OOM" ]]; then
         
+        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
+
+        jobStatus=OOM
+
         #set -x
         echo Will re-queue after sending email...
     
