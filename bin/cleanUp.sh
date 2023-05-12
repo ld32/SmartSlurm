@@ -95,6 +95,8 @@ echo jobStatus: $jobStatus
 echo -e  "Last row of job summary: $jobStat" 
 echo start: $START finish: $FINISH mem: $memSacct min: $min
 
+
+
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
@@ -102,6 +104,13 @@ srunM=`sort -n log/job_$SLURM_JOBID.mem.txt | tail -n1 | cut -d' ' -f2`
 #srunM=$((srunM / 1024 / 1024 ))
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM 
+
+
+memSacct=${memSacct%M}; memSacct=${memSacct%.*} #remove M and decimals
+
+# some times, cgourp report less memory than sacct. 
+# todo: need debug why, there is only one row in job_$SLURM_JOBID.mem.txt!
+[[ "$memSacct" != "NA" ]] && [ "$memSacct" -gt "$srunM" ] && srunM=$memSacct
 
 # sometimes, the last row say srun cancelled, but the job is actually out of memory or out
 if [[ $jobStatus == "Cancelled" ]]; then  
@@ -149,8 +158,8 @@ fi
 
 [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
 
-                                #3defult,  5given,  7cGroupUsed                 acct used      
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,${memSacct%M},$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
+                                #3defult,  5given,  7cGroupUsed                  sacct used      
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
 echo dataToPlot,$record
     
 #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
