@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#set -x 
+set -x 
 
 usage(){            #           1                    2             3              4             5
     echo "checkpoint.sh <one or more commands> <unique name> <total memory> <total time> <extra memory>"
@@ -31,8 +31,6 @@ elif [ -f log/$flag/reRun.adjust ]; then
     totalT=`echo $tText | cut -d' ' -f2`
     extraM=`echo $tText | cut -d' ' -f3`    
 fi
-
-
 
 #totalM=$((totalM * 1024 * 1024))
 
@@ -71,9 +69,11 @@ fi
 # need check if resume or sart successful here. If not, requeeu job with more memory
 sleep 10
 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
-if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then      
+
+if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then       
     echo Still running ...
 else 
+    [ -f log/$flag.failed ] && exit 1
     echo Something is wrong here. likely out of memory
     totalM1=$totalM 
     if [ $totalM -lt 200 ]; then 
@@ -149,6 +149,7 @@ while true; do
                     #rm -r $checkpointDir/ckpt_*.dmtcp dmtcp_restart_script*
                     status=`dmtcp_command --ckptdir $checkpointDir -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT --ckpt-open-files --bcheckpoint`
                     if [[ $? != 0 ]]; then 
+                        [ -f log/$flag.failed ] && exit 1
                         totalM1=$totalM 
                         if [ $totalM -lt 200 ]; then 
                             totalM1=200
@@ -176,7 +177,7 @@ while true; do
                     # todo: check if it is successfule here, if not resume from earlier or rerun? 
                     
                 else 
-                    [ -f log/$flag/taskProcessStatus.txt ] && exit || exit 1
+                    [ -f log/$flag.success ] && exit || exit 1
                 fi    
             fi    
         fi    
@@ -186,7 +187,8 @@ while true; do
     if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then      
         echo Still running ...
     else 
-        [ -f log/$flag/taskProcessStatus.txt ] && exit || exit 1
+        [ -f log/$flag.failed ] && exit 1
+        [ -f log/$flag.success ] && exit || exit 1
     fi 
 done
 
