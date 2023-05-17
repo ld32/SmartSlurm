@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -x 
+#set -x 
 
 usage(){            #           1                    2             3              4             5
     echo "checkpoint.sh <one or more commands> <unique name> <total memory> <total time> <extra memory>"
@@ -43,6 +43,8 @@ checkpointDir="log/$flag"
 mkdir -p $checkpointDir
 
 portfile=port.$SLURM_JOBID
+
+module load gcc/6.2.0 dmtcp 
 
 dmtcp_coordinator --daemon --exit-on-last -p 0 --port-file $portfile # 1>/dev/null 2>&1 
 

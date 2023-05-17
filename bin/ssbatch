@@ -644,7 +644,7 @@ adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 # 10 minutes less than the time in sbatch command
 seconds=$(( $min * 60 ))
 
-set +x
+#set +x
 #[ $seconds -le 60 ] && time=11:0 && seconds=60
 
 #echoerr srun seconds: $seconds
@@ -703,7 +703,7 @@ if [ -z "$slurmScript" ]; then
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
         # note: if job OOT or OOM, .success or .failed will not be created
-        echo -e "set -x\nps -fu $USER\nsh -e -o pipefail  -c \"$wrapCMD;\" && touch ${job%.sh}.success || touch ${job%.sh}.failed  &" > ${job%.sh}.cmd
+        echo -e "set -x\nps -fu $USER\nsh -e -o pipefail  -c \"$wrapCMD;\" && touch ${job%.sh}.success || touch ${job%.sh}.failed" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"log/$flag.cmd\"" >> ${job%.sh}.cmd
@@ -713,8 +713,8 @@ if [ -z "$slurmScript" ]; then
 
         #echo -e "pid=\`echo -e \"\$pss\" | head -n 4 | tail -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
         #echo -e "echo \$pid > ${job%.sh}/taskProcessID.txt" >> ${job%.sh}.cmd
-        echo -e "ps -fu $USER\nwait" >> ${job%.sh}.cmd
-        echo -e "echo done > ${job%.sh}.success" >> ${job%.sh}.cmd
+        #echo -e "ps -fu $USER\nwait" >> ${job%.sh}.cmd
+        #echo -e "echo done > ${job%.sh}.success" >> ${job%.sh}.cmd
 
 # x="bash -e -c \"set -e; sh sleeping1.sh; \""
 # pid=`ps -f -u $USER | grep -v awk | grep -v srun | awk -v pat="$x"  '$0 ~ pat { print $2 }' | tail -n 1`

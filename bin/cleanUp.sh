@@ -122,14 +122,7 @@ if [[ $jobStatus == "Cancelled" ]]; then
         jobStatus="OOM"
     fi
 fi
-set -x
-#vsome times, it reports unknown, but is it is oom
-if [[ $jobStatus == Unknown ]]; then
-    tLog=`tail -n 22 $out | grep ^srun`
-    [[ "$tLog" == *"task 0: Out Of Memory"* ]] && jobStatus="OOM" && echo The job is actually out-of-memory by according to the log: && echo $tLog
-fi  
-
-set -x 
+#set -x
 
 #some times, it reports unknown, but is it is oom
 if [[ $jobStatus == Unknown ]]; then
