@@ -152,8 +152,16 @@ fi
 
 [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
 
+# email alert if only half of resource is used
+# totalM=200; totalT=200; srunM=1000; min=200; 		
+if [ "$7" -ne "$totalM" ] && [ "$8" -ne "$totalT" ]; then 
+   if [ $((totalM-extraM)) -gt $((srunM * 2)) ] || [ $totalT -gt $(( min * 2 )) ]; then 
+	echo Over-reserved! 
+	echo -e "`pwd`\n$out\n$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT" | mail -s "Over reserved $SLURM_JOBID" $USER   
+   fi
+fi    
                                 #3defult,  5given,  7cGroupUsed                  sacct used      
-record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
+ record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
 echo dataToPlot,$record
     
 #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
