@@ -113,7 +113,7 @@ for i in $output; do
             fi         
         fi
         
-        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.$ref.mem.stat -mmin +60` || [ ! -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then  
+        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.$ref.mem.stat -mmin +20` || [ ! -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then  
             echo "Do not have a formula, or it is old and out of range. Let us build one..."  
 
             echo "Do not have a formula, or it is old and out of range. Let us build one..."  >> log/$name.out 
