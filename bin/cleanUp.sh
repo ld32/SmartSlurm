@@ -151,19 +151,27 @@ fi
 [ -f ${out%.out}.adjust ] && extraMemC=`cat ${out%.out}.adjust | cut -d' ' -f3` || extraMemC=${14}
 
 [ -f $jobRecordDir/stats/extraMem.$2.$3 ] && extraMem=`sort -nr $jobRecordDir/stats/extraMem.$2.$3 | head -n1`
+#set -x
+# totalM=200; totalT=200; srunM=1000; min=200;
+overReserved=""; overText=""; ratioM=""; ratioT=""
+if [ "$7" -ne "$totalM" ] && [ "$8" -ne "$totalT" ]; then
+  if [[ "$jobStatus" == COMPLETED ]]; then
+    if [ "$totalM" -gt $((srunM * 2)) ] || [ $totalT -gt $(( min * 2 )) ]; then 
+        overReserved="O:"
+        overText="$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT"
+	#echo -e "`pwd`\n$out\n$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT" | mail -s "Over reserved $SLURM_JOBID" $USER   
+        echo $overText
+    fi
+  fi 
+  ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc` 
 
-# email alert if only half of resource is used
-# totalM=200; totalT=200; srunM=1000; min=200; 		
-if [ "$7" -ne "$totalM" ] && [ "$8" -ne "$totalT" ]; then 
-   if [ $((totalM-extraM)) -gt $((srunM * 2)) ] || [ $totalT -gt $(( min * 2 )) ]; then 
-	echo Over-reserved! 
-	echo -e "`pwd`\n$out\n$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT" | mail -s "Over reserved $SLURM_JOBID" $USER   
-   fi
 fi    
+#set +x
                                 #3defult,  5given,  7cGroupUsed                  sacct used      
- record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$3,$4,$6,$extraMemC,$extraTime,`date`"  # 16 extraM 
+record="$SLURM_JOB_ID,$inputSize,$7,$8,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$3,$4,$6,$extraMemC,$extraTime,$ratioM,$ratioT,`date`"  # 16 extraM 
 echo dataToPlot,$record
-    
+
+
 #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then 
     
 if [[ $jobStatus == "COMPLETED" ]]; then 
@@ -436,17 +444,17 @@ minimumsize=9000
 
 actualsize=`wc -c $out || echo 0`
 
-[ -f $succFile ] && s="Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME" 
+[ -f $succFile ] && s="${overReserved}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME" 
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
-   toSend="Log: $out"
-   toSend="$toSend\nOutput is too big for email. Please find output in: $out"  
+   toSend="$overText\nLog: $out"
+   toSend="$toSend\nOutput is too big for email. Please find output from log mentioned above."  
    toSend="$toSend\n...\nFirst 20 row of output:\n`head -n 20 $out`"
    toSend="$toSend\n...\nLast 20 row of output:\n`tail -n 20 $out`"
 else
    #toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
-   toSend="Log: $out"
+   toSend="$overText\nLog: $out"
    toSend=`echo; echo Job log:; cat $out;`
    #toSend="$s\n$toSend"
 fi
