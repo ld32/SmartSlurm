@@ -12,7 +12,15 @@ usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] 
 
 [[ -z "$4"  ]] || [[ "$4" == run ]] || usage 
 
-[[ "$5" == checkpoint ]] && checkpoint=".Checkpoint" || checkpoint=""
+if [ ! -z "$5" ]; then 
+    if [[ "$5" == checkpoint ]]; then 
+        checkpoint=".Checkpoint"
+    else 
+        usage
+    fi 
+else        
+    checkpoint=""
+fi 
 
 date
 
