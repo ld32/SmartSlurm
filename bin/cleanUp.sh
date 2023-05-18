@@ -20,7 +20,7 @@ if [[ -z "$1" ]]; then
    #out=$4.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed; 
     out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$4.sh; succFile=$4.success; failFile=$4.failed;
 else 
-    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed;   
+    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed; checkpointDir=$1/log/${4} 
 fi 
 
 # wait for slurm database update
@@ -122,8 +122,7 @@ if [[ $jobStatus == "Cancelled" ]]; then
         jobStatus="OOM"
     fi
 fi
-
-set -x
+#set -x
 
 #some times, it reports unknown, but is it is oom
 if [[ $jobStatus == Unknown ]]; then
@@ -222,8 +221,13 @@ echo Final mem: $srunM, time: $min minutes
 if [ ! -f $succFile ]; then
     touch $failFile
 
-    if [[ "$jobStatus" == "OOM" ]]; then
+    # if checkpoint failed or out of memory
+    if  [ -f ${out%.out}.likelyCheckpointOOM ] || [[ "$jobStatus" == "OOM" ]]; then
         
+        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
+
+        jobStatus=OOM
+
         #set -x
         echo Will re-queue after sending email...
     
@@ -233,15 +237,15 @@ if [ ! -f $succFile ]; then
         #extraMemN=$(( ( totalM - srunM ) *2 ))
         extraMemN=$(( totalM - srunM + 1 ))
         #[[ "$extraMemN" == 0 ]] && extraMemN=1
-        echo $extraMemN $totalM $inputSize >> $jobRecordDir/stats/extraMem.$2.$3
+        [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $jobRecordDir/stats/extraMem.$2.$3
         #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
         maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
+        [ -z "$maxExtra" ] && maxExtra=5
         extraMem=$(( $maxExtra * 2 ))
         
         echo new extraMem: 
         cat $jobRecordDir/stats/extraMem.$2.$3
-        #set +x
-        
+        #set +x        
         ( sleep 5; 
         for try in {1..8}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
@@ -343,6 +347,7 @@ if [ ! -f $succFile ]; then
         # todo: submit new job and adjust down steam jobs' dependency
 
         #echo job resubmitted: $SLURM_JOBID with mem: $mem
+    
     elif [[ "$jobStatus" == "OOT" ]]; then
         
         for try in {1..8}; do
@@ -428,6 +433,7 @@ if [ ! -f $succFile ]; then
                 mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi 
+    
     else 
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
@@ -514,4 +520,4 @@ echo
 # move this to job sbumission time, so that we have that file as early as possible
 
 # wait for email to be sent
-sleep 20
+sleep 10

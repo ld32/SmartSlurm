@@ -1,6 +1,6 @@
 #!/bin/sh
 
-usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.]"; exit 1; } 
+usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; } 
 
 #set -x
 
@@ -10,7 +10,17 @@ usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] 
 
 [[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage 
 
-[[ -z "$4"  ]] || [[ "$4" == run ]] || usage  
+[[ -z "$4"  ]] || [[ "$4" == run ]] || usage 
+
+if [ ! -z "$5" ]; then 
+    if [[ "$5" == checkpoint ]]; then 
+        checkpoint=".Checkpoint"
+    else 
+        usage
+    fi 
+else        
+    checkpoint=""
+fi 
 
 date
 
@@ -18,7 +28,9 @@ echo Running: $0 $@
 
 module list 
 
-[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-") 
+[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-")
+
+[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-") 
 
 [ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c '%.19z' log | tr " " "." | tr ":" "-") 
 
@@ -29,6 +41,8 @@ checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
 run=log/slurmPipeLine.$checkSum.sh
 
 [[ "$4" == run ]] && run=log/slurmPipeLine.$checkSum.run.sh
+
+[[ "$5" == checkpoint ]] && run=log/slurmPipeLine.$checkSum.run.checkpoint.sh
 
 if [ -f "$run" ]; then  
     thisCmd="#cmd: $0 $@"
@@ -123,7 +137,7 @@ for t in `cat ${1%% *}`; do
     
         step=${arrIN[0]}
         de=${arrIN[1]}   
-        name=${arrIN[2]%%:*}
+        name=${arrIN[2]%%:*}$checkpoint
         indx=${arrIN[3]}
         ref=${arrIN[4]%%:*} # references files which need to rsync to tmp space
         inputs=${arrIN[5]}
@@ -222,12 +236,12 @@ for t in `cat ${1%% *}`; do
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
-        #cmd="set -eo; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
+        #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
        
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")"   >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
         echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run 
         
