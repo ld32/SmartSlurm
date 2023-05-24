@@ -39,8 +39,8 @@ while true; do
         #echo $MAX_MEMORY_USAGE > /tmp/job_$SLURM_JOB_ID.maxMem.txt
     fi
     
-    ps -f -o pid,ppid,rss,vsz,args >> log/job_$SLURM_JOB_ID.ps.txt
-    echo $CURRENT_MEMORY_USAG >> log/job_$SLURM_JOB_ID.ps.txt
+    #ps -f -o pid,ppid,rss,vsz,args >> log/job_$SLURM_JOB_ID.ps.txt
+    #echo $CURRENT_MEMORY_USAG >> log/job_$SLURM_JOB_ID.ps.txt
 
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again

@@ -20,7 +20,7 @@ if [[ -z "$1" ]]; then
    #out=$4.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed; 
     out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$4.sh; succFile=$4.success; failFile=$4.failed;
 else 
-    out=$1/log/"${4}.out"; err=$1/log/${4}.err; script=$1/log/${4}.sh; succFile=$1/log/${4}.success; failFile=$1/log/${4}.failed; checkpointDir=$1/log/${4} 
+    out=$1/"${4}.out"; err=$1/${4}.err; script=$1/${4}.sh; succFile=$1/${4}.success; failFile=$1/${4}.failed; checkpointDir=$1/${4} 
 fi 
 
 # wait for slurm database update
@@ -220,9 +220,8 @@ echo Final mem: $srunM, time: $min minutes
 
 if [ ! -f $succFile ]; then
     touch $failFile
-
-    # if checkpoint failed or out of memory
-    if  [ -f ${out%.out}.likelyCheckpointOOM ] || [[ "$jobStatus" == "OOM" ]]; then
+    # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
+    if  [ -f "${out%.out}.likelyCheckpointOOM" ] || [[ "$jobStatus" == "OOM" ]]; then
         
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
 
@@ -241,13 +240,12 @@ if [ ! -f $succFile ]; then
         #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
         maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
         [ -z "$maxExtra" ] && maxExtra=5
-        extraMem=$(( $maxExtra * 2 ))
         
         echo new extraMem: 
         cat $jobRecordDir/stats/extraMem.$2.$3
         #set +x        
         ( sleep 5; 
-        for try in {1..8}; do
+        for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 sleep 2
                 #mem=$(( $mem * ( 2 ^ $try ) ))
@@ -272,25 +270,27 @@ if [ ! -f $succFile ]; then
                 fi            
                 
                 #newFactor=2
-                mem=`echo "($totalM*$newFactor+$extraMem)/1" | bc`
+                mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
                 # try=1, then factor is 5, try 2 factor is 3, try 3 is 2 ...
                 #mem=$(( $mem * (1 + 1/e(0.1 * $try))))
                 #mem=4000
                 echo trying to requeue $try with $mem M
-                echo $mem $totalT $extraMem > ${out%.out}.adjust
+                echo $mem $totalT $maxExtra > ${out%.out}.adjust
                 
                 # 80G memory
                 #[ "$mem" -gt 81920 ] && [ "$try" -gt 2 ] && break
 
                 hostName=`hostname`
-                
-                if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                #hostName=login00 #o2.hms.harvard.edu #`hostname`
+
+                if `ssh $hostName "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                # if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;`; then
 
                 #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then 
                     echo Requeued successfully
                     [ -f $failFile ] && rm $failFile
 
-                    s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
+                    s="OOM.Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
                     echo -e "" | mail -s "$s" $USER
 
                     break
@@ -347,10 +347,10 @@ if [ ! -f $succFile ]; then
         # todo: submit new job and adjust down steam jobs' dependency
 
         #echo job resubmitted: $SLURM_JOBID with mem: $mem
-    
+
     elif [[ "$jobStatus" == "OOT" ]]; then
         
-        for try in {1..8}; do
+        for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
                 sleep 2 
                 echo trying to requeue $try
@@ -406,7 +406,7 @@ if [ ! -f $succFile ]; then
                 [ -f $failFile ] && rm $failFile
 
 
-                s="Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
+                s="OOT.Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
                 echo -e "" | mail -s "$s" $USER
 
                 break
@@ -438,7 +438,7 @@ if [ ! -f $succFile ]; then
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
 elif [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $1/log
+    adjustDownStreamJobs.sh $1
     rm $failFile 2>/dev/null
 else 
     rm $failFile 2>/dev/null
@@ -454,14 +454,14 @@ actualsize=`wc -c $out || echo 0`
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
-   toSend="$overText\nLog: $out"
+   toSend="$overText\nLog path: $out"
    toSend="$toSend\nOutput is too big for email. Please find output from log mentioned above."  
    toSend="$toSend\n...\nFirst 20 row of output:\n`head -n 20 $out`"
    toSend="$toSend\n...\nLast 20 row of output:\n`tail -n 20 $out`"
 else
    #toSend=`echo Job script content:; cat $script; echo; echo Job output:; cat $out;`
-   toSend="$overText\nLog: $out"
-   toSend=`echo; echo Job log:; cat $out;`
+   toSend="$overText\nLog path: $out"
+   toSend="$toSend\nJob log:\n`cat $out`"
    #toSend="$s\n$toSend"
 fi
 
