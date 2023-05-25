@@ -54,14 +54,12 @@ for i in $output; do
     # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
     [[ "$inputs" == "none" ]] && continue
 
-
     [ -f log/$name.adjust ] && continue
 
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
     
     [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
-    
 
     allDone=""
     IFS=$' '; 
