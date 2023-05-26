@@ -54,14 +54,12 @@ for i in $output; do
     # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
     [[ "$inputs" == "none" ]] && continue
 
-
     [ -f log/$name.adjust ] && continue
 
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
     
     [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
-    
 
     allDone=""
     IFS=$' '; 
@@ -179,13 +177,13 @@ for i in $output; do
                 
                 # cd -
 
-                gnuplot -e 'set term png; set output "'"$jobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.mem.stat 
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$jobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.mem.stat 
                
                 echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.mem.stat 
 
                 sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.mem.stat
 
-                gnuplot -e 'set term png; set output "'"$jobRecordDir/stats/$software.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.time.stat 
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$jobRecordDir/stats/$software.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.time.stat 
                
                 echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.time.stat 
 
