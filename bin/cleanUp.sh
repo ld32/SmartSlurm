@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs
@@ -252,11 +252,11 @@ if [ ! -f $succFile ]; then
 
         echo new extraMem:
         cat $jobRecordDir/stats/extraMem.$2.$3
-        #set +x
-        ( sleep 5;
+set -x
+        ( #sleep 1;
         for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
-                sleep 2
+                #sleep 2
                 touch $failFile.requeued.$try.mem
                 if [ $totalM -lt 200 ]; then
                     totalM=200
@@ -302,7 +302,7 @@ if [ ! -f $succFile ]; then
            # echo Could not find the original mem value.
         #    echo Job failed of out-of-memory. Please resubmit with more memory check youself.
         #fi
-
+set +x
         # delete stats and redo them
         if [ "$inputs" == "none" ]; then
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
