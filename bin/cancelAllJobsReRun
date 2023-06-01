@@ -1,30 +1,30 @@
 #!/bin/sh
 
-usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; } 
+usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; }
 
 [[ -z "$1" ]] && usage
 
-#set -x 
+#set -x
 
 IFS=$'\n'
 
-out=`squeue -u $USER -o "%.18i"`
+out=`squeue -u $USER -t PD,R -o "%.18i"`
 
-[ -z "$out" ] && exit 0; 
+[ -z "$out" ] && exit 0;
 
 declare -A nmap
 
-lines=`tail -n +2  $1 | awk '{print $1, $2, $3}'`
+lines=`tail -n +2  $1 | awk 'NF>2{print $1, $2, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
-        if [[ "$out" == *$id* ]]; then 
+        if [[ "$out" == *$id* ]]; then
             ids="$ids $id"
             nmap[$id]=${line##* } #`echo $line | cut -d' ' -f3`
-            notDone="$notDone$line\n" #flags="$flags $flag"       
+            notDone="$notDone$line\n" #flags="$flags $flag"
         fi
-    fi    
-done 
+    fi
+done
 
 
 if [ ! -z "${ids/ /}" ]; then
@@ -43,15 +43,14 @@ if [ ! -z "${ids/ /}" ]; then
           echo ${nmap[$id]} cancelled.
           touch log/${nmap[$id]}.user.killed
         done
-    elif [[ "$x" == "n" ]]; then 
+    elif [[ "$x" == "n" ]]; then
         #cat log/allJobs.txt.old >> log/allJobs.txt
         echo -e  "$notDone" > log/keepRunningJobs.txt
-        echo This is still under development!
-        exit 1
+        #echo This is still under development!
+        #exit 1
     else
         exit 1
     fi
-else 
+else
     echo Could not find any jobs to cancel.
 fi
-exit 0;

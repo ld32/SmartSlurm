@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#set -x 
+#set -x
 
-sleep 2 
+sleep 2
 
 # Set the cgroup path
 CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
@@ -11,9 +11,9 @@ CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
 MAX_MEMORY_USAGE=0
 
 counter=1
-counter1=0; 
+counter1=0;
 
-jobName=$1 
+jobName=$1
 originalMem=$2
 originalTime=$3
 
@@ -28,7 +28,7 @@ cancelMailSent=""
 
 # Loop indefinitely, checking the memory usage every 10 seconds
 while true; do
-    #[ -f /tm/job_$SLURM_JOB_ID.done ] && exit 
+    #[ -f /tm/job_$SLURM_JOB_ID.done ] && exit
     # Read the current memory usage from the cgroup's memory.usage_in_bytes file
     #CURRENT_MEMORY_USAGE=$(cat $CGROUP_PATH/memory.usage_in_bytes)
     CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
@@ -38,35 +38,35 @@ while true; do
         MAX_MEMORY_USAGE=$CURRENT_MEMORY_USAGE
         #echo $MAX_MEMORY_USAGE > /tmp/job_$SLURM_JOB_ID.maxMem.txt
     fi
-    
+
     #ps -f -o pid,ppid,rss,vsz,args >> log/job_$SLURM_JOB_ID.ps.txt
     #echo $CURRENT_MEMORY_USAG >> log/job_$SLURM_JOB_ID.ps.txt
 
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again
-    sleep 2
+    sleep 1
     counter=$((counter - 1))
 
-    if [ "$counter" -eq 0 ]; then 
+    if [ "$counter" -eq 0 ]; then
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
         saved=$((defaultMem - originalMem))
         [ "$saved" -lt 0 ] && saved=0
 
 	echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $saved" >> log/job_$SLURM_JOB_ID.mem.txt
 
-        counter1=$(($counter1 + 1))    
+        counter1=$(($counter1 + 1))
         counter=30
-        MAX_MEMORY_USAGE=0 
+        MAX_MEMORY_USAGE=0
 
-   	if [ -z "$cancelMailSent" ] && [ $originalTime -ge 120 ]; then       
+   	if [ -z "$cancelMailSent" ] && [ $originalTime -ge 120 ]; then
             CURRENT=`date +%s`
             min=$(( $originalTime - ($CURRENT - $START + 59)/60))
-            if [ $min -le 15 ]; then 
+            if [ $min -le 15 ]; then
                 echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
                 cancelMailSent=yes
             fi
-        fi        
+        fi
     fi
- 
+
 done
 

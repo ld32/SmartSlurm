@@ -232,8 +232,6 @@ if [ ! -f $succFile ]; then
     # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
     if  [ -f "${out%.out}.likelyCheckpointOOM" ] || [[ "$jobStatus" == "OOM" ]]; then
 
-        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
-
         jobStatus=OOM
 
         #set -x
@@ -245,13 +243,16 @@ if [ ! -f $succFile ]; then
         #extraMemN=$(( ( totalM - srunM ) *2 ))
         extraMemN=$(( totalM - srunM + 1 ))
         #[[ "$extraMemN" == 0 ]] && extraMemN=1
+        #[ ! -f "${out%.out}.likelyCheckpointOOM" ] &&
         [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $jobRecordDir/stats/extraMem.$2.$3
+
         #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
         maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
         [ -z "$maxExtra" ] && maxExtra=5
 
         echo new extraMem:
         cat $jobRecordDir/stats/extraMem.$2.$3
+        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
 set -x
         ( #sleep 1;
         for try in {1..3}; do
@@ -283,7 +284,7 @@ set -x
                 hostName=`hostname`
                 #hostName=login00 #o2.hms.harvard.edu #`hostname`
 
-                if `ssh $hostName "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+                if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
                 # if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;`; then
 
                 #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
@@ -298,10 +299,6 @@ set -x
 
             fi
         done ) &
-        #else
-           # echo Could not find the original mem value.
-        #    echo Job failed of out-of-memory. Please resubmit with more memory check youself.
-        #fi
 set +x
         # delete stats and redo them
         if [ "$inputs" == "none" ]; then

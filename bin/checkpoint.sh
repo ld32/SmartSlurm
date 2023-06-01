@@ -131,7 +131,10 @@ while true; do
                         rm dmtcp_restart_script*
                     fi
                 else
-                    [ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
+                    #[ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
+                    touch log/$flag.likelyCheckpointOOM
+                    exit 1
+                    #rm log/$flag.adjust 2>/dev/null || :;  exit 1
                 fi
             fi
         fi
@@ -139,6 +142,9 @@ while true; do
     sleep 10
     status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
     if [ $? -ne 0 ] || [[ "$status" != *"RUNNING=yes"* ]]; then
-        [ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
+        echo All done!
+        #[ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
+        #rm log/$flag.adjust 2>/dev/null || : ;
+        exit;
     fi
 done

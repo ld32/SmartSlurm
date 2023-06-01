@@ -1,6 +1,6 @@
 #!/bin/sh
 
-usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; } 
+usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
 
 #set -x
 
@@ -8,31 +8,31 @@ usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] 
 
 [[ "$2" != sbatch* ]] && usage
 
-[[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage 
+[[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage
 
-[[ -z "$4"  ]] || [[ "$4" == run ]] || usage 
+[[ -z "$4"  ]] || [[ "$4" == run ]] || usage
 
-if [ ! -z "$5" ]; then 
-    if [[ "$5" == checkpoint ]]; then 
+if [ ! -z "$5" ]; then
+    if [[ "$5" == checkpoint ]]; then
         checkpoint=".Checkpoint"
-    else 
+    else
         usage
-    fi 
-else        
+    fi
+else
     checkpoint=""
-fi 
+fi
 
 date
 
 echo Running: $0 $@
 
-module list 
+module list
 
 [ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-")
 
-[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-") 
+[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-")
 
-[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c '%.19z' log | tr " " "." | tr ":" "-") 
+[ -d log ] && [[ "$4" == run ]] && cp -rp log log.$(stat -c '%.19z' log | tr " " "." | tr ":" "-")
 
 mkdir -p log
 
@@ -44,31 +44,31 @@ run=log/slurmPipeLine.$checkSum.sh
 
 [[ "$5" == checkpoint ]] && run=log/slurmPipeLine.$checkSum.run.checkpoint.sh
 
-if [ -f "$run" ]; then  
+if [ -f "$run" ]; then
     thisCmd="#cmd: $0 $@"
     lastCmd=`tail -n 1 $run`
     if [[ "$thisCmd" == "$lastCmd" ]]; then
-        echo This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run 
+        echo This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run
         eval /bin/bash $run ${1#* }
         exit
     fi
-fi 
+fi
 
 echo converting $1 to $run
 
-echo "#!/bin/sh" > $run  
+echo "#!/bin/sh" > $run
 
 #echo "set -x" >> $run
 
-echo "echo Running \$0 \$@"  >> $run   
+echo "echo Running \$0 \$@"  >> $run
 
-echo module list >> $run 
-     
+echo module list >> $run
+
 echo "xsubd=\"$2\"" >> $run
-    
+
 #echo mkdir -p log >> $run
 
-echo "rm log/keepRunningJobs.txt 2>/dev/null" >> $run 
+echo "rm log/keepRunningJobs.txt 2>/dev/null" >> $run
 echo "if [ -f log/allJobs.txt ]; then" >> $run
 echo "    cancelAllJobsReRun log/allJobs.txt" >> $run
 echo "    [ \$? == 1 ] && exit 0;" >> $run
@@ -78,34 +78,36 @@ echo "cwd=\`realpath ./\`" >> $run
 
 #echo "rm log/*.failed log/*.killed 2>/dev/null" >> $run
 
-echo "[ -f log/allJobs.txt ] && [ ! -f log/keepRunningJobs.txt ] && mv log/allJobs.txt log/allJobs.txt.old"  >> $run 
+#echo "[ -f log/allJobs.txt ] && [ ! -f log/keepRunningJobs.txt ] && mv log/allJobs.txt log/allJobs.txt.old"  >> $run
+
+echo "[ -f log/allJobs.txt ] && cp log/allJobs.txt log/allJobs.txt.old"  >> $run
 
 echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt log/*requeued* 2>/dev/null" >> $run
 
-echo "[ ! -f log/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs  > log/allJobs.txt || echo Resubmitting >> log/allJobs.txt" >> $run  
+echo "[ ! -f log/allJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs > log/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
 
 # get slurm account from command line
 slurmAccount=""
-if [[ "$2" == *\ -A\ * ]]; then 
+if [[ "$2" == *\ -A\ * ]]; then
     slurmAccount=${2#*-A }
     slurmAccount="-A ${slurmAccount%% *}"
-elif [[ "$2" == *\ --account\ * ]]; then  
+elif [[ "$2" == *\ --account\ * ]]; then
     slurmAccount=${2#*--account }
     slurmAccount="-A ${slurmAccount%% *}"
-elif [[ "$2" == *\ --account=* ]]; then  
+elif [[ "$2" == *\ --account=* ]]; then
     slurmAccount=${2#*--account\=}
     slurmAccount="-A ${slurmAccount%% *}"
-fi  
+fi
 
-[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echo Missing slurm account: $2; exit 1; } 
+[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echo Missing slurm account: $2; exit 1; }
 
 IFS=$'\n'
-for t in `cat ${1%% *}`; do 
-    #echo original row: .$t. 
-    
+for t in `cat ${1%% *}`; do
+    #echo original row: .$t.
+
     # get space and the real command
     space=""
     for (( i=0; i<${#t}; i++ )); do
@@ -118,60 +120,60 @@ for t in `cat ${1%% *}`; do
            break
         fi
     done
-    
+
     # this maybe a new command, remember the space
     [ -z "$cmd" ] && oldspace="$space"
-    
+
     if [[ "$i" == \#@* ]]; then
         echo
-        echo find job marker: 
+        echo find job marker:
         echo $i
-        
+
         findjob="yes"
-        x=${i#*\#@} 
+        x=${i#*\#@}
         # #@1,0,find1,indx,u,input1.input2,sbatch -p short -c 1 -t 50:0
-        
+
         # ssbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
         IFS=''
-    
+
         step=${arrIN[0]}
-        de=${arrIN[1]}   
-        name=${arrIN[2]%%:*}$checkpoint
+        de=${arrIN[1]}
+        name=${arrIN[2]%%:*}; [[ "$name" == *.NoCheckpoint ]] && name=${name%.NoCheckpoint} || name=$name$checkpoint
         indx=${arrIN[3]}
         ref=${arrIN[4]%%:*} # references files which need to rsync to tmp space
         inputs=${arrIN[5]}
         xsuba=${arrIN[6]}  # sbatch options
-        
-        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit 
-        
-        # if it is old format bash job annotation without inputs
-        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit 
-        
-        [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit  
 
-        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run 
-        
+        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit
+
+        # if it is old format bash job annotation without inputs
+        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
+
+        [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
+
+        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
+
         # echo run content:
         # tail $run
         # exit
 
         [ -z "$ref" ] || ref=.$ref
         [ -z "$inputs" ] || inputs=.$inputs
-        
+
         echo "$t" >> $run
-    
+
         #echo step is $step
         #echo de is $de
         #echo name is $name
         cmd=""
-        
+
     elif [ ! -z $findjob ]; then
         [[ "$i" == \#* ]] && { findjob=""; echo "$t" >> $run; continue; }
         echo
-        echo find job: 
+        echo find job:
         echo $i
-        
+
         # command maybe multiple lines
         if [[ "$i" == *\\ ]]; then  # command have multiple lines, at end of the line is a \
           cmd="$cmd ${i%\\}"
@@ -180,23 +182,23 @@ for t in `cat ${1%% *}`; do
         space="$oldspace"
         cmd="$cmd ${i%% #*}" # remove comments
         cmd="${cmd# }"       # remove leading space
-        
+
         findjob=""
         [ ! -z ${find[$step]} ] && { echo job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
-                
+
         cmd=${cmd//\\/\\\\}   # escape back slash
-        
+
         cmd=${cmd//\"/\\\"} # escape double quotes
-        
+
         [ -z "$name" ] && name=${cmd%% *}
-        
+
         cloper[$step]=$loper
         sameloop=no
         IFS=' '
         if [[ "$de" == "0" ]]; then
             sameloop=""
         elif [[ "$de" == *\.* ]]; then
-            
+
             for dep in ${de//\./ }; do
                 if [[ ${cloper[$step]} == ${cloper[$dep]} ]]; then
                     sameloop=""
@@ -208,25 +210,25 @@ for t in `cat ${1%% *}`; do
         elif [[ ${cloper[$step]} == ${cloper[$de]} ]]; then
             sameloop=""
         fi
-                      
+
         #echo "debug: ${cloper[$step]} ${cloper[$de]} .$sameloop. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
-        
+
         echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: $name.\$$indx $useTmp " >> $run
         echo "${space}([ -z \"$indx\" ] || [ -z \"\$${indx}\" ]) && flag=${step}.$de.${name} || flag=${step}.$de.${name}.\$${indx}"  >> $run
-        echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _ 
-        
+        echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _
+
         echo -e "${space}deps=\"\""  >> $run
         if [[ "$de" != "0" ]]; then
             if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
                     [ -z $sameloop ] && echo "${space}deps=\"\$deps \${jobID[$dep]}\"" >> $run || echo "${space}deps=\"\$deps \${jobIDs[$dep]}\"" >> $run
                 done
-            else    
-                [ -z $sameloop ] && echo "${space}deps=\"\${jobID[$de]}\""  >> $run || echo "${space}deps=\"\${jobIDs[$de]}\""  >> $run 
+            else
+                [ -z $sameloop ] && echo "${space}deps=\"\${jobID[$de]}\""  >> $run || echo "${space}deps=\"\${jobIDs[$de]}\""  >> $run
             fi
-        fi 
-                
+        fi
+
         # escape double quota. bsub does not need this? not sure
         cmd=${cmd//\"/\\\\\"}
 
@@ -235,16 +237,16 @@ for t in `cat ${1%% *}`; do
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
-        #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed" 
-        #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"      
-       
+        #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
+        #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
+
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
-        echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run 
-        
+        echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run
+
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 
         #echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$id\n\" && id=\"\" ">> $run
@@ -253,35 +255,35 @@ for t in `cat ${1%% *}`; do
 
         echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
 
-        [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run 
-        
+        [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run
+
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
-        echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run  
-        
+        echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run
+
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
-        #echo "${space}    touch \$cwd/\$flag.submitted" >> $run 
-        echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run 
-    
+        #echo "${space}    touch \$cwd/\$flag.submitted" >> $run
+        echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run
+
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
-                     [ -z $sameloop ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run 
+                     [ -z $sameloop ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run
                 done
-        else    
-                [ -z $sameloop ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run 
+        else
+                [ -z $sameloop ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run
         fi
-        
-        echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run 
+
+        echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run
         echo "${space}    jobID[$step]=\$id"  >> $run
         echo "${space}    jobIDs[$step]=\${jobIDs[$step]}.\$id"  >> $run
-        
+
         echo "${space}else" >> $run
         echo "${space}    echo  job \$flag is not submitted"  >> $run
-        echo "${space}    exit 1"  >> $run 
-        
-        echo "${space}fi" >> $run 
+        echo "${space}    exit 1"  >> $run
+
+        echo "${space}fi" >> $run
         IFS=''
         cmd=""
     else
@@ -306,9 +308,9 @@ for t in `cat ${1%% *}`; do
             echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=whiele #${a#* }; a=${a%% *}
-            loper="$loper.until"   
-        fi    
-    fi   
+            loper="$loper.until"
+        fi
+    fi
 done
 [ $? == 1 ] && exit 0;
 
@@ -324,5 +326,5 @@ echo "echo ---------------------------------------------------------" >> $run
 echo "#cmd: $0 $@" >> $run
 
 echo $run ${1#* } is ready to run. Starting to run ...
- 
+
 eval "/bin/bash $run ${1#* }"
