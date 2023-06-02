@@ -84,7 +84,7 @@ echo "[ -f log/allJobs.txt ] && cp log/allJobs.txt log/allJobs.txt.old"  >> $run
 
 echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt log/*requeued* 2>/dev/null" >> $run
 
-echo "[ ! -f log/allJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs > log/allJobs.txt" >> $run
+echo "[ ! -f log/allJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs > log/allJobs.txt || echo -e \"\n\`date\`\" >> log/allJobs.txt">> $run
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run

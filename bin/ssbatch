@@ -783,7 +783,7 @@ fi
 #if [ -z "$logDir" ]; then
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+    cmd="/usr/bin/sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
 #fi
 if [ -z "$slurmScript" ]; then

@@ -69,14 +69,16 @@ else
 fi
 
 # need check if resume or sart successful here. If not, requeeu job with more memory
-sleep 10
+sleep 20
 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
 if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then
     echo Still running ...
     rm $checkpointDir/back/ckpt_*.dmtcp 2>/dev/null
     mv $checkpointDir/ckpt_*.dmtcp $checkpointDir/back 2>/dev/null
+    echo -e "CPR:$SLURM_JOBID" | mail -s "CPR:$SLURM_JOBID:$flag" $USER
 else
     echo Something is wrong here. likely out of memory
+    echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
     touch log/$flag.likelyCheckpointOOM
     exit 1
 fi
@@ -93,7 +95,7 @@ while true; do
 #            echo already run for two minutes and have plenty of memory to do checkpoint
 
             needCheckpointM=""; needCheckpointT=""
-            if [ $(( totalM - CURRENT_MEMORY_USAGE )) -lt $extraM ]; then
+            if [ $(( totalM - CURRENT_MEMORY_USAGE )) -lt $((extraM *2)) ]; then
                 echo mem low
                 date
                 needCheckpoint="y"
@@ -122,15 +124,19 @@ while true; do
                     status=`dmtcp_command --ckptdir $checkpointDir -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT --ckpt-open-files --bcheckpoint`
                     if [[ $? != 0 ]]; then
                         #[ -f log/$flag.failed ] && exit 1
+                        echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
                         touch log/$flag.likelyCheckpointOOM
                         exit 1
                     else
+                        echo -e "CPW:$SLURM_JOBID" | mail -s "CPW:$SLURM_JOBID:$flag" $USER
                         checkpointed=y
                         echo after checkpoint folder size:
                         du -hs $checkpointDir
                         rm dmtcp_restart_script*
                     fi
                 else
+
+                    echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
                     #[ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
                     touch log/$flag.likelyCheckpointOOM
                     exit 1
