@@ -41,13 +41,14 @@ echo display log/barchartMem.png
 
 echo Category,Used,Wasted,default,Saved > dataTime.csv
 
-ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9*$16,   ($7-$9)*$16, $5*$16}' | sed s/-COM//g | sed s/-OO/-/g >> dataTime.csv
+ls *.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9*$16,   ($7-$9)*$16, ($5-$7)*$16, $5*$16}' | sed s/-COM//g | sed s/-OO/-/g >> dataTime.csv
 
-awk -F, -v OFS=',' '{if (NF==1) {print $0} else {diff=$4-$2-$3; if(diff<0) diff=0; print $0 "," diff}}' dataTime.csv > output.csv
+awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' dataTime.csv > output.csv #> dataMem.csv
 
-mv output.csv dataTime.csv
 
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartTime.png'; set title 'Job vs. CPUTime'; set ylabel 'Time (Mins)'; plot 'dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 5:xtic(1) title 'Saved' lc rgb 'yellow'"
+awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' output.csv > dataTime.csv
+
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartTime.png'; set title 'Job vs. CPUTime'; set ylabel 'CPUTime (CPUxMins)'; plot 'dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
 
 echo To see the plot:
 echo display log/barchartTime.png
