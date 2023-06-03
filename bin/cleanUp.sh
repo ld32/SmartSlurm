@@ -228,7 +228,10 @@ echo Final mem: $srunM, time: $min minutes
 #rm $succFile; jobStatus=OOM
 
 if [ ! -f $succFile ]; then
-    touch $failFile
+        if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
+            echo -e "Step might not good to checkpoint:\n$4" | mail -s "!!!!$SLURM_JOBID:$4" $USER
+        fi
+   touch $failFile
     # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
     if  [ -f "${out%.out}.likelyCheckpointOOM" ] || [[ "$jobStatus" == "OOM" ]]; then
 

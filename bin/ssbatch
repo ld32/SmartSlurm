@@ -351,7 +351,7 @@ if [[ "$testRun" == "run" ]]; then
         #ls -l $logDir/ 1>&2
     fi
 
-    #if [ -f log/keepRunningJobs.txt ]; then
+    if [ -f log/keepRunningJobs.txt ]; then
 
         #set -x
         #cat log/allJobs.txt >&2
@@ -365,12 +365,13 @@ if [[ "$testRun" == "run" ]]; then
             if grep ^$id log/keepRunningJobs.txt 1>/dev/null; then
                 # the dependency is not changed from the last submit
                 #if [[ "$depsO" == "$de" ]]; then
+
                 echoerr thisJobStillRunning $id here
                 echo $id
                 exit
-            else
+            else #if [[ "$depsO" == "$de" ]]; then
                 if [[ $de == null ]]; then
-                    deps=""
+                    deps="dependency=\"\""
                     #resAjust="#Depend on
 
                 elif [[ $de == ${de/\./} ]]; then
@@ -391,12 +392,13 @@ if [[ "$testRun" == "run" ]]; then
                 [ -z "$deps" ] || scontrol update job=$id  $deps
                 echo "Resubmit#$id-#$de-#$flag" >> log/allJobs.txt
                 echo $id
-                rm $logDir/$flag.success 2>/dev/null
+                #rm $logDir/$flag.success 2>/dev/null
+                rm -r $logDir/$flag $logDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
                 exit
             fi
         fi
         #set +x
-    #fi
+    fi
     #ls $flagDir/$flag.* 1>&2
     rm -r $logDir/$flag $logDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
