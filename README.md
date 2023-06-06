@@ -182,6 +182,11 @@ adjustPartition() {
 # Run bash script as smart pipeline using smart sbatch
 Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
+\#Here is the memeory usage by the optimzed workflow: Pink is saved memory by split the workflow input steps. Yellow is the saved memory by dynamic memeory allocation:  
+
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useSomeMemTimeNoInput.sh.none.stat.noInput.png)
+
+
 ## smart pipeline features:
 1) Submit each step as a cluster job using ssbatch, which auto adjusts memory and run-time according to statistics from earlier jobs, and re-run OOM/OOT jobs with doubled memory/run-time
 2) Automatically arrange dependencies among jobs
