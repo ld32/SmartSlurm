@@ -198,8 +198,12 @@ if [[ $jobStatus == "COMPLETED" ]]; then
 
         #   less than 20 records                  # or current one is larger than all old data   # and not exist already
         if [ "$(echo $records | wc -l)" -lt 200 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
-            [ -f ${out%.out}.startFromCheckpoint ] || echo $record >> $jobRecordDir/jobRecord.txt
-            echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+            if [ ! -f ${out%.out}.startFromCheckpoint ]; then
+                echo $record >> $jobRecordDir/jobRecord.txt
+                echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
+            else
+                echo -e "Has ${out%.out}.startFromCheckpoint. Did not added this line to $jobRecordDir/jobRecord.txt:\n$record"
+            fi
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
         else
             echo Did not add this record to $jobRecordDir/jobRecord.txt
