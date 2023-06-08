@@ -92,6 +92,7 @@ echo jobStatus: $jobStatus
 # sacct might give wrong resules
 [[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
 
+
 echo -e  "Last row of job summary: $jobStat"
 echo start: $START finish: $FINISH mem: $memSacct min: $min
 
@@ -197,11 +198,12 @@ if [[ $jobStatus == "COMPLETED" ]]; then
 
         #   less than 20 records                  # or current one is larger than all old data   # and not exist already
         if [ "$(echo $records | wc -l)" -lt 200 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
-            echo $record >> $jobRecordDir/jobRecord.txt
+            [ -f ${out%.out}.startFromCheckpoint ] || echo $record >> $jobRecordDir/jobRecord.txt
             echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
             mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back 2>/dev/null
         else
             echo Did not add this record to $jobRecordDir/jobRecord.txt
+
         fi
     # else
     #     maxMem=`cat $jobRecordDir/stats/$2.$3.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
@@ -210,6 +212,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then
 
     #     if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${srunM%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$min" ]; then
     #         echo $record >> $jobRecordDir/jobRecord.txt
+
     #         echo -e "Added this line to $jobRecordDir/jobRecord.txt:\n$record"
     #         rm $jobRecordDir/stats/$2.$3.*  2>/dev/null
     #     else

@@ -76,6 +76,7 @@ if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then
     ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1 && echo -e "CPR:$SLURM_JOBID" | mail -s "CPR:$SLURM_JOBID:$flag" $USER
     rm $checkpointDir/back/ckpt_*.dmtcp 2>/dev/null
     mv $checkpointDir/ckpt_*.dmtcp $checkpointDir/back 2>/dev/null
+    touch log/$flag.startFromCheckpoint
 else
     echo Something is wrong here. likely out of memory
     echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
