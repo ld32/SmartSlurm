@@ -73,13 +73,13 @@ sleep 20
 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
 if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then
     echo Still running ...
-    ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1 && echo -e "CPR:$SLURM_JOBID" | mail -s "CPR:$SLURM_JOBID:$flag" $USER
+    ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1 && echo -e "CPR:$SLURM_JOBID" | mail -s "CPRead:$SLURM_JOBID:$flag" $USER
     rm $checkpointDir/back/ckpt_*.dmtcp 2>/dev/null
     mv $checkpointDir/ckpt_*.dmtcp $checkpointDir/back 2>/dev/null
     touch log/$flag.startFromCheckpoint
 else
     echo Something is wrong here. likely out of memory
-    echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
+    echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
     touch log/$flag.likelyCheckpointDoNotWork
     exit 1
 fi
@@ -125,11 +125,11 @@ while true; do
                     status=`dmtcp_command --ckptdir $checkpointDir -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT --ckpt-open-files --bcheckpoint`
                     if [[ $? != 0 ]]; then
                         #[ -f log/$flag.failed ] && exit 1
-                        echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
+                        echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
                         touch log/$flag.likelyCheckpointOOM
                         exit 1
                     else
-                        echo -e "CPW:$SLURM_JOBID" | mail -s "CPW:$SLURM_JOBID:$flag" $USER
+                        echo -e "CPW:$SLURM_JOBID" | mail -s "CPWrite:$SLURM_JOBID:$flag" $USER
                         checkpointed=y
                         echo after checkpoint folder size:
                         du -hs $checkpointDir
@@ -137,7 +137,7 @@ while true; do
                     fi
                 else
 
-                    echo -e "CPF:$SLURM_JOBID" | mail -s "CPF:$SLURM_JOBID:$flag" $USER
+                    echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
                     #[ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
                     touch log/$flag.likelyCheckpointOOM
                     exit 1
@@ -147,7 +147,7 @@ while true; do
         fi
     fi
     sleep 10
-    status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
+    status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s 2>/dev/null`
     if [ $? -ne 0 ] || [[ "$status" != *"RUNNING=yes"* ]]; then
         echo All done!
         #[ -f log/$flag.success ] && { rm log/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
