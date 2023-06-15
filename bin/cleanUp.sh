@@ -264,7 +264,7 @@ if [ ! -f $succFile ]; then
         echo new extraMem:
         cat $jobRecordDir/stats/extraMem.$2.$3
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
-        (
+        ( sleep 2;
         set -x;
         for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
@@ -300,7 +300,7 @@ if [ ! -f $succFile ]; then
 
                 [[ "$USER" == ld32 ]] && hostname=login00 || hostname=o2.hms.harvard.edu
 
-                if `ssh $hostname "sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;"`; then
+                if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
                      #rm log/$4.requeueCMD #;  then
                 #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
                 #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then

@@ -691,7 +691,7 @@ echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$sof
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
-# [ $totalM -lt 20 ] && totalM=20
+[ $mem -lt 100 ] && mem=100
 
 # #echo "set -x" >> $job
 # echo "if [ ! -f log/$flag.adjust ]; then" >> $job
@@ -702,8 +702,9 @@ echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$sof
 # #echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " #>> $job
 # #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 # echo "fi" >> $job
-# #echo "srunM=\$((\$totalM - 15))M" >> $job
+#echo "srunM=\$((\$totalM - 5))M" >> $job
 
+srunM=$((mem - 5))
 if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
@@ -743,9 +744,9 @@ if [ -z "$slurmScript" ]; then
 
 
 
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh  \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem && touch $succFlag\"" >> $job
+        echo "srun --mem $srunM -n 1 $slurmAcc sh -e -c \"checkpoint.sh  \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem && touch $succFlag\"" >> $job
     else
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
+        echo "srun --mem $srunM -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
     fi
 else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
