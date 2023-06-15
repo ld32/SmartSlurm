@@ -1,9 +1,5 @@
 #!/bin/sh
 
-usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; }
-
-[[ -z "$1" ]] && usage
-
 #set -x
 
 IFS=$'\n'
@@ -14,7 +10,7 @@ out=`squeue -u $USER -t PD,R -o "%.18i"`
 
 declare -A nmap
 
-lines=`tail -n +2  $1 | awk 'NF>2{print $1, $2, $3}'`
+lines=`tail -n +2 log/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
@@ -25,7 +21,6 @@ for line in $lines; do
         fi
     fi
 done
-
 
 if [ ! -z "${ids/ /}" ]; then
     IFS=' '

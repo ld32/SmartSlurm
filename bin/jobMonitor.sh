@@ -1,17 +1,34 @@
 #!/bin/bash
 
-#set -x
+set -x
+
+# requeue failed jobs
+if ls log/*.requeueCMD && mkdir log/requeue.start; then
+    for requeue in log/*.requeueCMD; do
+        if grep -q $SLURM_JOBID $requeue; then
+            rm $requeue
+            rm ${requeue%.requeueCMD}.failed
+        else
+           sh $requeue && rm $requeue && rm ${requeue%.requeueCMD}.failed
+        fi
+        sleep 1
+    done
+    rm -r log/requeue.start
+fi
+set +x
 
 sleep 2
 
 # Set the cgroup path
 CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
 
+CGROUP_PATH1=/sys/fs/cgroup/cpuacct/slurm/uid_$UID/job_$SLURM_JOB_ID
+
 # Initialize the maximum memory usage to zero
 MAX_MEMORY_USAGE=0
 
-counter=1
-counter1=0;
+counter=30
+counter1=0
 
 jobName=$1
 originalMem=$2
@@ -28,9 +45,10 @@ cancelMailSent=""
 
 # Loop indefinitely, checking the memory usage every 10 seconds
 while true; do
-    #[ -f /tm/job_$SLURM_JOB_ID.done ] && exit
-    # Read the current memory usage from the cgroup's memory.usage_in_bytes file
-    #CURRENT_MEMORY_USAGE=$(cat $CGROUP_PATH/memory.usage_in_bytes)
+    if [ "$counter" -eq 30 ]; then
+        tstart=$(date +%s%N)
+        cstart=$(cat $CGROUP_PATH1/cpuacct.usage)
+    fi
     CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
     #echo current: $(grep total_rss $CGROUP_PATH/memory.stat)
     # If the current memory usage is greater than the maximum seen so far, update the maximum
@@ -44,21 +62,26 @@ while true; do
 
     #echo $MAX_MEMORY_USAGE
     # Wait for 10 seconds before checking again
-    sleep 1
+    sleep 2
     counter=$((counter - 1))
 
     if [ "$counter" -eq 0 ]; then
+        tstop=$(date +%s%N)
+        cstop=$(cat $CGROUP_PATH1/cpuacct.usage)
+        cpu=`echo "($cstop - $cstart) / ($tstop - $tstart) * 100 / $5" | bc`
+        [ -z "$cpu" ] && cpu=0
+
         MAX_MEMORY_USAGE=$(( MAX_MEMORY_USAGE / 1024 / 1024 ))
         saved=$((defaultMem - originalMem))
         [ "$saved" -lt 0 ] && saved=0
 
-	echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $saved" >> log/job_$SLURM_JOB_ID.mem.txt
+	    echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $saved $cpu" >> log/job_$SLURM_JOB_ID.memCPU.txt
 
         counter1=$(($counter1 + 1))
         counter=30
         MAX_MEMORY_USAGE=0
 
-   	if [ -z "$cancelMailSent" ] && [ $originalTime -ge 120 ]; then
+   	    if [ -z "$cancelMailSent" ] && [ $originalTime -ge 120 ]; then
             CURRENT=`date +%s`
             min=$(( $originalTime - ($CURRENT - $START + 59)/60))
             if [ $min -le 15 ]; then
@@ -67,6 +90,5 @@ while true; do
             fi
         fi
     fi
-
 done
 

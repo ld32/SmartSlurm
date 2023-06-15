@@ -70,7 +70,7 @@ echo "xsubd=\"$2\"" >> $run
 
 echo "rm log/keepRunningJobs.txt 2>/dev/null" >> $run
 echo "if [ -f log/allJobs.txt ]; then" >> $run
-echo "    cancelAllJobsReRun log/allJobs.txt" >> $run
+echo "    cancelAllJobsReRun.sh" >> $run
 echo "    [ \$? == 1 ] && exit 0;" >> $run
 echo "fi" >> $run
 
@@ -82,7 +82,7 @@ echo "cwd=\`realpath ./\`" >> $run
 
 echo "[ -f log/allJobs.txt ] && cp log/allJobs.txt log/allJobs.txt.old"  >> $run
 
-echo "rm log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt log/*requeued* 2>/dev/null" >> $run
+echo "rm -r log/requeue.start log/skipAllSuccessJobs*.txt log/reRunAllSuccessJobs*.txt log/*requeued* 2>/dev/null" >> $run
 
 echo "[ ! -f log/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs > log/allJobs.txt || echo -e \"\n\`date\`\" >> log/allJobs.txt">> $run
 echo "echo ---------------------------------------------------------" >> $run

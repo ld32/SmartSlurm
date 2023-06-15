@@ -112,7 +112,7 @@ while true; do
             if [ ! -z "$needCheckpoint" ]; then
 
                 # make a mark on memmory plot to see memory usage when checking point
-                echo 0 0 0 0 >> log/job_$SLURM_JOB_ID.mem.txt
+                echo 0 0 0 0 0 >> log/job_$SLURM_JOB_ID.memCPU.txt
 
                 echo Doing checkpoint
                 echo Running time in minutes: $((timeR/1000)) # this is to refer the memory usage plot to see how much memory is used by dmtcp
