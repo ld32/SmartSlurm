@@ -442,7 +442,7 @@ if [ ! -f $succFile ]; then
                 mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi
-    elif [ ! -z "$allwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
+    elif [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
         ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
