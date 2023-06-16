@@ -100,7 +100,7 @@ for (( i=0; i<$(($#)); i++ )); do
     esac
 done
 
-[ -z "$logDir" ] && set -- "$@" run && testRun=run
+[ -z "$logDir" ] && set -- "$@" run && testRun=run && runningSingleJob=y || runningSingleJob=""
 
 echoerr options before sbatch options: slurmAcc: $slurmAcc logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
 
@@ -865,7 +865,14 @@ echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
 # for check dependency, rerun, kill downstream jobs, estimate memmory and run time
 #[[ "$jobID" =~ ^[0-9]+$ ]]  &&  echo $jobID $dep $flag $software $ref $inputs >> $flagDir/allJobs.txt
 
-#[ -z "$out" ] && ln -s $outFlag job-$jobID.out || ln -s $outFlag $out
+
+if [ ! -z "$runningSingleJob" ]; then
+    if [ -z "$out" ]; then
+        ln -s $outFlag slurm-$jobID.out
+    else
+        ln -s $outFlag $out
+    fi
+fi
 
 #[ ! -z "$err" ] && ln -s $outFlag $err
 #if [ -z "$logDir" ]; then

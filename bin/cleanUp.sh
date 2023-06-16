@@ -237,9 +237,9 @@ echo Final mem: $srunM, time: $min minutes
 
 if [ ! -f $succFile ]; then
         if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
-            echo -e "Step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$4" | mail -s "!!!!$SLURM_JOBID:$4" $USER
+            echo -e "This step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$4" | mail -s "!!!!$SLURM_JOBID:$4" $USER
         fi
-   touch $failFile
+    touch $failFile
     # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
     if  [ -f "${out%.out}.likelyCheckpointOOM" ] || [[ "$jobStatus" == "OOM" ]]; then
 
@@ -265,7 +265,7 @@ if [ ! -f $succFile ]; then
         cat $jobRecordDir/stats/extraMem.$2.$3
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
         ( sleep 2;
-        set -x;
+        #set -x;
         for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 #sleep 2
@@ -314,7 +314,7 @@ if [ ! -f $succFile ]; then
                 fi
             fi
         done;
-        set +x;
+        #set +x;
         ) &
 
         # delete stats and redo them
@@ -363,7 +363,7 @@ if [ ! -f $succFile ]; then
         #echo job resubmitted: $SLURM_JOBID with mem: $mem
 
     elif [[ "$jobStatus" == "OOT" ]]; then
-set -x
+#set -x
         for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
                 sleep 2
@@ -442,7 +442,8 @@ set -x
                 mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi
-
+    elif [ ! -z "$allwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
+        ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
