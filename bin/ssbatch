@@ -37,7 +37,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-#set -x
+set -x
 
 echoerr() { echo "$@" >&2; }
 
@@ -212,8 +212,8 @@ fi
 [ -z "$ref" ] && [ ! -z "$SSBATCH_R" ] && ref="$SSBATCH_R"
 [ -z "$input" ] && [ ! -z "$SSBATCH_I" ] && inputs="$SSBATCH_I"
 [ -z "$deps" ] && [ ! -z "$SSBATCH_D" ] && deps="$SSBATCH_D"
-#[ -z "$out" ] && out=slurm-jid.out #%j.out
-#[ -z "$err" ] && err=slurm-jid.err #%j.err
+[ -z "$out" ] || out=`realpath $out`
+[ -z "$err" ] || err=`realpath $err` #.err #%j.err
 #todo: err is ignored. will work on it later
 
 # this is not pipeline
@@ -237,6 +237,7 @@ if [ -z "$logDir" ]; then
             software=${slurmScript##*/}
             #[ -z "$flag" ] &&
             flag=$software.${slurmScriptParas// /}
+            flag=${flag%.}
         fi
     fi
 
@@ -246,6 +247,7 @@ if [ -z "$logDir" ]; then
     failFlag=$logDir/$flag.failed
     killFlag=$logDir/$flag.user.killed
     outFlag=$logDir/$flag.out
+    errFlag=$logDir/$flag.err
     #echo -e "#!/bin/bash\n\n" > $job
     ##SBATCH -e $err\n#SBATCH -o $out\n" > $job
 else
@@ -787,7 +789,13 @@ fi
 #if [ -z "$logDir" ]; then
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
-    cmd="/usr/bin/sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+    if [ -z "$err" ]; then #errFlag=$logDir/$flag.err
+        cmd="/usr/bin/sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+    else
+        cmd="/usr/bin/sbatch --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+
+    fi
+
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
 #fi
 if [ -z "$slurmScript" ]; then
@@ -870,7 +878,12 @@ if [ ! -z "$runningSingleJob" ]; then
     if [ -z "$out" ]; then
         ln -s $outFlag slurm-$jobID.out
     else
+        out=${out/\%j/$jobID};
         ln -s $outFlag $out
+    fi
+    if [ ! -z "$err" ]; then
+        err=${err/\%j/$jobID};
+        ln -s $errFlag $err
     fi
 fi
 

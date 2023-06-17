@@ -443,7 +443,7 @@ if [ ! -f $succFile ]; then
             fi
         fi
 
-    elif [ "$min" -bg 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
+    elif [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
         ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
