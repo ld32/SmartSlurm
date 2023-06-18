@@ -78,6 +78,8 @@ unset SSBATCH_S SSBATCH_R SSBATCH_I SSBATCH_D
 echoerr
 array=( "$@" )
 
+export alwaysRequeueIfFail=""
+
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
@@ -96,6 +98,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}" && array[$i]="";;
         "-D"            )   deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
         "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}" && array[$i]="";;
+        "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true && array[$i]="";;
         *               )   sbatchLocation=$i && break
     esac
 done
