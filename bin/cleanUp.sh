@@ -129,6 +129,7 @@ fi
 if [[ $jobStatus == Unknown ]]; then
     tLog=`tail -n 22 $out | grep ^srun`
     [[ "$tLog" == *"task 0: Out Of Memory"* ]] && jobStatus="OOM" && echo The job is actually out-of-memory by according to the log: && echo $tLog
+    scontrol show jobid -dd $SLURM_JOB_ID
 fi
 #set +x
 
@@ -443,10 +444,11 @@ if [ ! -f $succFile ]; then
             fi
         fi
 
-    elif [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" == "Fail" ]; then
-        ( sleep 4;  scontrol requeue $SLURM_JOBID; ) &
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
+    fi
+    if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
+        ( sleep 4;  scontrol requeue $SLURM_JOBID; ) &
     fi
 elif [ ! -z "$1" ]; then
     adjustDownStreamJobs.sh $1
