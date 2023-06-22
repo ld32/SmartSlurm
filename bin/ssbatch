@@ -80,6 +80,8 @@ array=( "$@" )
 
 export alwaysRequeueIfFail=""
 
+caller=`ps -f $PPID` && [ "$caller" == *slurmPipeLine* ] && runningSingleJob="" || runningSingleJob=y
+
 # get the 6 parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
@@ -103,7 +105,7 @@ for (( i=0; i<$(($#)); i++ )); do
     esac
 done
 
-[ -z "$logDir" ] && set -- "$@" run && testRun=run && runningSingleJob=y || runningSingleJob=""
+[ -z "$logDir" ] && set -- "$@" run && testRun=run
 
 echoerr options before sbatch options: slurmAcc: $slurmAcc logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
 
