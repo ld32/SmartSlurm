@@ -24,9 +24,9 @@ else
 fi
 
 # wait for slurm database update
-sleep 10
+sleep 20
 
-sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID`
+sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
 #sacct=`cat ~/fakeSacct.txt`
 

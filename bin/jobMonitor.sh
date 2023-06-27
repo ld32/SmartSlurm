@@ -81,7 +81,7 @@ while true; do
         counter=30
         MAX_MEMORY_USAGE=0
 
-   	    if [ -z "$cancelMailSent" ] && [ $originalTime -ge 120 ]; then
+   	    if [ -z "$cancelMailSent" ] && [ "$originalTime" -ge 120 ]; then
             CURRENT=`date +%s`
             min=$(( $originalTime - ($CURRENT - $START + 59)/60))
             if [ $min -le 15 ]; then

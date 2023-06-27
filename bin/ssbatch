@@ -237,7 +237,7 @@ if [ -z "$logDir" ]; then
                 software="${arr[0]}"
             fi
             software=${software##*/}
-            flag=${wrapCMD// /}
+            flag=${wrapCMD// /}; flag=${flag%;}
         else
             software=${slurmScript##*/}
             #[ -z "$flag" ] &&
