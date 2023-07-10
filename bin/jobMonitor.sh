@@ -2,6 +2,11 @@
 
 set -x
 
+echo Running: $0 $@
+echo pwd: `pwd`
+cd ${1%/log/*}
+echo pwd `pwd`
+
 # requeue failed jobs
 if ls log/*.requeueCMD && mkdir log/requeue.start; then
     for requeue in log/*.requeueCMD; do
@@ -30,7 +35,7 @@ MAX_MEMORY_USAGE=0
 counter=30
 counter1=0
 
-jobName=$1
+jobName=${1#*/log/}
 originalMem=$2
 originalTime=$3
 

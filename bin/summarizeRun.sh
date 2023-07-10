@@ -1,7 +1,11 @@
 #!/bin/sh
-Usage="Usage: $0 \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
+Usage="Usage: $0 logDir \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
 
 set -x
+
+echo Running: $0 $@»
+echo pwd: `pwd`
+cd ${1%log}
 
 IFS=$'\n'
 

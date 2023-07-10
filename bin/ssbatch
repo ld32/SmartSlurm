@@ -60,6 +60,7 @@ mkdir -p $jobRecordDir/stats
 [ -f  $jobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12software,13reference,14flag,15core,16extraMem,17extraTime,18date > $jobRecordDir/jobRecord.txt
 
 echoerr Running: $0 $@
+echoerr pwd: `pwd`
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -82,80 +83,74 @@ export alwaysRequeueIfFail=""
 
 caller=`ps -f $PPID` && [ "$caller" == *slurmPipeLine* ] && runningSingleJob="" || runningSingleJob=y
 
-# get the 6 parameters for ssbatch
+[ ! -z "$runningSingleJob" ] && set -- "$@" run && testRun=run
+
+logDir=$PWD/log
+
+# get the first few parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
-#  	echoerr $i " / " $(($#)) " : " ${array[$i]}
+  	echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
-        --comment=*     )   comment="${array[$i]}" && array[$i]="" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
-  	    "-L"            )   logDir="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--LogDir=*      )   logDir="${array[$i]}" && logDir=${logDir/--LogDir=/} && array[$i]="";;
-  		"-S" 			)   software="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Software=* 	)   software="${array[$i]}" && software="${software/--Software=/}" && array[$i]="";;
-  		"-R" 			)   ref="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Ref=* 		)   ref="${array[$i]}" && ref="${ref/--Ref=/}" && array[$i]="";;
-  		"-F" 			)   flag="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}" && array[$i]="";;
-        "-I" 			)   inputs="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}" && array[$i]="";;
-        "-D"            )   deps="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-        "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}" && array[$i]="";;
-        "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true && array[$i]="";;
-        *               )   sbatchLocation=$i && break
-    esac
-done
-
-[ -z "$logDir" ] && set -- "$@" run && testRun=run
-
-echoerr options before sbatch options: slurmAcc: $slurmAcc logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
-
-#exit
-
-depsO=$deps
-
-echoerr Parsing sbatch command...
-for (( i=$sbatchLocation; i<`[[ "$testRun" == "run" ]] && echo $(($# -1))  || echo $(($#))`; i++ )); do
-    [ -z "${array[$i]}" ] && continue
-#  	echoerr $i " / " $(($#)) " : " ${array[$i]}
-  	case "${array[$i]}" in
-  	    "-p"            )   partition="${array[$i+1]}" && array[$i]="" && array[$i+1]="";; # will set partition later
-  		--partition=*   )   partition="${array[$i]}" && partition=${partition/--partition=/} && array[$i]="";;
+        --comment=*     )   comment="${array[$i]}" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
+  	    "-L"            )   logDir="${array[$i+1]}" && array[$i+1]="";;
+  		--LogDir=*      )   logDir="${array[$i]}" && logDir=${logDir/--LogDir=/};;
+  		"-S" 			)   software="${array[$i+1]}" && array[$i+1]="";;
+  		--Software=* 	)   software="${array[$i]}" && software="${software/--Software=/}";;
+  		"-R" 			)   ref="${array[$i+1]}" && array[$i+1]="";;
+  		--Ref=* 		)   ref="${array[$i]}" && ref="${ref/--Ref=/}";;
+  		"-F" 			)   flag="${array[$i+1]}" && array[$i+1]="";;
+  		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}";;
+        "-I" 			)   inputs="${array[$i+1]}" && array[$i+1]="";;
+  		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}";;
+        "-d"            )   deps="${array[$i+1]}" && array[$i+1]="";;
+        "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}";;
+        "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true;;
+  	    "-p"            )   partition="${array[$i+1]}" && array[$i+1]="";; # will set partition later
+  		--partition=*   )   partition="${array[$i]}" && partition=${partition/--partition=/};;
   		--mem-per-cpu=* ) 	mem1="${array[$i]}" && mem1="${mem1/--mem-per-cpu=/}";;
-  		"-c" 	 		) 	core="${array[$i+1]}";;
+  		"-c" 	 		) 	core="${array[$i+1]}" && array[$i+1]="";;
   		--cpus-per-task=*)  core="${array[$i]}" && core="${core/--cpus-per-task=/}";;
-  		"-n" 	 		) 	task="${array[$i+1]}";;
+  		"-n" 	 		) 	task="${array[$i+1]}" && array[$i+1]="";;
   		--ntasks=*      )   task="${array[$i]}" && task="${task/--ntasks=/}";;
-  		"-N" 	 		) 	node="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--nodes=*       )   node="${array[$i]}" && node="${node/--nodes=/}" && array[$i]="";;
-  		"--mem"  		) 	mem="${array[$i+1]}"&& array[$i]="" && array[$i+1]="";; # will set memory later
-  		--mem=* 		)  	[ -z "$mem" ] && mem="${array[$i]}" && mem=${mem/--mem=/} && array[$i]="";;
-  		"-t" 			)   time="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--time=* 		)   time="${array[$i]}" && time="${time/--time=/}" && array[$i]="";;
-  		"-o" 			)   out="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/}" && array[$i]="";;
-  		"-e" 			)   err="${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
-  		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}" && array[$i]="";;
-        "-A"            )   [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i]="" && array[$i+1]="";;
+  		"-N" 	 		) 	node="${array[$i+1]}" && array[$i+1]="";;
+  		--nodes=*       )   node="${array[$i]}" && node="${node/--nodes=/}";;
+  		"--mem"  		) 	mem="${array[$i+1]}" && array[$i+1]="";; # will set memory later
+  		--mem=* 		)  	[ -z "$mem" ] && mem="${array[$i]}" && mem=${mem/--mem=/};;
+  		"-t" 			)   time="${array[$i+1]}" && array[$i+1]="";;
+  		--time=* 		)   time="${array[$i]}" && time="${time/--time=/}";;
+  		"-J" 			)   name="${array[$i+1]}" && array[$i+1]="";;
+  		--job-name=* 	)   name="${array[$i]}" && name="${time/--job-name=/}";;
+  		"-o" 			)   out="${array[$i+1]}" && array[$i+1]="";;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/}";;
+  		"-e" 			)   err="${array[$i+1]}" && array[$i+1]="";;
+  		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}";;
+        "-A"            )   [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
         "-d" 			)   dep="${array[$i+1]}";;
   		--dependency=* 	)   dep="${array[$i]}" && dep="${dep/--dependency=/}";;
-
+        "test"          )   [ $i -eq $(($#)) ] && continue;;
+        "run"           )   [ $i -eq $(($#)) ] && continue;;
+        "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
+        --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}"; };;
     esac
 
-    [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
-  	[ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
-    [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
-    [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
+    # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
+  	# [ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
+    # [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
+    # [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
 done
 
 echoerr
 echoerr Parsing result from sbatch commandline:
-echoerr sbatch options: partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
+echoerr logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
+echoerr partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep additionalPara: $additionalPara
+
+depsO=$deps
 
 if [ -z "$slurmScript" ]; then
     echoerr wrapCMD: $wrapCMD
-    echoerr additional sbatch parameter: $CMDWithoutWrap
 else
-    echoerr additional sbatch parameter: $CMDWithoutSlurmCMD
     echoerr slurmScript: $slurmScript
     echoerr slurmScriptParas: $slurmScriptParas
 fi
@@ -193,6 +188,8 @@ if [[ ! -z "$slurmScript" ]]; then
                 --nodes=*   ) [ -z "$node" ] && echoerr Found --nodes= && node="${arr[1]}" && node="${node/--nodes=/}";;
                 "-t"    ) [ -z "$time" ] && echoerr Found -t && time="${arr[2]}";;
                 --time=* ) [ -z "$time" ] && echoerr Found --time= && time="${arr[1]}" && time="${time/--time=/}";;
+                "-J"    ) [ -z "$name" ] && echoerr Found -t && name="${arr[2]}";;
+                --job-name=* ) [ -z "$name" ] && echoerr Found --job-name= && name="${arr[1]}" && name="${time/--job-name=/}";;
                 "-o"    ) [ -z "$out" ] && echoerr Found -o && out="${arr[2]}";;
                 --output=* ) [ -z "$out" ] && echoerr Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
                 "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}";;
@@ -209,25 +206,29 @@ if [[ ! -z "$slurmScript" ]]; then
     echoerr time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
 
     echoerr slurmScript: $slurmScript
-    echoerr additional sbatch parameter: $CMDWithoutSlurmCMD
     echoerr slurmScriptParas: $slurmScriptParas
 fi
+
+[ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
 
 [ -z "$software" ] && [ ! -z "$SSBATCH_S" ] && software="$SSBATCH_S"
 [ -z "$ref" ] && [ ! -z "$SSBATCH_R" ] && ref="$SSBATCH_R"
 [ -z "$input" ] && [ ! -z "$SSBATCH_I" ] && inputs="$SSBATCH_I"
 [ -z "$deps" ] && [ ! -z "$SSBATCH_D" ] && deps="$SSBATCH_D"
 [ -z "$out" ] || out=`realpath $out`
-[ -z "$err" ] || err=`realpath $err` #.err #%j.err
+[ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
 
 # this is not pipeline
-if [ -z "$logDir" ]; then
-    logDir=$PWD/log
+if [ ! -z "$runningSingleJob" ]; then
     mkdir -p $logDir
     #[ -z "$software" ] && software=regularSbatch
     tm=`mktemp XXXXXXXX --dry-run`
     if [ -z "$software" ]; then
+        # todo: figure out how to find software name and input automatically
+        echoerr Need software name to work
+        usage  # need software name to work
+
         if [ ! -z "$wrapCMD" ]; then
             arr=($wrapCMD)
             # need remove the parameters, to get unique name for job types
@@ -245,31 +246,23 @@ if [ -z "$logDir" ]; then
             flag=${flag%.}
         fi
     fi
-
-    #flag=${out/-\%j\.out/_$tm}
-    job=$logDir/$flag.sh
-    succFlag=$logDir/$flag.success
-    failFlag=$logDir/$flag.failed
-    killFlag=$logDir/$flag.user.killed
-    outFlag=$logDir/$flag.out
-    errFlag=$logDir/$flag.err
-    #echo -e "#!/bin/bash\n\n" > $job
-    ##SBATCH -e $err\n#SBATCH -o $out\n" > $job
+    [ -z "$name" ] || flag=$name
 else
     [ -d "$logDir" ] || { echoerr Directory not exist: $logDir; usage; }
     [ -z "$software" ] && { echoerr software is emtpty; usage; }
     flag=${flag//\//-}
-
-    mkdir -p $logDir
-    job=$logDir/$flag.sh
-    succFlag=$logDir/$flag.success
-    failFlag=$logDir/$flag.failed
-    #startFlag=$logDir/$flag.start
-    killFlag=$logDir/$flag.user.killed
-    outFlag=$logDir/$flag.out
-    errFlag=$logDir/$flag.err
-    deps=${deps#.}
 fi
+
+mkdir -p $logDir
+job=$logDir/$flag.sh
+succFlag=$logDir/$flag.success
+failFlag=$logDir/$flag.failed
+#startFlag=$logDir/$flag.start
+killFlag=$logDir/$flag.user.killed
+outFlag=$logDir/$flag.out
+errFlag=$logDir/$flag.err
+
+deps=${deps#.}
 
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
@@ -424,7 +417,7 @@ echoerr
 echoerr Check if there input file list and this job does not depend on other jobs
 
 # has checkpoint
-if [ -z "$deps" ] && [ "$flag" == *.Checkpoint ] && ls $logDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $logDir/$flag.adjust ]; then
+if [ -z "$deps" ] && [ "$software" == *.Checkpoint ] && ls $logDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $logDir/$flag.adjust ]; then
     tText=`cat $logDir/$flag.adjust`
     mem=`echo $tText | cut -d' ' -f1`
     min=`echo $tText | cut -d' ' -f2`
@@ -644,7 +637,6 @@ fi
 
 [ -z "$mem" ] && { echoerr did not find mem limit; exit 1; }
 
-[ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
 
 #time=$min
 
@@ -694,7 +686,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\njobMonitor.sh $flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\"; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
@@ -804,9 +796,9 @@ fi
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
 #fi
 if [ -z "$slurmScript" ]; then
-    cmd="$cmd $CMDWithoutWrap $job"
+    cmd="$cmd $additionalPara $job"
 else
-    cmd="$cmd $CMDWithoutSlurmCMD $job $slurmScriptParas"
+    cmd="$cmd $additionalPara $job $slurmScriptParas"
 fi
 
 
@@ -881,14 +873,14 @@ echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
 
 if [ ! -z "$runningSingleJob" ]; then
     if [ -z "$out" ]; then
-        ln -s $outFlag slurm-$jobID.out
+        ln $outFlag slurm-$jobID.out
     else
         out=${out/\%j/$jobID};
-        ln -s $outFlag $out
+        ln $outFlag $out
     fi
     if [ ! -z "$err" ]; then
         err=${err/\%j/$jobID};
-        ln -s $errFlag $err
+        ln $errFlag $err
     fi
 fi
 

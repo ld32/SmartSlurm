@@ -7,6 +7,9 @@ usage(){            #           1                    2             3            
     exit 1
 }
 
+echo Running $0 $@
+echo pwd: `pwd`
+
 CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
 
 export program="$1"

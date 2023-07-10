@@ -1,12 +1,22 @@
 #!/bin/bash
 
-#set -x
+set -x
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs
 
 
+
+
 echo Running $0 $@
+echo pwd: `pwd`
+
+# if not successful, delete cromwell error file, so that the job not labeled fail
+ls -l execution
+[ -f $1/$4.success ] || rm -r execution/rc
+
+cd ${1%log}
+
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
     source ~/.smartSlurm/config/config.txt
@@ -23,8 +33,9 @@ else
     out=$1/"${4}.out"; err=$1/${4}.err; script=$1/${4}.sh; succFile=$1/${4}.success; failFile=$1/${4}.failed; checkpointDir=$1/${4}
 fi
 
+
 # wait for slurm database update
-sleep 20
+sleep 10
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
@@ -91,7 +102,6 @@ echo jobStatus: $jobStatus
 
 # sacct might give wrong resules
 [[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
-
 
 echo -e  "Last row of job summary: $jobStat"
 echo start: $START finish: $FINISH mem: $memSacct min: $min
@@ -301,10 +311,10 @@ if [ ! -f $succFile ]; then
 
                 [[ "$USER" == ld32 ]] && hostname=login00 || hostname=o2.hms.harvard.edu
 
-                if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
+                #if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
                      #rm log/$4.requeueCMD #;  then
                 #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
-                #if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
+                if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
                     #echo Requeued successfully
                     #[ -f $failFile ] && rm $failFile
 
@@ -492,7 +502,7 @@ fi
 
 #cp /tmp/job_$SLURM_JOBID.mem.txt log/
 
-summarizeRun.sh
+summarizeRun.sh $1
 
 toSend="`cat log/summary`\n$toSend"
 

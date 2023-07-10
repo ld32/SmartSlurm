@@ -243,7 +243,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -d \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
         echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run
 
