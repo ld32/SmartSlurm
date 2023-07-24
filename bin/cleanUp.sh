@@ -2,8 +2,8 @@
 
 set -x
 
-# to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs
+# to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13     14    15
+#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM skipEstimate
 
 
 
@@ -194,7 +194,7 @@ echo dataToPlot,$record
 
 #if [[ ! -f $jobRecordDir/stats/$2.$3.mem.stat || "$2" == "regularSbatch" ]]; then
 
-if [[ $jobStatus == "COMPLETED" ]]; then
+if [[ $jobStatus == "COMPLETED" ]] && [[ "${15}" == n ]]; then
 
     #if [[ "$inputSize" == 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
         records=`grep COMPLETED $jobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -u -n`
@@ -259,21 +259,25 @@ if [ ! -f $succFile ]; then
         #set -x
         echo Will re-queue after sending email...
 
-        echo old extraMem:
-        cat $jobRecordDir/stats/extraMem.$2.$3
+        if [[ "${15}" == n ]]; then
+            echo old extraMem:
+            cat $jobRecordDir/stats/extraMem.$2.$3
 
-        #extraMemN=$(( ( totalM - srunM ) *2 ))
-        extraMemN=$(( totalM - srunM + 1 ))
-        #[[ "$extraMemN" == 0 ]] && extraMemN=1
-        #[ ! -f "${out%.out}.likelyCheckpointOOM" ] &&
-        [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $jobRecordDir/stats/extraMem.$2.$3
+            #extraMemN=$(( ( totalM - srunM ) *2 ))
+            extraMemN=$(( totalM - srunM + 1 ))
+            #[[ "$extraMemN" == 0 ]] && extraMemN=1
+            #[ ! -f "${out%.out}.likelyCheckpointOOM" ] &&
+            [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $jobRecordDir/stats/extraMem.$2.$3
 
-        #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
-        maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
-        [ -z "$maxExtra" ] && maxExtra=5
+            #oomCount=`wc -l $jobRecordDir/stats/extraMem.$2.$3 | cut -d' ' -f1`
+            maxExtra=`sort -n $jobRecordDir/stats/extraMem.$2.$3 | tail -n1 | cut -d' ' -f1`
+            [ -z "$maxExtra" ] && maxExtra=5
+            echo new extraMem:
+            cat $jobRecordDir/stats/extraMem.$2.$3
+        else
+            maxExtra=5
+        fi
 
-        echo new extraMem:
-        cat $jobRecordDir/stats/extraMem.$2.$3
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
         ( sleep 2;
         #set -x;
