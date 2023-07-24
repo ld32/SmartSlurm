@@ -6,10 +6,10 @@
 # note: user can have their own copy of config as: ~/.smartSlurm/config/config.txt, then modify it.
 
 # each user has their own job record folder
-#jobRecordDir=~/.smartSlurm
+jobRecordDir=~/.smartSlurm
 
 # share a folder with a group of users.
-jobRecordDir=/data/groupABC/smartSlurm
+#jobRecordDir=/data/groupABC/smartSlurm
 
 defaultMem=2048  # in M
 defaultTime=120  # in min
