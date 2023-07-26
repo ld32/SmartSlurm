@@ -37,7 +37,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-set -x
+#set -x
 
 echoerr() { echo "$@" >&2; }
 
@@ -692,7 +692,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\n\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
