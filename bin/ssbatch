@@ -125,7 +125,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/}";;
   		"-e" 			)   err="${array[$i+1]}" && array[$i+1]="";;
   		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}";;
-        "-A"            )   [ -z "$slurmAcc" ] && slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
+        "-A"            )   slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
         "-d" 			)   dep="${array[$i+1]}";;
   		--dependency=* 	)   dep="${array[$i]}" && dep="${dep/--dependency=/}";;
         "test"          )   [ $i -eq $(($#)) ] && continue;;
