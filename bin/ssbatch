@@ -80,8 +80,7 @@ echoerr
 array=( "$@" )
 
 export alwaysRequeueIfFail=""
-
-caller=`ps -f $PPID` && [ "$caller" == *slurmPipeLine* ] && runningSingleJob="" || runningSingleJob=y
+caller=`ps -f $PPID` && [[ "$caller" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
 
 [ ! -z "$runningSingleJob" ] && set -- "$@" run && testRun=run
 
