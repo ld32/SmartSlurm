@@ -518,14 +518,14 @@ s="${toSend%% *} $s"
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then
     echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+        { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
     echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+        { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 else
     echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
-    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+    { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 fi
 
