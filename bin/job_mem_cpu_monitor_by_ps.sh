@@ -23,13 +23,14 @@ function calculate_resource_usage {
     local total_cpu=0
 
     # Get memory and CPU usage of the current process
-    local process_info=$(ps -o rss=,%cpu= -p $pid)
+    local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid)
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
 
     # Calculate memory and CPU usage of children
     local children=$(ps --ppid $pid -o pid=)
     for child_pid in $children; do
+        [[ $child_pid == $$ ]] && continue
         local output=$(calculate_resource_usage $child_pid)
         local child_memory=${output% *}
         local child_cpu=${output#* }
