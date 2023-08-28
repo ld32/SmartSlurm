@@ -83,7 +83,7 @@ while true; do
 	    echo "$counter1 $MAX_MEMORY_USAGE $(($originalMem - $MAX_MEMORY_USAGE)) $saved $cpu" >> log/job_$SLURM_JOB_ID.memCPU.txt
 
         counter1=$(($counter1 + 1))
-        counter=30
+        counter=4
         MAX_MEMORY_USAGE=0
 
    	    if [ -z "$cancelMailSent" ] && [ "$originalTime" -ge 120 ]; then
