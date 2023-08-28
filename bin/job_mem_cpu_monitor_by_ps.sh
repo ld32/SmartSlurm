@@ -23,7 +23,7 @@ function calculate_resource_usage {
     local total_cpu=0
 
     # Get memory and CPU usage of the current process
-    local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid)
+    local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid | grep -v job_mem_cpu_monitor_by_ps.sh)
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
 
@@ -46,7 +46,7 @@ function calculate_resource_usage {
 }
 
 while true; do
-    job_pid=`ps -AF|grep $SLURM_JOBID|grep slurmstepd|awk '{print $2}'|tail -1`
+    job_pid=`ps -AF|grep $SLURM_JOBID|grep slurmstepd|awk '{print $2}'| tail -1`
     if [ -n "$job_pid" ]; then
         output=$(calculate_resource_usage $job_pid)
         total_memory_usage=${output% *}
@@ -57,3 +57,4 @@ while true; do
     fi
     sleep 5
 done
+
