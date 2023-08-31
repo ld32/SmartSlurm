@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 echo Running: $0 $@
 echo pwd: `pwd`
@@ -20,7 +20,7 @@ if ls log/*.requeueCMD && mkdir log/requeue.start; then
     done
     rm -r log/requeue.start
 fi
-set +x
+#set +x
 
 sleep 2
 
@@ -43,7 +43,10 @@ function calculate_resource_usage {
     local total_cpu=0
 
     # Get memory and CPU usage of the current process
-    local process_info=$(ps -o rss=,%cpu= -p $pid)
+    local process_info=$(ps -o rss=,%cpu=,pid=,ppid=,cmd= -p $pid)
+    #echo $process_info >&2
+    [[ "$process_info" == *job_mem_cpu_monitor* ]] && echo 5000 2.0 && return
+
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
 
@@ -69,19 +72,27 @@ START=`date +%s`
 
 # Loop indefinitely, checking the memory usage every 10 seconds
 while true; do
-    job_pid=`ps -AF|grep $SLURM_JOBID|grep slurmstepd|awk '{print $2}'|tail -1`
-    if [ -n "$job_pid" ]; then
-        output=$(calculate_resource_usage $job_pid)
-        total_memory_usage=${output% *}
-        total_cpu_usage=${output#* }
-        #echo $(date +"%Y-%m-%d %H:%M:%S") $reservedMem $(echo "scale=4; $total_memory_usage/1024" | bc) $(echo "scale=4; $total_memory_usage/10.24/ $reservedMem" | bc) $reservedCpu $total_cpu_usage >> $SLURM_JOBID.memCpuLog
+    total_memory_usage=0; total_cpu_usage=0
+    job_pids=`ps -AF | grep $SLURM_JOBID | grep slurmstepd|awk '{print $2}'`
+    #echo job pids: $job_pids  >&2
+    if [ -n "$job_pids" ]; then
+        for job_pid in $job_pids; do
+            #echo working on: $job_pid
+            output=$(calculate_resource_usage $job_pid)
+            mem=${output% *}
+            cpu=${output#* }
+            total_memory_usage=$((total_memory_usage + mem))
+            total_cpu_usage=$(echo "scale=4; $total_cpu_usage + $cpu"|bc)
+            echo Total: $total_memory_usage, $total_cpu_usage
+        done
+
         counter=$((counter + 1))
         saved=$((defaultMem - originalMem))
         [ "$saved" -lt 0 ] && saved=0
 
         total_memory_usage=$((total_memory_usage/1024))
 
-	    echo "p$counter $total_memory_usage $(($originalMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> log/job_$SLURM_JOB_ID.memCPU.txt
+	    echo "$counter $total_memory_usage $(($originalMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> log/job_$SLURM_JOB_ID.memCPU.txt
 
     else
         exit
@@ -95,6 +106,6 @@ while true; do
             cancelMailSent=yes
         fi
     fi
-    sleep 5
+    sleep 30
 done
 

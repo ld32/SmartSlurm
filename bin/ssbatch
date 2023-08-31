@@ -691,7 +691,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\nset -x\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\njob_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\n#jobMonitor.sh $logDir/$flag $mem $min $memO $core &\njob_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core > error.log 2>&1 &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
@@ -739,7 +739,7 @@ if [ -z "$slurmScript" ]; then
 # pid=`ps -f -u $USER | grep -v awk | grep -v srun | awk -v pat="$x"  '$0 ~ pat { print $2 }' | tail -n 1`
 # echo $pid > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessID.txt
 
-# #pid=$!
+ #pid=$!
 # #echo $pid >
 # ps -f -u ld32
 # wait

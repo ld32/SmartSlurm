@@ -23,14 +23,15 @@ function calculate_resource_usage {
     local total_cpu=0
 
     # Get memory and CPU usage of the current process
-    local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid | grep -v job_mem_cpu_monitor_by_ps.sh)
+    local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid)
+    [[ "$process_info" == *job_mem_cpu_monitor* ]] && echo 5000 2.0 && return
+    
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
 
     # Calculate memory and CPU usage of children
     local children=$(ps --ppid $pid -o pid=)
     for child_pid in $children; do
-        [[ $child_pid == $$ ]] && continue
         local output=$(calculate_resource_usage $child_pid)
         local child_memory=${output% *}
         local child_cpu=${output#* }
@@ -46,11 +47,19 @@ function calculate_resource_usage {
 }
 
 while true; do
-    job_pid=`ps -AF|grep $SLURM_JOBID|grep slurmstepd|awk '{print $2}'| tail -1`
-    if [ -n "$job_pid" ]; then
-        output=$(calculate_resource_usage $job_pid)
-        total_memory_usage=${output% *}
-        total_cpu_usage=${output#* }
+    total_memory_usage=0; total_cpu_usage=0
+    job_pids=`ps -AF | grep $SLURM_JOBID | grep slurmstepd|awk '{print $2}'`
+    if [ -n "$job_pids" ]; then
+        for job_pid in $job_pids; do
+            output=$(calculate_resource_usage $job_pid)
+            mem=${output% *}
+            cpu=${output#* }
+            total_memory_usage=$((total_memory_usage + mem))
+            total_cpu_usage=$(echo "scale=4; $total_cpu_usage + $cpu"|bc)
+        done
+
+        total_memory_usage=$((total_memory_usage/1024))
+ 
         echo $(date +"%Y-%m-%d %H:%M:%S") $reservedMem $(echo "scale=4; $total_memory_usage/1024" | bc) $(echo "scale=4; $total_memory_usage/10.24/ $reservedMem" | bc) $reservedCpu $total_cpu_usage >> $SLURM_JOBID.memCpuLog
     else
         exit

@@ -10,8 +10,6 @@ usage(){            #           1                    2             3            
 echo Running $0 $@
 echo pwd: `pwd`
 
-CGROUP_PATH=/sys/fs/cgroup/memory/slurm/uid_$UID/job_$SLURM_JOB_ID
-
 export program="$1"
 
 flag=$2
@@ -93,8 +91,9 @@ while true; do
     timeR=$(($(date +%s) - START))
     echo $timeR
     if [ -z "$checkpointed" ]; then
-        CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
-        CURRENT_MEMORY_USAGE=$(( CURRENT_MEMORY_USAGE /1024 /1024 ))
+        #CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
+        CURRENT_MEMORY_USAGE=`tail -1 log/job_$SLURM_JOB_ID.memCPU.tx | awk '{print $2}'`
+        #CURRENT_MEMORY_USAGE=$(( CURRENT_MEMORY_USAGE /1024 ))
         if [ $timeR -gt 60 ]; then # && [ $(( totalM - CURRENT_MEMORY_USAGE )) -gt $checkpointM ]; then
 #            echo already run for two minutes and have plenty of memory to do checkpoint
 
