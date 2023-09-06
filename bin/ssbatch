@@ -691,7 +691,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\n#jobMonitor.sh $logDir/$flag $mem $min $memO $core &\njob_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core > error.log 2>&1 &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\n#job_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core > error.log 2>&1 &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
@@ -722,7 +722,7 @@ if [ -z "$slurmScript" ]; then
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
         # note: if job OOT or OOM, .success or .failed will not be created
-        echo -e "set -x\n\nsh -e -o pipefail  -c \"$wrapCMD;\"" > ${job%.sh}.cmd
+        echo -e "\nsh -e -o pipefail  -c \"$wrapCMD;\"" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"log/$flag.cmd\"" >> ${job%.sh}.cmd

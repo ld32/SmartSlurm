@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13     14    15
 #cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM skipEstimate
@@ -318,7 +318,7 @@ if [ ! -f $succFile ]; then
                 #if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
                      #rm log/$4.requeueCMD #;  then
                 #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
-                if `scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
+                if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
                     #echo Requeued successfully
                     #[ -f $failFile ] && rm $failFile
 
@@ -326,6 +326,8 @@ if [ ! -f $succFile ]; then
                     echo -e "" | mail -s "$s" $USER
 
                     break
+                else
+                    echo requeue failed;
                 fi
             fi
         done;

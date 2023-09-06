@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 echo Running: $0 $@
 echo pwd: `pwd`
@@ -20,7 +20,7 @@ if ls log/*.requeueCMD && mkdir log/requeue.start; then
     done
     rm -r log/requeue.start
 fi
-set +x
+#set +x
 
 sleep 2
 

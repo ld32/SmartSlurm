@@ -15,7 +15,7 @@ reservedCpu=$SLURM_JOB_CPUS_PER_NODE
 
 [ -z "$reservedCpu" ] && reservedCpu=SLURM_CPUS_PER_TASK
 
-echo "Timestamp ReservedRam(M) Ram(M) Ram_Utilization(%) ReservedCpu CPU_Utilization(%)" > $SLURM_JOBID.memCpuLog
+echo "Timestamp ReservedRam(M) Ram(M) Wasted(M) Ram_Utilization(%) ReservedCpu CPU_Utilization(%)" > $SLURM_JOBID.memCpuLog
 
 function calculate_resource_usage {
     local pid=$1
@@ -25,7 +25,7 @@ function calculate_resource_usage {
     # Get memory and CPU usage of the current process
     local process_info=$(ps -o rss=,%cpu=,cmd= -p $pid)
     [[ "$process_info" == *job_mem_cpu_monitor* ]] && echo 5000 2.0 && return
-    
+
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
 
@@ -59,9 +59,15 @@ while true; do
         done
 
         total_memory_usage=$((total_memory_usage/1024))
- 
-        echo $(date +"%Y-%m-%d %H:%M:%S") $reservedMem $(echo "scale=4; $total_memory_usage/1024" | bc) $(echo "scale=4; $total_memory_usage/10.24/ $reservedMem" | bc) $reservedCpu $total_cpu_usage >> $SLURM_JOBID.memCpuLog
+
+        echo $(date +"%Y-%m-%d %H:%M:%S") $reservedMem $(echo "scale=4; $total_memory_usage/1024" |bc) $(echo "scale=4; $reservedMem - $total_memory_usage/1024" | bc) $(echo "scale=4; $total_memory_usage/10.24/ $reservedMem" | bc) $reservedCpu $total_cpu_usage >> $SLURM_JOBID.memCpuLog
     else
+
+        # time vs. memory for current job
+        gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time (Mins)'; set ylabel 'Mem (M)'; plot 'job_$SLURM_JOBID.memCPU.txt' using 4:xtic(1) title 'Used' lc rgb 'green', '' using 5:xtic(1) title 'Wasted' lc rgb 'red'"
+
+        # time vs. CPU usage for current job
+        gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time (Mins)'; set ylabel 'CPU Usage (%)'; plot 'job_$SLURM_JOBID.memCPU.txt' using 8:xtic(1) title 'Used' lc rgb 'green'"
         exit
     fi
     sleep 5

@@ -1,7 +1,7 @@
 #!/bin/sh
 Usage="Usage: $0 logDir \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
 
-set -x
+#set -x
 
 echo Running: $0 $@»
 echo pwd: `pwd`

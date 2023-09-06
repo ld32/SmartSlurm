@@ -106,6 +106,6 @@ while true; do
             cancelMailSent=yes
         fi
     fi
-    sleep 30
+    sleep 5
 done
 
