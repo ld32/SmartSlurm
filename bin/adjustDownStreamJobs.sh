@@ -51,11 +51,6 @@ for i in $output; do
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]} 
     
-    # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
-    [[ "$inputs" == "none" ]] && continue
-
-    [ -f log/$name.adjust ] && continue
-
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
     
@@ -70,11 +65,18 @@ for i in $output; do
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
         [ -f "$path/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; }         
     done
+
+
     if [ -z "$allDone" ]; then
         date 
+        # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
+        [[ "$inputs" == "none" ]] && scontol release $id && continue
+
+        [ -f log/$name.adjust ] && scontrol release $id && continue
+        
         #ls -lrt $path 
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
-        
+
         echo -e "Re-adjust resource by upsteam job job:" >> log/$name.out
         grep ^$SLURM_JOB_ID log/allJobs.txt | awk '{print $1,  $2,  $3}' >> log/$name.out 
 
@@ -279,7 +281,9 @@ for i in $output; do
 
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
-        
+
+        scontrol release $id 
+                
         echo $mem $min $extraMem > log/$name.adjust         
         
         #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> log/$name.out
