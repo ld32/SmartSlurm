@@ -365,23 +365,19 @@ if [[ "$testRun" == "run" ]]; then
         # check the third column for the job name, then find the the job id in column 1
         out=`cat log/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }
-
         if [ ! -z "$id" ]; then
             if grep ^$id log/keepRunningJobs.txt 1>/dev/null; then
-                # the dependency is not changed from the last submit
-                #if [[ "$depsO" == "$de" ]]; then
-
                 echoerr thisJobStillRunning $id here
                 echo $id
                 exit
-            else #if [[ "$depsO" == "$de" ]]; then
+            else
                 if [[ $de == null ]]; then
-                    deps="dependency=\"\""
+                    depsR="" #dependency=\"\""
                     #resAjust="#Depend on
 
                 elif [[ $de == ${de/\./} ]]; then
                     #resAjust="#Depend on single job\n"
-                    deps="dependency=afterok:${de/\./}"
+                    depsR="dependency=afterok:${de/\./}"
                 else
                     #resAjust="#Depend on multiple jobs\n"
                     tmp=""
@@ -389,12 +385,12 @@ if [[ "$testRun" == "run" ]]; then
                         #echoerr working on $t  test
                         tmp="$tmp:$t"
                     done
-                    [ ! -z "$tmp" ] && deps="dependency=afterok$tmp"
+                    [ ! -z "$tmp" ] && depsR="dependency=afterok$tmp"
                 fi
 
                 scontrol requeue $id
 
-                [ -z "$deps" ] || scontrol update job=$id  $deps
+                [ ! -z "$depsR" ] && scontrol update job=$id  $depsR && scontrol hold $id
                 echo "Resubmit#$id-#$de-#$flag" >> log/allJobs.txt
                 echo $id
                 #rm $logDir/$flag.success 2>/dev/null
