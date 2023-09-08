@@ -691,7 +691,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\njobMonitor.sh $logDir/$flag $mem $min $memO $core &\n#job_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core > error.log 2>&1 &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\n#jobMonitor.sh $logDir/$flag $mem $min $memO $core &\njob_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core &\n" > $job
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
@@ -792,9 +792,11 @@ fi
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
     if [ -z "$err" ]; then #errFlag=$logDir/$flag.err
-        cmd="/usr/bin/sbatch --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+        cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=ALL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" >> $job
     else
-        cmd="/usr/bin/sbatch --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+        cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=ALL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
 
     fi
 
@@ -802,14 +804,15 @@ fi
 #fi
 if [ -z "$slurmScript" ]; then
     cmd="$cmd $additionalPara $job"
+    echo -e " $additionalPara $job" >> $job
 else
     cmd="$cmd $additionalPara $job $slurmScriptParas"
+    echo -e " $additionalPara $job $slurmScriptParas" >> $job
 fi
 
 
 
-echo -e "\n#Command used to submit the job:" >> $job
-echo "#$cmd" >> $job
+#echo -e "\n#Command used to submit the job: $cmd" >> $job
 
 #echoerr $resAjust
 

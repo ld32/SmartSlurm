@@ -39,7 +39,6 @@ sleep 10
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
-
 #sacct=`cat ~/fakeSacct.txt`
 
 #sacct report is not accurate, let us use the total memory
@@ -246,8 +245,7 @@ echo Final mem: $srunM, time: $min minutes
 
 # for testing
 #rm $succFile; jobStatus=OOM
-#rm $succFile
-#jobStatus=OOM
+
 if [ ! -f $succFile ]; then
         if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
             echo -e "This step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$4" | mail -s "!!!!$SLURM_JOBID:$4" $USER
@@ -281,9 +279,9 @@ if [ ! -f $succFile ]; then
         fi
 
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
-        (
+        ( sleep 2;
         #set -x;
-        for try in {1..5}; do
+        for try in {1..3}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 #sleep 2
                 touch $failFile.requeued.$try.mem
@@ -309,63 +307,28 @@ if [ ! -f $succFile ]; then
                 echo trying to requeue $try with $mem M
                 echo $mem $totalT $maxExtra > ${out%.out}.adjust
 
-                #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
-                set -x
+                #hostName=`hostname`
+                #hostName=login00 #o2.hms.harvard.edu #`hostname`
+
                 #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
-                #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > log/$4.requeueCMD
+                echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > log/$4.requeueCMD
 
-                hours=$((($totalT + 59) / 60))
-                adjustPartition $hours $partition
+                [[ "$USER" == ld32 ]] && hostname=login00 || hostname=o2.hms.harvard.edu
 
-                export  myPartition=$partition
-                export myTime=$totalT
-                export myMem=${mem}M
-                requeueCmd=`grep "Command used to submit the job:" $script`
-                requeueCmd=${requeueCmd#*submit the job: }
-                requeueCmd=${requeueCmd//\$myPartition/$myPartition}
-                requeueCmd=${requeueCmd//\$myTime/$myTime}
-                requeueCmd=${requeueCmd//\$myMem/$myMem}
-                newJobID=`$requeueCmd`
+                #if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
+                     #rm log/$4.requeueCMD #;  then
+                #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
+                if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
+                    #echo Requeued successfully
+                    #[ -f $failFile ] && rm $failFile
 
-                if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
-                    IFS=$'\n'
-                    for line in `grep $SLURM_JOBID log/allJobs.txt | grep -v ^$SLURM_JOBID`; do
-                        job=${line%% *}
-                        deps=`echo $line | awk '{print $2}'`
-                        if [[ $deps == null ]]; then
-                            deps=""
-                        elif [[ $deps == ${deps/\./} ]]; then
-                            deps="Dependency=afterok:$newJobID"
-                        else
-                            tmp=""
-                            for t in ${deps//\./ }; do
-                                 [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
-                            done
-                            [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
-                        fi
-                        [ -z "$deps" ] || scontrol update jobid=$job $deps
-                    done
-
-                    #if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
-                    #rm log/$4.requeueCMD #;  then
-                    #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
-                    #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
-
-                    echo Requeued successfully
-                    [ -f $failFile ] && rm $failFile
-
-                    s="OOM.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
+                    s="OOM.Requeued:$SLURM_JOBID:$SLURM_JOB_NAME"
                     echo -e "" | mail -s "$s" $USER
 
-                    cp log/allJobs.txt log/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
-                    sed -i "s/$SLURM_JOBID/$newJobID/" log/allJobs.txt
-                    cp log/job_$SLURM_JOBID.memCPU.txt log/job_$newJobID.memCPU.txt
                     break
-
                 else
                     echo requeue failed;
                 fi
-                set +x
             fi
         done;
         #set +x;
@@ -390,6 +353,32 @@ if [ ! -f $succFile ]; then
                 mv $jobRecordDir/stats/$2.$3.* $jobRecordDir/stats/back  2>/dev/null
             fi
         fi
+
+        # awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' /home/ld32/.smartSlurm/jobRecord.txt
+
+        # awk -F"," -v a=$s -v b=$r -v c=$Finala -v d=$Finalb '{ ! ($12 == a && $13 == b && $2 * c + d > $7) {print}}' $jobRecordDir/jobRecord.txt > $jobRecordDir/jobRecord.txt1
+
+
+        #rm $jobRecordDir/stats/$2.$3.mem.stat* $jobRecordDir/stats/$2.$3.time.stat* 2>/dev/null
+        #scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
+        #scontrol requeue 45937 && echo job re-submitted || echo job not re-submitted.
+
+        # sleep 5 45937
+        #scontrol hold $SLURM_JOBID
+        #scontrol hold 45937
+        #sleep 5
+        # this doe not work due to cgroup out memory error
+        #sbatch -p priority -t 5 -A rccg --wrap "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryCPU=50000;"
+        # sleep 5; scontrol release $SLURM_JOBID; "
+        #which sbatch
+
+        #sbatch -p priority -t 5 -A rccg --wrap "hostname"
+
+        #scontrol update JobId=$SLURM_JOBID MinMemoryCPU=8000
+        # todo: submit new job and adjust down steam jobs' dependency
+
+        #echo job resubmitted: $SLURM_JOBID with mem: $mem
+
     elif [[ "$jobStatus" == "OOT" ]]; then
 #set -x
         for try in {1..3}; do

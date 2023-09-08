@@ -36,9 +36,11 @@ for line in $lines; do
             toSend="$toSend\nUnkn: $line"
             unknown=$((unknown + 1))
         fi
-        [ "$id" == "$SLURM_JOBID" ] && current=$((succ + fail + running + pending + unknown))
+        #[ "$id" == "$SLURM_JOBID" ] && current=$((succ + fail))
     fi
 done
+
+current=$((succ + fail))
 
 total=$((succ + fail + running + pending + unknown))
 s="$current/$total Succ:$succ/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
