@@ -392,7 +392,7 @@ if [ ! -f $succFile ]; then
         fi
     elif [[ "$jobStatus" == "OOT" ]]; then
 #set -x
-        for try in {1..3}; do
+        for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
                 sleep 2
                 echo trying to requeue $try
