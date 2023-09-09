@@ -310,7 +310,7 @@ if [ ! -f $succFile ]; then
                 echo $mem $totalT $maxExtra > ${out%.out}.adjust
 
                 #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
-                set -x
+                #set -x
                 #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
                 #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > log/$4.requeueCMD
 
