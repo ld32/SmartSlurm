@@ -793,11 +793,11 @@ fi
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
     if [ -z "$err" ]; then #errFlag=$logDir/$flag.err
-        cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
-        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=ALL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" >> $job
+        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" >> $job
     else
-        cmd="/usr/bin/sbatch --mail-type=ALL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
-        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=ALL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
+        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
 
     fi
 
