@@ -13,7 +13,7 @@ out=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 
 lines=`tail -n +2 log/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
-current=0; succ=0; fail=0; running=0; pending=0; unknown=0
+current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
 toSend="Summery for jobs in log/allJobs.txt:"
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
@@ -32,6 +32,9 @@ for line in $lines; do
         elif [[ "$out" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
             toSend="$toSend\nRunn: $line"
             pending=$((pending + 1))
+        elif [ -f log/$name.failed.requeued.1.time ]; then 
+            toSend="$toSend\nRequeue: $line"
+            requeue=$((requeue + 1))    
         else
             toSend="$toSend\nUnkn: $line"
             unknown=$((unknown + 1))
@@ -40,10 +43,10 @@ for line in $lines; do
     fi
 done
 
-current=$((succ + fail))
+current=$((succ + fail + requeue))
 
-total=$((succ + fail + running + pending + unknown))
-s="$current/$total Succ:$succ/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
+total=$((succ + fail + running + pending + +requeue + unknown))
+s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
 
 echo -e "$s" > log/summary
 
