@@ -702,12 +702,9 @@ echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" 
 # #echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " #>> $job
 # #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 # echo "fi" >> $job
-#echo -e "srunM=\$((SLURM_MEM_PER_NODE - 5))M\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 
-echo -e "\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
+echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 
-
-#srunM=$((mem - 5))
 if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
     wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
