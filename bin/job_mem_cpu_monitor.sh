@@ -3,7 +3,6 @@
 #set -x
 
 echo Running: $0 $@
-echo pwd: `pwd`
 cd ${1%/log/*}
 echo pwd `pwd`
 
@@ -83,7 +82,7 @@ while true; do
             cpu=${output#* }
             total_memory_usage=$((total_memory_usage + mem))
             total_cpu_usage=$(echo "scale=4; $total_cpu_usage + $cpu"|bc)
-            echo Total: $total_memory_usage, $total_cpu_usage
+            #echo Total: $total_memory_usage, $total_cpu_usage
         done
 
         counter=$((counter + 1))
