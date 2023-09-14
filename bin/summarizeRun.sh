@@ -48,14 +48,13 @@ current=$((succ + fail + requeue))
 total=$((succ + fail + running + pending + +requeue + unknown))
 s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
 
-echo -e "$s" > log/summary
+echo -e "$s\n$toSend" > log/summary
+
 
 # if [ $((running + pending)) -le 5 ]; then
 #     echo -e "$toSend" | mail -s $s $USER
 #     [ "$USER" != ld32 ] && echo -e "$toSend" | mail -s $s ld32
 # fi
-
-set +x
 
 cd log
 
