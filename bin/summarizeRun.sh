@@ -21,22 +21,22 @@ for line in $lines; do
 
 
         if [ -f log/$name.success ]; then
-            toSend="$toSend\n${line:0:20} Done"
+            toSend="$toSend\n${line:0:40} Done"
             succ=$((succ + 1))
         elif [ -f log/$name.failed ]; then
-            toSend="$toSend\n${line:0:20} Failed"
+            toSend="$toSend\n${line:0:40} Failed"
             fail=$((fail + 1))
         elif [[ "$out" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-            toSend="$toSend\n${line:0:20} Running"
+            toSend="$toSend\n${line:0:40} Running"
             running=$((running + 1))
         elif [[ "$out" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-            toSend="$toSend\n${line:0:20} Pending"
+            toSend="$toSend\n${line:0:40} Pending"
             pending=$((pending + 1))
         elif [ -f log/$name.failed.requeued.1.time ]; then 
-            toSend="$toSend\n${line:0:20} Requeued"
+            toSend="$toSend\n${line:0:40} Requeued"
             requeue=$((requeue + 1))    
         else
-            toSend="$toSend\n${line:0:20} Unknow"
+            toSend="$toSend\n${line:0:40} Unknow"
             unknown=$((unknown + 1))
         fi
         #[ "$id" == "$SLURM_JOBID" ] && current=$((succ + fail))
