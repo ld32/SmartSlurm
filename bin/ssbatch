@@ -704,7 +704,7 @@ echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" 
 # echo "fi" >> $job
 #echo -e "srunM=\$((SLURM_MEM_PER_NODE - 5))M\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 
-echo -e "srunM=\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
+echo -e "\nunset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 
 
 #srunM=$((mem - 5))
