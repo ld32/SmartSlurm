@@ -70,7 +70,7 @@ for i in $output; do
     if [ -z "$allDone" ]; then
         date 
         # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
-        [[ "$inputs" == "none" ]] && scontol release $id && continue
+        [[ "${inputs//,/ }" == "none" ]] && scontol release $id && continue
 
         [ -f log/$name.adjust ] && scontrol release $id && continue
         
