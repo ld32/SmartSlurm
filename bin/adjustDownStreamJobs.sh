@@ -85,7 +85,7 @@ for i in $output; do
         if [[ "$inputSize" == "notExist" ]]; then 
             scancel $id 
             echo One or multiple inputs are missing for this job. Cancelling it... >> log/$name.out
-            echo inputs: .${inputs}. - .${inputs//,/ }. >> log/$name.out
+            echo -e "inputs: .${inputs}. - .${inputs//,/ }." >> log/$name.out
             echo ${inputs//,/ } >> log/$name.out
             touch log/$name.missingInnput.has.to.cancel
             toSend=`cat log/$name.out`
