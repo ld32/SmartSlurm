@@ -113,12 +113,13 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             r2=${r1%_*}_2${r1##*_1}
             #echo R2 is $r2
             
+            #mkdir -p $wkdir/eclipOut/$readgroup
+            #cd $wkdir/eclipOut/$readgroup
+
+			#[[ -f $group/$sample/$r2 ]] && r2="$group/$sample/$r2" || { echo -e "\n\n!!!Warning: read2 file '$r2' not exist, ignore this warning if you are working with single-end data\n\n"; r2=""; }
+            #read1="$read1,$group/$sample/$r1"; [ -z $r2 ] || read2="$read2,$r2"
             mkdir -p $wkdir/eclipOut/$readgroup
             cd $wkdir/eclipOut/$readgroup
-
-			[[ -f $group/$sample/$r2 ]] && r2="$group/$sample/$r2" || { echo -e "\n\n!!!Warning: read2 file '$r2' not exist, ignore this warning if you are working with single-end data\n\n"; r2=""; }
-            read1="$read1,$group/$sample/$r1"; [ -z $r2 ] || read2="$read2,$r2"
-       
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
             # umi_tools extract \
@@ -134,11 +135,11 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             --metrics EXAMPLE_PE.rep1_clip.---.--.metrics \
             --expectedbarcodeida C01 \
             --expectedbarcodeidb D8f \
-            --fastq_1 $r1 \
-            --fastq_2 $r2 \
+            --fastq_1 $wkdir/$group/$sample/$r1 \
+            --fastq_2 $wkdir/$group/$sample/$r2 \
             --newname rep2_clip \
             --dataset EXAMPLE_PE \
-            --barcodesfile yeolabbarcodes_20170101.fasta \
+            --barcodesfile $wkdir/yeolabbarcodes_20170101.fasta \
             --length 5
 
             # 	•	Use the FASTA ID for --expectedbarcodeida and --expectedbarcodeidb corresponding to each expected barcode of your IP sample. Use "NIL" for barcode-less size-matched input
@@ -264,8 +265,8 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             # todo: need find the right index 
             STAR \
             --runMode alignReads \
-            --runThreadN 8 \
-            --genomeDir homo_sapiens_repbase_v2 \
+            --runThreadN 2 \
+            --genomeDir $wkdir/homo_sapiens_repbase_v2 \
             --genomeLoad NoSharedMemory \
             --alignEndsType EndToEnd \
             --outSAMunmapped Within \
@@ -283,7 +284,7 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             --outStd Log \
             --readFilesIn EXAMPLE_PE.rep2_clip.C01.r1.fqTrTr.sorted.fq EXAMPLE_PE.rep2_clip.C01.r2.fqTrTr.sorted.fq; \
             mv EXAMPLE_PE.rep2_clip.C01.r1.fqTrTr.sorted.STARAligned.out.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.repeat-mapped.bam; \
-            mv EXAMPLE_PE.rep2_clip.C01.r1.fqTrTr.sorted.STARUnmapped.out.mate1 EXAMPLE_PE.rep2_clip.C01.r1.fq.repeat-unmapped.fq; \ 
+            mv EXAMPLE_PE.rep2_clip.C01.r1.fqTrTr.sorted.STARUnmapped.out.mate1 EXAMPLE_PE.rep2_clip.C01.r1.fq.repeat-unmapped.fq; \
             mv EXAMPLE_PE.rep2_clip.C01.r1.fqTrTr.sorted.STARUnmapped.out.mate2 EXAMPLE_PE.rep2_clip.C01.r2.fq.repeat-unmapped.fq
 
             #Fastq-sort: Takes unmapped output from STAR rmRep and sorts it to account for issues with STAR not outputting first and second mate pairs in order
@@ -296,8 +297,8 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             # /stage/hg19_star_sjdb \
             STAR \
             --runMode alignReads \
-            --runThreadN 8 \
-            --genomeDir homo_sapiens_repbase_v2 \
+            --runThreadN 2 \
+            --genomeDir $wkdir/hg19chr19kbp550_starindex \
             --genomeLoad NoSharedMemory \
             --readFilesIn \
             EXAMPLE_PE.rep2_clip.C01.r1.fq.repeat-unmapped.sorted.fq \
