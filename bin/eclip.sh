@@ -93,6 +93,7 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 
 [ -d group2 ] || { echo group2 is not found. You need at least two groups to run this pipeline; exit 1; }
 
+set -xe 
 wkdir=`pwd`
 
 for group in `ls -v -d group*/|sed 's|[/]||g'`; do
