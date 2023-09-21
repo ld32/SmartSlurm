@@ -14,17 +14,23 @@ while true; do
         echo "$count $i" 
         count=$((count + 1))
     done 
-    echo -e "Please select the app you want to check (type q to quit):" 
-    read -p "" x </dev/tty
+    if [ $count -eq 2 ]; then 
+        [[ "$xx" == "q" ]] && xx="" && break 
+        echo Only one app. No need to select.
+        x=1
+    else 
+        echo -e "Please select the app you want to check (type q to quit):" 
+        read -p "" x </dev/tty
 
-    [[ "$x" == q ]] && break; 
+        [[ "$x" == q ]] && break; 
 
-    [[ "$x" =~ ^[1-9]$ && "$x" -lt $count ]] || { echo "Out of range. Should be between > 0 and < $count"; continue; }
+        [[ "$x" =~ ^[1-9]$ && "$x" -lt $count ]] || { echo "Out of range. Should be between > 0 and < $count"; continue; }
+    fi 
 
     app=`echo $apps | cut -d' ' -f$x`
 
     sessions=`sudo ls -lrt /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output | tail -n+2`
-
+    
     while true; do 
         
         echo Available sessions:
@@ -34,15 +40,18 @@ while true; do
             echo $count: $i
             count=$((count + 1))
         done
+        
+        if [ $count -eq 2 ]; then 
+            [[ "$xxx" == q ]] && xxx="" && break
+            echo Only one session. No need to select.
+            xx=1
+        else 
+            echo -e "Please select a session (type q to quit):"; read -p "" xx </dev/tty;
+            [[ "$xx" == q ]] && break;   
 
-        echo -e "Please select a session (type q to quit):"
-        read -p "" x </dev/tty
-
-        [[ "$x" == q ]] && break;
-
-        [[ "$x" =~ ^[1-9]$ && "$x" -lt $count ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
-
-        session=`echo -e "$sessions" | head -n $x | tail -n1 | awk '{print $NF}'`
+            [[ "$xx" =~ ^[1-9]$ && "$xx" -lt $count ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
+        fi
+        session=`echo -e "$sessions" | head -n $xx | tail -n1 | awk '{print $NF}'`
         
         echo jobInfo: 
         
@@ -59,12 +68,12 @@ while true; do
                 count=$((count + 1))
             done
             echo -e "Please select a file to view (type q to quit):"
-            read -p "" x </dev/tty
+            read -p "" xxx </dev/tty
 
-            [[ "$x" == q ]] && break;
-            [[ "$x" =~ ^[1-9]$ && "$x" -lt $count ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
+            [[ "$xxx" == q ]] && break;
+            [[ "$xxx" =~ ^[1-9]$ && "$xxx" -lt $count ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
 
-            file=`echo $files | cut -d' ' -f$x`
+            file=`echo $files | cut -d' ' -f$xxx`
 
             sudo less /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output/$session/$file
         done    
