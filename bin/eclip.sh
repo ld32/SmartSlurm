@@ -44,7 +44,6 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 # demux.py: https://github.com/YeoLab/eclipdemux
 # Input normalization and IDR workflow (described below): https://github.com/YeoLab/merge_peaks/releases/tag/0.0.6
 
-
 # Other programs used:
 # FastQC: v. 0.10.1
 # Cutadapt: v. 1.14
@@ -94,18 +93,19 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 [ -d group2 ] || { echo group2 is not found. You need at least two groups to run this pipeline; exit 1; }
 
 set -xe 
-wkdir=`pwd`
+wkdir="`pwd`/eclipOut"
 
 for group in `ls -v -d group*/|sed 's|[/]||g'`; do
     echo working on group:  $group
     
+    bamList=""
+    sumList=""
     for sample in `ls -d $group/*/ | xargs -n 1 basename`; do
         echo working on sample: $sample
         
         ls  $group/$sample/*_1.fastq* 2>/dev/null || ls $group/$sample/*_1.fq*  2>/dev/null || { echo Read file not found for $sample! Please make sure the fastq files are named as xxx_1.fastq, xxx_2.fastq or xxx_1.fq, xxx_2.fq;  exit 1; }
-        read1=""
-        read2=""
         
+        bamList1=""
         for r1 in `ls $group/$sample/*_1.fastq* $group/$sample/*_1.fq* 2>/dev/null | xargs -n 1 basename`; do 
             #echo r1 is $r1
             readgroup=${r1%_*}
@@ -118,8 +118,8 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
 
 			#[[ -f $group/$sample/$r2 ]] && r2="$group/$sample/$r2" || { echo -e "\n\n!!!Warning: read2 file '$r2' not exist, ignore this warning if you are working with single-end data\n\n"; r2=""; }
             #read1="$read1,$group/$sample/$r1"; [ -z $r2 ] || read2="$read2,$r2"
-            mkdir -p $wkdir/eclipOut/$readgroup
-            cd $wkdir/eclipOut/$readgroup
+            mkdir -p $wkdir/$group/$sample/$readgroup
+            cd $wkdir/$group/$sample/$readgroup
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
             # umi_tools extract \
@@ -337,6 +337,7 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             samtools sort -o EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDup.bam; \
             samtools index EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam  
 
+            bamList1="$bamList1 $wkdir/$group/$sample/$readgroup/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam"
             #Barcode_collapse_se (SE): takes output from STAR genome mapping. Use umi_tools dedup to identify the extracted random-mer from the previous step and perform PCR duplicate removal.
 
             #umi_tools dedup \
@@ -346,62 +347,57 @@ for group in `ls -v -d group*/|sed 's|[/]||g'`; do
             #--output-stats EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.txt \
             #-S EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.rmDup.bam
         done
-    done    
+        
+        cd .. 
+
+        #Samtools  merge (PE only): Takes inputs from multiple final bam files.  Merges the two technical replicates for further downstream analysis.  
+        #samtools  merge EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.D8f.r1.fq.genome-mappedSo.rmDupSo.bam; \
+        
+        samtools  merge EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam $bamList1; \
+        samtools  index  EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam  
+
+        #Samtools view (PE only):  Takes output from samtools merge.  Only outputs the second read in each pair for use with a single stranded peak caller.  This is the final bam file to perform analysis on.  
+        samtools view -f 128 -b -o EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam
+
+        #Make normalized read density bigwig files: Takes input from samtools view.  Makes bw files to be uploaded to the genome browser or for other visualization. Use --direction f for SE clip as reads are not reversed.
+
+        makebigwigfiles \
+        --bw_pos EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.pos.bw \
+        --bw_neg EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.neg.bw \
+        --bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+        --genome hg19.chrom.sizes \
+        --direction r
+
+        #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
+
+        clipper \
+        --species hg19 \
+        --bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+        --save-pickle \
+        --outfile EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed
+
+        #Input normalization: Compares the number of reads within the IP sample to the number of reads within the size-matched INPUT sample across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
+        samtools view -cF 4 EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt
+        #samtools view -cF 4 EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam > input_mapped_readnum.txt
+
+        bamList="$bamList $wkdir/$group/$sample/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam"
+        sumList="$sumList $wkdir/$group/$sample/ip_mapped_readnum.txt"
+    done
+    
+    cd ..
+
+    #EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    #EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
+
+    overlap_peakfi_with_bam_PE.pl $bamList \
+    EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
+    $sumList \
+    EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed
+
+    perl compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
+    EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
+    EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.compressed.bed      
 done
-
-#         done
-#         in="$read1${read2}"
-#         #@1,0,bowtie2,index,in,sbatch -c 4 -p short -t 12:0:0 --mem 40G 
-#         rm -r bowtieOut/$group$sample 2>/dev/null ; mkdir -p bowtieOut/$group$sample;  bowtie2 -p 4 -x $index -1 ${read1#,} -2 ${read2#,} | samtools view -bS - > bowtieOut/$group$sample/accepted_hits.bam && samtools sort bowtieOut/$group$sample/accepted_hits.bam bowtieOut/$group$sample/accepted_hits_sorted &&  samtools index bowtieOut/$group$sample/accepted_hits_sorted.bam
-
-#     done 
-# done
-
-exit 
-
-#Samtools  merge (PE only): Takes inputs from multiple final bam files.  Merges the two technical replicates for further downstream analysis.  
-
-samtools  merge EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.D8f.r1.fq.genome-mappedSo.rmDupSo.bam; \
-samtools  index  EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam  
-
-#Samtools view (PE only):  Takes output from samtools merge.  Only outputs the second read in each pair for use with a single stranded peak caller.  This is the final bam file to perform analysis on.  
-
-#samtools view -f 128 -b -o EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.bam
-
-#Make normalized read density bigwig files: Takes input from samtools view.  Makes bw files to be uploaded to the genome browser or for other visualization. Use --direction f for SE clip as reads are not reversed.
-
-makebigwigfiles \
---bw_pos EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.pos.bw \
---bw_neg EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.neg.bw \
---bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
---genome hg19.chrom.sizes \
---direction r
-
-#Clipper:  Takes results from samtools view.  Calls peaks on those files.  
-
-clipper \
---species hg19 \
---bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
---save-pickle \
---outfile EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed
-
-#Input normalization: Compares the number of reads within the IP sample to the number of reads within the size-matched INPUT sample across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
-
-samtools view -cF 4 EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt; \
-samtools view -cF 4 EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam > input_mapped_readnum.txt
-
-overlap_peakfi_with_bam_PE.pl \
-EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
-EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
-ip_mapped_readnum.txt \
-input_mapped_readnum.txt \
-EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed
-
-perl compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
-EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
-EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.compressed.bed
-
 
 # #Peak normalization vs SMInput and reproducible peak / IDR analysis
 # 	Peak normalization vs paired SM Input datasets is run as a second processing pipeline (merge_peaks) available with additional documentation on github (https://github.com/YeoLab/merge_peaks). Input files for normalization pipeline include .bam and .peak.bed files (generated through the pipeline above), as well as a manifest file pairing eCLIP datasets with their paired SMInput datasets as follows.
