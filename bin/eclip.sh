@@ -91,7 +91,7 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 # Note: For paired-end data, until the merging step each script is run twice, once for each barcode used
 
 set -xe 
-wkdir="`pwd`/eclipOut"
+outDir="`pwd`/eclipOut"
 
 for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
     echo working on group:  $group
@@ -111,13 +111,13 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
             r2=${r1%_*}_2${r1##*_1}
             #echo R2 is $r2
             
-            #mkdir -p $wkdir/eclipOut/$readgroup
-            #cd $wkdir/eclipOut/$readgroup
+            #mkdir -p $outDir/eclipOut/$readgroup
+            #cd $outDir/eclipOut/$readgroup
 
 			#[[ -f $group/$sample/$r2 ]] && r2="$group/$sample/$r2" || { echo -e "\n\n!!!Warning: read2 file '$r2' not exist, ignore this warning if you are working with single-end data\n\n"; r2=""; }
             #read1="$read1,$group/$sample/$r1"; [ -z $r2 ] || read2="$read2,$r2"
-            mkdir -p $wkdir/$group/$sample/$readgroup
-            cd $wkdir/$group/$sample/$readgroup
+            mkdir -p $outDir/$group/$sample/$readgroup
+            cd $outDir/$group/$sample/$readgroup
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
             # umi_tools extract \
@@ -133,11 +133,11 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
             --metrics EXAMPLE_PE.rep1_clip.---.--.metrics \
             --expectedbarcodeida C01 \
             --expectedbarcodeidb D8f \
-            --fastq_1 $wkdir/$group/$sample/$r1 \
-            --fastq_2 $wkdir/$group/$sample/$r2 \
+            --fastq_1 $outDir/$group/$sample/$r1 \
+            --fastq_2 $outDir/$group/$sample/$r2 \
             --newname rep2_clip \
             --dataset EXAMPLE_PE \
-            --barcodesfile $wkdir/yeolabbarcodes_20170101.fasta \
+            --barcodesfile $outDir/yeolabbarcodes_20170101.fasta \
             --length 5
 
             # 	•	Use the FASTA ID for --expectedbarcodeida and --expectedbarcodeidb corresponding to each expected barcode of your IP sample. Use "NIL" for barcode-less size-matched input
@@ -264,7 +264,7 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
             STAR \
             --runMode alignReads \
             --runThreadN 2 \
-            --genomeDir $wkdir/homo_sapiens_repbase_v2 \
+            --genomeDir $outDir/homo_sapiens_repbase_v2 \
             --genomeLoad NoSharedMemory \
             --alignEndsType EndToEnd \
             --outSAMunmapped Within \
@@ -296,7 +296,7 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
             STAR \
             --runMode alignReads \
             --runThreadN 2 \
-            --genomeDir $wkdir/hg19chr19kbp550_starindex \
+            --genomeDir $outDir/hg19chr19kbp550_starindex \
             --genomeLoad NoSharedMemory \
             --readFilesIn \
             EXAMPLE_PE.rep2_clip.C01.r1.fq.repeat-unmapped.sorted.fq \
@@ -335,7 +335,7 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
             samtools sort -o EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDup.bam; \
             samtools index EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam  
 
-            bamList1="$bamList1 $wkdir/$group/$sample/$readgroup/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam"
+            bamList1="$bamList1 $outDir/$group/$sample/$readgroup/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.bam"
             #Barcode_collapse_se (SE): takes output from STAR genome mapping. Use umi_tools dedup to identify the extracted random-mer from the previous step and perform PCR duplicate removal.
 
             #umi_tools dedup \
@@ -378,8 +378,8 @@ for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
         samtools view -cF 4 EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt
         #samtools view -cF 4 EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam > input_mapped_readnum.txt
 
-        bamList="$bamList $wkdir/$group/$sample/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam"
-        sumList="$sumList $wkdir/$group/$sample/ip_mapped_readnum.txt"
+        bamList="$bamList $outDir/$group/$sample/EXAMPLE_PE.rep2_clip.C01.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam"
+        sumList="$sumList $outDir/$group/$sample/ip_mapped_readnum.txt"
     done
     
     cd ..
