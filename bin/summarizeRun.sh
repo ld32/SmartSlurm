@@ -1,11 +1,13 @@
 #!/bin/sh
-Usage="Usage: $0 logDir \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
+Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
 
 #set -x
 
 echo Running: $0 $@»
 echo pwd: `pwd`
-cd ${1%log}
+[ -z "$1" ] || cd ${1%log}
+
+[ -f log/allJobs.txt ] || { echo log/allJobs.txt not found.; exit 1; }
 
 IFS=$'\n'
 

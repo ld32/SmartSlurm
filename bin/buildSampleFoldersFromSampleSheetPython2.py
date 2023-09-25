@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import xlrd
+import openpyxl
 import sys
 import os.path
 
@@ -27,8 +27,8 @@ if os.path.exists("group3"):
     print("Folder exists. please remove or rename it: group3")
     exit()
 
-wb = xlrd.open_workbook(os.path.join(sampleSheet))
-wb.sheet_names()
+wb = openpyxl.load_workbook(os.path.join(sampleSheet))
+wb.sheetnames()
 sh = wb.sheet_by_index(0)
 
 for i in range(sh.nrows):
@@ -130,8 +130,28 @@ for i in range(sh.nrows):
         os.symlink(read1, "group" + group + "/" + sample + "/" + library + "_" + lane + "_1.fq.gz")
     elif read1.endswith(".bz2"):
         os.symlink(read1, "group" + group + "/" + sample + "/" + library + "_" + lane + "_1.fq.bz2")
+    
+
+
     else:
-        os.symlink(read1, "group" + group + "/" + sample + "/" + library + "_" +
+        os.symlink(read1, "group" + group + "/" + sample + "/" + library + "_" + lane + "_1.fq" )
+    if sh.cell(i,6).value != "":  # if we have read2
+        read2 = os.path.expanduser(path + "/" + sh.cell(i,6).value)
+        
+        if read2.endswith(".gz"):  
+            os.symlink(read2, "group" + group + "/" + sample + "/" + library + "_" + lane + "_2.fq.gz" )
+        elif read2.endswith(".bz2"):             
+            os.symlink(read2, "group" + group + "/" + sample + "/" +   library + "_" + lane + "_2.fq.bz2" )
+        else:
+            os.symlink(read2, "group" + group + "/" + sample + "/" + library + "_" + lane + "_2.fq" )
+                    
+    if not os.path.exists("group2"):
+        print("Warning: Folder group2 is not created. Usually you should have at least two groups for NGS analysis.")
+        exit()
+
+print("Done")
+
+
 
 
 # Python 2 code

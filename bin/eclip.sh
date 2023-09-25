@@ -90,12 +90,10 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 # Human Readable Description of Steps
 # Note: For paired-end data, until the merging step each script is run twice, once for each barcode used
 
-[ -d group2 ] || { echo group2 is not found. You need at least two groups to run this pipeline; exit 1; }
-
 set -xe 
 wkdir="`pwd`/eclipOut"
 
-for group in `ls -v -d group*/|sed 's|[/]||g'`; do
+for group in `ls -v -d smartSlurmInputs/*/|sed 's|[/]||g'`; do
     echo working on group:  $group
     
     bamList=""
