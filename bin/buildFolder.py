@@ -20,6 +20,7 @@ sh = wb.active
 
 for i, (group, sample, library, lane, path, read1, read2, empty) in enumerate(sh.iter_rows(min_row=2, values_only=True), start=2):
     group = str(group)
+    print(group + '/' + sample + '/' + library + '/' + lane + '/' + path +'/' + read1 + "/" + read2)
 
     if ' ' in group or ' ' in sample or ' ' in library or ' ' in lane or ' ' in path or ' ' in read1:
         print(f"Row {i}: One of the column values contains a space.")
