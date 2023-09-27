@@ -7,18 +7,18 @@ cd ${1%/log/*}
 echo pwd `pwd`
 
 # requeue failed jobs
-if ls log/*.requeueCMD && mkdir log/requeue.start; then
-    for requeue in log/*.requeueCMD; do
-        if grep -q $SLURM_JOBID $requeue; then
-            rm $requeue
-            rm ${requeue%.requeueCMD}.failed
-        else
-           sh $requeue && rm $requeue && rm ${requeue%.requeueCMD}.failed
-        fi
-        sleep 1
-    done
-    rm -r log/requeue.start
-fi
+#if ls log/*.requeueCMD 2>/dev/null && mkdir log/requeue.start; then
+#    for requeue in log/*.requeueCMD; do
+#        if grep -q $SLURM_JOBID $requeue; then
+#            rm $requeue
+#            rm ${requeue%.requeueCMD}.failed
+#        else
+#           sh $requeue && rm $requeue && rm ${requeue%.requeueCMD}.failed
+#        fi
+#        sleep 1
+#    done
+#    rm -r log/requeue.start
+#fi
 #set +x
 
 sleep 2

@@ -125,8 +125,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             # --stdout EXAMPLE_SE.rep1.umi.r1.fq
 
             #Demultiplexing inline barcodes and identify UMIs (PE): Perform demultiplexing using a supplied barcodes FASTA file. Depending on protocol, --length may be longer than 5.
+            input=$outDir/../$dir1/$dir2/$r1
 
-            #@1,0,demux,r1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+            #@1,0,demux,r1,,input,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
             demux \
             --metrics EXAMPLE_PE.rep1_clip.---.--.metrics \
             --expectedbarcodeida $barcodeID \
@@ -259,9 +260,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.sorted.fq
 
             #STAR rmRep: Takes sorted output from cutadapt round 2.  Maps to human specific version of RepBase used to remove repetitive elements, helps control for spurious artifacts from rRNA (& other) repetitive reads. 
-
-            # todo: need find the right index
-            #@7,6,star,r1,,,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
+            rIndex=$outDir/../homo_sapiens_repbase_v2
+            input=EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.fq
+            #@7,6,star,r1,rIndex,input,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
             STAR \
             --runMode alignReads \
             --runThreadN 2 \
@@ -292,10 +293,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.repeat-unmapped.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.repeat-unmapped.sorted.fq
 
             #STAR genome mapping: Takes output from STAR rmRep.  Maps unique reads to the human genome
-
-            # todo: need find the right index for genome 
-            # /stage/hg19_star_sjdb \
-            #@9,8,star1,r1,,,sbatch -c 2 -p short -t 2:0:0 --mem 20G 
+            gIndex=$outDir/../hg19chr19kbp550_starindex    
+            input=EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.fq
+            #@9,8,star1,r1,gIndex,input,sbatch -c 2 -p short -t 2:0:0 --mem 20G 
             STAR \
             --runMode alignReads \
             --runThreadN 2 \
