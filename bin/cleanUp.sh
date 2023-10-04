@@ -13,9 +13,9 @@ echo pwd: `pwd`
 
 # if not successful, delete cromwell error file, so that the job not labeled fail
 ls -l execution
-[ -f $1/$4.success ] || rm -r execution/rc
+[ -f $1/$4.success ] || rm -r execution/rc 2>/dev/null
 
-cd ${1%log}
+#cd ${1%log}
 
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then

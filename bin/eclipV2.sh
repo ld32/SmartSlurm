@@ -2,7 +2,7 @@
 
 #install: 
 # most of software are available as modules
-module load gcc/6.2.0 bedtools/2.27.1 cutadapt/1.14 fastqc/0.11.9 R/3.3.3 samtools/1.9 star/2.7.0a ucsc-tools/363 perl/5.24.0
+module load gcc/6.2.0 bedtools/2.27.1 fastqc/0.11.9 R/3.3.3 samtools/1.9 star/2.7.0a ucsc-tools/363 perl/5.24.0
 
 # perl pacakges are manually installed using cpan
 # perl=5.10.1
@@ -91,24 +91,27 @@ export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbi
 # Note: For paired-end data, until the merging step each script is run twice, once for each barcode used
 export PS4='Line $LINENO: '
 
-set -ex 
+#set -x
+
+#set -e 
+
 outDir="`pwd`/eclipOut"
 
-#loopstart:dir1
+#loopStart:dir1
 for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     echo working on dir1:  $dir1
     dir1=${dir1%/}
     
     inputBamList=""; treatmentBamList=""
     inputSumList=""; treatmentSumList=""
-    #loopstart:dir2
+    #loopStart:dir2
     for dir2 in `ls -dr $dir1/input/  $dir1/treatment/ | xargs -n 1 basename`; do
         echo working on dir2: $dir2
         pwd 
         ls  $dir1/$dir2/*_1.fastq* 2>/dev/null || ls $dir1/$dir2/*_1.fq* 2>/dev/null || { echo Read file not found for $dir2! Please make sure the fastq files are named as xxx_1.fastq, xxx_2.fastq or xxx_1.fq, xxx_2.fq;  exit 1; }
         
         bamList=""
-        #loopstart:r1
+        #loopStart:r1
         for r1 in `ls $dir1/$dir2/*_1.fastq* $dir1/$dir2/*_1.fq* 2>/dev/null | xargs -n 1 basename`; do 
             #echo r1 is $r1
             readgroup=${r1%_*}
@@ -183,9 +186,10 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             # CTTCCGATCT
 
             # Cutadapt round 1: Takes output from demultiplexed files.  Run to trim off both 5’ and 3’ adapters on both reads 
-            #loopstart:barcodeID
+            #loopStart:barcodeID
             for barcodeID in $barcodeIDs; do 
-            #@3,1,cutadapt1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                module load python/2.7.12 cutadapt/1.14; 
+                #@3,1,cutadapt1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
                 cutadapt \
                 -f fastq \
                 --match-read-wildcards \
@@ -223,12 +227,12 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.gz
 
                 #Fastqc round 1: Run and examined by eye to make sure libraries look alright
-                #@4,2.3,fastqc,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                #@4,3,fastqc,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
                 fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq -o .; \
                 fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq -o .
 
                 # Cutadapt round 2: Takes output from cutadapt round 1. Run to trim off the 3’ adapters on read 2, to control for double ligation events.  
-                #@5,1,cutadapt,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                #@5,3,cutadapt,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
                 cutadapt \
                 -f fastq \
                 --match-read-wildcards \
@@ -262,6 +266,8 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq \
                 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq
 
+                module unload python/2.7.12 cutadapt/1.14
+
                 #Fastqc round 2: Takes output from STAR rmRep.  Runs a second round of fastqc to verify that after read grooming the data still is usable.  
                 #Fastq-sort: Takes cutadapt round 2 output and sorts to reduce randomness 
 
@@ -274,7 +280,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 #STAR rmRep: Takes sorted output from cutadapt round 2.  Maps to human specific version of RepBase used to remove repetitive elements, helps control for spurious artifacts from rRNA (& other) repetitive reads. 
                 rIndex=$outDir/../hg113seqs_repbase_starindex
                 input=EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.fq
-                #@7,6,star,rIndex,,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
+                #@7,6,star,rIndex,input,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
                 STAR \
                 --runMode alignReads \
                 --runThreadN 2 \
@@ -365,7 +371,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 #--method unique \
                 #--output-stats EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.txt \
                 #-S EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.rmDup.bam
-                
+                break     
             done
             cd -    
         done    
@@ -393,7 +399,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
         --direction r
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
-        #@16,15,cliper,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+        #@16,15,cliper,,,sbatch -c 1 -p short -t 20:0 --mem 8G 
         sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
         clipper --species hg19 \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
@@ -415,7 +421,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
         cd -
     done
     
-    [ -z "$inputBamList" ] && [ -z "$treatmentBamList" ] || continue 
+    [ ! -z "$inputBamList" ] && [ ! -z "$treatmentBamList" ] || continue 
     #EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     #EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
     #@18,17,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 

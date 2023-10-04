@@ -131,7 +131,7 @@ for t in `cat ${1%% *}`; do
 
         findjob="yes"
         x=${i#*\#@}
-        # #@1,0,find1,indx,u,input1.input2,sbatch -p short -c 1 -t 50:0
+        # #@1,0,find1,ref,input1.input2,sbatch -p short -c 1 -t 50:0
 
         # ssbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
@@ -140,15 +140,15 @@ for t in `cat ${1%% *}`; do
         step=${arrIN[0]}
         de=${arrIN[1]}
         name=${arrIN[2]%%:*}; [[ "$name" == *.NoCheckpoint ]] && name=${name%.NoCheckpoint} || name=$name$checkpoint
-        indx=${arrIN[3]}
-        ref=${arrIN[4]%%:*} # references files which need to rsync to tmp space
-        inputs=${arrIN[5]}
-        xsuba=${arrIN[6]}  # sbatch options
+        #indx=${arrIN[3]}
+        ref=${arrIN[3]%%:*} # references files which need to rsync to tmp space
+        inputs=${arrIN[4]}
+        xsuba=${arrIN[5]}  # sbatch options
 
         ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit
 
         # if it is old format bash job annotation without inputs
-        [[ "$name$indx$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
+        [[ "$name$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
         [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
@@ -193,39 +193,45 @@ for t in `cat ${1%% *}`; do
         [ -z "$name" ] && name=${cmd%% *}
 
         cloper[$step]=$loper
-        sameloop=no
+        multipleJobs=yes
         IFS=' '
         if [[ "$de" == "0" ]]; then
-            sameloop=""
+            multipleJobs=""
         elif [[ "$de" == *\.* ]]; then
-
             for dep in ${de//\./ }; do
-                if [[ ${cloper[$step]} == ${cloper[$dep]} ]]; then
-                    sameloop=""
+                l=$(expr length ${cloper[$step]}) || l=0
+                ll=$(expr length ${cloper[$dep]}) || ll=0
+                if [ $l -ge $ll ]; then
+                    multipleJobs=""
                 else
-                    sameloop="no"
+                    multipleJobs="yes"
                     break
                 fi
             done
-        elif [[ ${cloper[$step]} == ${cloper[$de]} ]]; then
-            sameloop=""
+        else 
+            #set -x 
+            #echo $step:${cloper[$step]}:$de:${cloper[$de]}:
+            l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
+            ll=$(expr length ${cloper[$de]}) || ll=0
+            [ $l -ge $ll ] && multipleJobs=""
+            #set +x 
         fi
 
-        #echo "debug: ${cloper[$step]} ${cloper[$de]} .$sameloop. " >> $run
+        #echo "debug: ${cloper[$step]} ${cloper[$de]} .$multipleJobs. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
 
-        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: $name.\$$indx $useTmp " >> $run
-        echo "${space}([ -z \"$indx\" ] || [ -z \"\$${indx}\" ]) && flag=${step}.$de.${name} || flag=${step}.$de.${name}.\$${indx}"  >> $run
+        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.${name}$loper  $useTmp " >> $run
+        echo "${space}flag=${step}.$de.${name}$loper"  >> $run
         echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _
 
         echo -e "${space}deps=\"\""  >> $run
         if [[ "$de" != "0" ]]; then
             if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
-                    [ -z $sameloop ] && echo "${space}deps=\"\$deps \${jobID[$dep]}\"" >> $run || echo "${space}deps=\"\$deps \${jobIDs[$dep]}\"" >> $run
+                    [ -z $multipleJobs ] && echo "${space}deps=\"\$deps \${jobID[$dep]}\"" >> $run || echo "${space}deps=\"\$deps \${jobIDs[$dep]}\"" >> $run
                 done
             else
-                [ -z $sameloop ] && echo "${space}deps=\"\${jobID[$de]}\""  >> $run || echo "${space}deps=\"\${jobIDs[$de]}\""  >> $run
+                [ -z $multipleJobs ] && echo "${space}deps=\"\${jobID[$de]}\""  >> $run || echo "${space}deps=\"\${jobIDs[$de]}\""  >> $run
             fi
         fi
 
@@ -245,7 +251,7 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -d \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -L \$cwd/log -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
-        echo "${splace} echo -e \"get output from ssbatch: \n\$id\"" >> $run
+        echo "${space}echo -e \"get output from ssbatch: \n\$id\"" >> $run
 
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 
@@ -267,15 +273,15 @@ for t in `cat ${1%% *}`; do
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run
 
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
-        if [[ "$de" == *\.* ]]; then
-                for dep in ${de//\./ }; do
-                     [ -z $sameloop ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run
-                done
-        else
-                [ -z $sameloop ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run
-        fi
+        #if [[ "$de" == *\.* ]]; then
+        #        for dep in ${de//\./ }; do
+        #             [ -z $multipleJobs ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run
+        #        done
+        #else
+        #        [ -z $multipleJobs ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run
+        #fi
 
-        echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run
+        #echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run
         echo "${space}    jobID[$step]=\$id"  >> $run
         echo "${space}    jobIDs[$step]=\${jobIDs[$step]}.\$id"  >> $run
 
@@ -289,34 +295,45 @@ for t in `cat ${1%% *}`; do
     else
         echo "$t" >> $run
         #findjob=""
-        if [[ "$i" == done* ]]; then
+
+        #if [[ "$i" == \#loopEnd* ]]; then
+        #    echo find loop end: $i
+        #    space=${space%    }
+        #    loper=${loper%.\$*}
+        if [[ "$i" == \#loopStart:* ]]; then
+            echo; echo find loop start: $i
+            #a=`echo $i | xargs`  # remove leading space and tailing space
+            a=${i#\#loopStart:}; a=${a%% *}
+            loper="$loper.\$$a"
+            #loper="$loper.for"
+        elif [[ "$i" == done* ]]; then
             echo find loop end: $i
             #space=${space%    }
-            loper=${loper%.*}
-        elif [[ "$i" == for* ]]; then
-            echo; echo find loop start: $i
+            loper=${loper%.\$*}
+        #elif [[ "$i" == for* ]]; then
+        #    echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=${a#* }; a=${a%% *}
             #loper="$loper.\$$a"
-            loper="$loper.for"
-        elif [[ "$i" == while* ]]; then
-            echo; echo find loop start: $i
+        #    loper="$loper.for"
+        #elif [[ "$i" == while* ]]; then
+        #    echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=whiele #${a#* }; a=${a%% *}
-            loper="$loper.while"
-        elif [[ "$i" == until* ]]; then
-            echo; echo find loop start: $i
+        #    loper="$loper.while"
+        #elif [[ "$i" == until* ]]; then
+        #    echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             #a=whiele #${a#* }; a=${a%% *}
-            loper="$loper.until"
+        #    loper="$loper.until"
         fi
     fi
 done
-[ $? == 1 ] && exit 0;
+[ $? == 1 ] && exit 0
 
 # go back to the original folder?
 #echo "cd \$cwd/.." >> $run
-
+# exit
 echo "echo; echo All submitted jobs: " >> $run
 #echo "cat \$cwd/log/allJobs.txt" >> $run
 echo "awk '{print substr(\$0, 1, 150)}' \$cwd/log/allJobs.txt" >> $run

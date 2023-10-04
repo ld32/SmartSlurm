@@ -72,23 +72,24 @@ for i in $output; do
         # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
         [[ "$inputs" == "none" ]] && scontrol release $id && continue
 
-        [ -f log/$name.adjust ] && scontrol release $id && continue
+        [ -f $path/$name.adjust ] && scontrol release $id && continue
 
         #ls -lrt $path
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
 
-        echo -e "Re-adjust resource by upsteam job job:" >> log/$name.out
-        grep ^$SLURM_JOB_ID log/allJobs.txt | awk '{print $1,  $2,  $3}' >> log/$name.out
+        echo -e "Re-adjust resource by upsteam job job:" >> $path/$name.out
+        grep ^$SLURM_JOB_ID $path/allJobs.txt | awk '{print $1,  $2,  $3}' >> $path/$name.out
 
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
         if [[ "$inputSize" == "notExist" ]]; then
             scancel $id
-            echo One or multiple inputs are missing for this job. Cancelling it... >> log/$name.out
-            echo -e "inputs:.${inputs}.-.${inputs//,/}." >> log/$name.out
-            echo ${inputs//,/ } >> log/$name.out
-            touch log/$name.missingInnput.has.to.cancel
-            toSend=`cat log/$name.out`
+            pwd >> $path/$name.out
+            echo One or multiple inputs are missing for this job. Cancelling it... >> $path/$name.out
+            echo -e "inputs:.${inputs}.-.${inputs//,/}." >> $path/$name.out
+            echo ${inputs//,/ } >> $path/$name.out
+            touch $path/$name.missingInnput.has.to.cancel
+            toSend=`cat $path/$name.out`
             s="Cancel:$id:MissingInput:${inputs//,/ }"
             echo -e "$toSend" | mail -s "$s" $USER && echo Cancel email sent by second try. || \
             { echo Cancel email still not sent!! Try again.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Cancel email sent by second try. || echo Cancel email still not sent!!; }
@@ -117,7 +118,7 @@ for i in $output; do
         if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.$ref.mem.stat -mmin +20` || [ ! -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then
             echo "Do not have a formula, or it is old and out of range. Let us build one..."
 
-            echo "Do not have a formula, or it is old and out of range. Let us build one..."  >> log/$name.out
+            echo "Do not have a formula, or it is old and out of range. Let us build one..."  >> $path/$name.out
 
             #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt
 
@@ -139,7 +140,7 @@ for i in $output; do
             if [[ $(wc -l <$jobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
 
                 echo There are less than 3 records. No way to fit a curve.
-                echo There are less than 3 records. No way to fit a curve. >> log/$name.out
+                echo There are less than 3 records. No way to fit a curve. >> $path/$name.out
 
             else
 
@@ -255,7 +256,7 @@ for i in $output; do
 
         echo -e "$resAjust"
 
-        echo -e "$resAjust\n" >> log/$name.out
+        echo -e "$resAjust\n" >> $path/$name.out
 
         [ -z "$mem" ] && continue
 
@@ -263,7 +264,7 @@ for i in $output; do
 
         #echo Got estimation inputsize: $inputSize mem: $mem  time: $min
 
-        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> log/$name.out
+        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $path/$name.out
         hours=$((($min + 59) / 60))
 
         echo looking partition for hour: $hours
@@ -278,19 +279,19 @@ for i in $output; do
 
         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
 
-        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> log/$name.out
+        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $path/$name.out
 
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
 
         scontrol release $id
 
-        echo $mem $min $extraMem > log/$name.adjust
+        echo $mem $min $extraMem > $path/$name.adjust
 
-        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> log/$name.out
+        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> $path/$name.out
 
-        #echo $mem $min> log/$name.adjust
-        #touch log/$name.adjusted
+        #echo $mem $min> $path/$name.adjust
+        #touch $path/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
     else
         echo Need wait for other jobs to finish before we can ajust mem and runtime...

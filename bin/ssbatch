@@ -102,7 +102,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}";;
         "-I" 			)   inputs="${array[$i+1]}" && array[$i+1]="";;
   		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}";;
-        "-d"            )   deps="${array[$i+1]}" && array[$i+1]="";;
+        "-D"            )   deps="${array[$i+1]}" && array[$i+1]="";;
         "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}";;
         "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true;;
   	    "-p"            )   partition="${array[$i+1]}" && array[$i+1]="";; # will set partition later
@@ -125,8 +125,8 @@ for (( i=0; i<$(($#)); i++ )); do
   		"-e" 			)   err="${array[$i+1]}" && array[$i+1]="";;
   		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}";;
         "-A"            )   slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
-        "-d" 			)   dep="${array[$i+1]}";;
-  		--dependency=* 	)   dep="${array[$i]}" && dep="${dep/--dependency=/}";;
+        "-d" 			)   deps="${array[$i+1]}" && array[$i+1]="";;
+  	    --dependency=* 	)   deps="${array[$i]}" && deps="${deps/--dependency=/}";;
         "test"          )   [ $i -eq $(($#)) ] && continue;;
         "run"           )   [ $i -eq $(($#)) ] && continue;;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
@@ -143,7 +143,7 @@ done
 echoerr
 echoerr Parsing result from sbatch commandline:
 echoerr logDir: $logDir software: $software ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
-echoerr partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep additionalPara: $additionalPara
+echoerr partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err additionalPara: $additionalPara
 
 depsO=$deps
 
@@ -194,15 +194,15 @@ if [[ ! -z "$slurmScript" ]]; then
                 "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}";;
                 --error=* ) [ -z "$err" ] && echoerr Found --error= && err="${arr[1]}" && err="${err/--error=/}";;
 
-                "-d"    ) [ -z "$dep" ] && echoerr Found -d && dep="${arr[2]}";;
-                --dependency=* ) [ -z "$dep" ] && echoerr Found --dependency= && dep="${arr[1]}" && dep="${dep/--dependency=/}";;
+                "-d"    ) [ -z "$deps" ] && echoerr Found -d && deps="${arr[2]}";;
+                --dependency=* ) [ -z "$deps" ] && echoerr Found --dependency= && deps="${arr[1]}" && deps="${deps/--dependency=/}";;
             esac
         fi
     done < $slurmScript
 
     echoerr
     echoerr Parsing result from slurm script:
-    echoerr time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err dep: $dep
+    echoerr time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err deps: $deps
 
     echoerr slurmScript: $slurmScript
     echoerr slurmScriptParas: $slurmScriptParas
@@ -293,7 +293,7 @@ else
     min=$(($day * 24 * 60 + $hour * 60  + $min))
 fi
 
-if [[ $deps == null ]]; then
+if [[ $deps == "null" ]]; then
     deps=""
     resAjust="#Depend on no job\n"
 
@@ -494,7 +494,7 @@ elif [[ $skipEstimate == n ]]; then
         if [[ "$inputSize" == "notExist" ]]; then
             resAjust="$resAjust#Some or all input files not exist: $inputs\n"
             echoerr Error! missingInputFile: ${inputs//,/ }
-            exit
+            [[ "$testRun" == "run" ]] && exit
         else
             #inputSize=$(($inputSize/1024)); # convert to M
             resAjust="$resAjust#InputSize: $inputSize\n"
@@ -670,8 +670,6 @@ time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
 #echoerr
 
-
-
 # mem for srun is 10M less than sbatch command
 #[[ "$mem" == *G ]] && memN=$(( 1024 * ${mem%G} -10 ))M || memN=$(( ${mem%M} -10 ))M
 
@@ -689,9 +687,12 @@ echoerr Building new sbatch command ...
 
 echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" \"${ref//\//-}\" \\\"$flag\\\" \"$inputSize\" \"$core\" \"$memO\" \"$minO\" \"$mem\" \"$min\" \"$partition\"  \\\"${slurmAcc#*-A }\\\" \"$inputs\" \"$extraMem\" $skipEstimate; }\" EXIT\n#jobMonitor.sh $logDir/$flag $mem $min $memO $core &\njob_mem_cpu_monitor.sh $logDir/$flag $mem $min $memO $core &\n" > $job
 
+
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
+set -x
 [ $mem -lt 100 ] && mem=100
+set +x 
 
 # #echo "set -x" >> $job
 # echo "if [ ! -f log/$flag.adjust ]; then" >> $job
@@ -795,7 +796,6 @@ fi
     else
         cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
         echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
-
     fi
 
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
@@ -826,8 +826,8 @@ if [[ "$testRun" == "run" ]]; then
 
     # try to submit the job three time in case it fails
     for i in {1..3}; do
-        jobID=$($cmd 2>/tmp/jobErr)
-        jobErr=$(< /tmp/jobErr)
+        jobID=$($cmd 2>jobErr)
+        jobErr=$(< jobErr)
 
         #catch jobID jobErr '$cmd'
         echoerr id: .$jobID.
@@ -867,15 +867,6 @@ fi
 
 # add this to the job script
 echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
-
-# print out on screen
-#echoerr -e "Sbatch command output:\nSubmitted batch job $jobID"
-
-#dep=${dep#afterok}; dep=${dep//:/.}; [ -z "$dep" ] && dep=null
-
-# for check dependency, rerun, kill downstream jobs, estimate memmory and run time
-#[[ "$jobID" =~ ^[0-9]+$ ]]  &&  echo $jobID $dep $flag $software $ref $inputs >> $flagDir/allJobs.txt
-
 
 if [ ! -z "$runningSingleJob" ]; then
     if [ -z "$out" ]; then
