@@ -369,7 +369,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 #--method unique \
                 #--output-stats EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.txt \
                 #-S EXAMPLE_SE.rep1_clip.umi.r1.fq.genome-mappedSoSo.rmDup.bam
-                break     
+                #break     
             done
             cd -    
         done    
