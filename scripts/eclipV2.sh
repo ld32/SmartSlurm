@@ -224,7 +224,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq \
                 -p EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq \
                 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.gz \
-                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.gz;" 
+                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.gz" 
 
                 #Fastqc round 1: Run and examined by eye to make sure libraries look alright
                 #@4,3,fastqc,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 

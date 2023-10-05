@@ -710,8 +710,8 @@ echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_
 
 if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
-    #wrapCMD=`echo -e "$wrapCMD" | xargs echo -n`; # remove ending space
-    wrapCMD=${wrapCMD%;} # remove ; from command
+    [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
+    # `echo -e "$wrapCMD" | xargs echo -ne`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
     if [[ "$software" == Checkpoint ]]; then
         #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
 
