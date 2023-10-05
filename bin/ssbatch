@@ -89,7 +89,7 @@ logDir=$PWD/log
 # get the first few parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
-  	echoerr $i " / " $(($#)) " : " ${array[$i]}
+  	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
         --comment=*     )   comment="${array[$i]}" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
   	    "-L"            )   logDir="${array[$i+1]}" && array[$i+1]="";;
@@ -153,7 +153,8 @@ else
     echoerr slurmScript: $slurmScript
     echoerr slurmScriptParas: $slurmScriptParas
 fi
-echoerr test or run: $testRun
+#echoerr test or run: $testRun
+echoerr
 
 if [ ! -z "$slurmScript" ]; then
   echoerr Validating slurmScript:
@@ -356,17 +357,17 @@ if [[ "$testRun" == "run" ]]; then
         #ls -l $logDir/ 1>&2
     fi
 
-    if [ -f log/keepRunningJobs.txt ]; then
+    if [ -f $logDir/keepRunningJobs.txt ]; then
 
         #set -x
         #cat log/allJobs.txt >&2
 
         #echoerr $flag
         # check the third column for the job name, then find the the job id in column 1
-        out=`cat log/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
+        out=`cat $logDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }
         if [ ! -z "$id" ]; then
-            if grep ^$id log/keepRunningJobs.txt 1>/dev/null; then
+            if grep ^$id $logDir/keepRunningJobs.txt 1>/dev/null; then
                 echoerr thisJobStillRunning $id here
                 echo $id
                 exit
@@ -391,12 +392,17 @@ if [[ "$testRun" == "run" ]]; then
                 scontrol requeue $id
 
                 [ ! -z "$depsR" ] && scontrol update job=$id  $depsR && scontrol hold $id
-                echo "Resubmit#$id-#$de-#$flag" >> log/allJobs.txt
+                echo "Resubmit#$id-#$de-#$flag" >> $logDir/allJobs.txt
                 echo $id
                 #rm $logDir/$flag.success 2>/dev/null
                 rm -r $logDir/$flag $logDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
                 exit
             fi
+            
+            # if the job is still active, need cancel it, because the depency condition might changed 
+        elif [ -f $logDir/keepRunningJobs.txt ]; then  
+            $id=`cat $logDir/keepRunningJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1;}' | tail -n 1`
+            [ ! -z "$id" ] && echoerr "previous job is cancelled: $id" && scancel $id         
         fi
         #set +x
     fi
@@ -649,10 +655,10 @@ fi
 
 #echoerr looking partition for hour: $hours ##
 
-# at least 100M and 10
-#[ "$mem" -lt 100 ] && mem=100
+# at least 100M and 10 minutes
+[ "$mem" -lt 100 ] && mem=100
 
-#[ "$min" -lt 10 ] && min=10
+[ "$min" -lt 10 ] && min=10
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -690,15 +696,11 @@ echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh \\\"$logDir\\\" \"$software\" 
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
 
-set -x
-[ $mem -lt 100 ] && mem=100
-set +x 
-
 # #echo "set -x" >> $job
-# echo "if [ ! -f log/$flag.adjust ]; then" >> $job
+# echo "if [ ! -f $logDir/$flag.adjust ]; then" >> $job
 # echo "   totalM=$totalM" >> $job
 # echo "else " >> $job
-# echo "   totalM=\`cat log/$flag.adjust\`" >> $job
+# echo "   totalM=\`cat $logDir/$flag.adjust\`" >> $job
 # ## this might work if cluster is bussy, may need sleep more or get the data from a text file
 # #echo "   sleep 10; sacct=\`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j \$SLURM_JOBID\` " #>> $job
 # #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
@@ -708,7 +710,8 @@ echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_
 
 if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
-    wrapCMD=`echo $wrapCMD | xargs echo -n`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
+    #wrapCMD=`echo -e "$wrapCMD" | xargs echo -n`; # remove ending space
+    wrapCMD=${wrapCMD%;} # remove ; from command
     if [[ "$software" == Checkpoint ]]; then
         #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
 
@@ -722,9 +725,9 @@ if [ -z "$slurmScript" ]; then
         echo -e "\nsh -e -o pipefail  -c \"$wrapCMD;\"" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
-        #echo -e "ps -fu $USER | grep \"log/$flag.cmd\"" >> ${job%.sh}.cmd
+        #echo -e "ps -fu $USER | grep \"$logDir/$flag.cmd\"" >> ${job%.sh}.cmd
 
-        #echo -e "pss=\`ps -fu $USER | grep \"log/$flag.cmd\"\`" >> ${job%.sh}.cmd
+        #echo -e "pss=\`ps -fu $USER | grep \"$logDir/$flag.cmd\"\`" >> ${job%.sh}.cmd
         ##echo -e "pid=\`ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \" $flag \" | tail -n 2 | head -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
 
         #echo -e "pid=\`echo -e \"\$pss\" | head -n 4 | tail -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
@@ -886,7 +889,7 @@ fi
 #    out=${out/\%j/$jobID};
 #    ln -s $job ${out/.out/}.sh
 #else
-printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs>> $logDir/allJobs.txt;
+printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs >> $logDir/allJobs.txt;
 #fi
 
 echoerr New slurmScirpt is ready. The content is:

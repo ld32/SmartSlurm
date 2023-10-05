@@ -3,7 +3,7 @@
 #set -x
 
 # to call this:  0     1           2           3       4         5          6       7        8     9     10      11       12           13     14    15
-#cleanUp.sh       "projectDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM skipEstimate
+#cleanUp.sh       "logDir"  "$software" "$ref" "$flag" "$inputSize"   $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM skipEstimate
 
 
 
@@ -12,7 +12,7 @@ echo Running $0 $@
 echo pwd: `pwd`
 
 # if not successful, delete cromwell error file, so that the job not labeled fail
-ls -l execution
+#ls -l execution
 [ -f $1/$4.success ] || rm -r execution/rc 2>/dev/null
 
 #cd ${1%log}
@@ -39,7 +39,6 @@ sleep 10
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
-
 #sacct=`cat ~/fakeSacct.txt`
 
 #sacct report is not accurate, let us use the total memory
@@ -57,13 +56,19 @@ START=`echo $jobStat | cut -d" " -f3`
 
 START=`date -d "$START" +%s`
 
-FINISH=`echo $jobStat | cut -d" " -f4`
+#FINISH=`echo $jobStat | cut -d" " -f4`
 
-FINISH=`date -d "$FINISH" +%s`
+#FINISH=`date -d "$FINISH" +%s`
 
-[ -z "$FINISH" ] && FINISH=`date +%s`
+#[ -z "$FINISH" ] &&
+FINISH=`date +%s`
 
 echo  start: $START fisnish: $FINISH
+#seconds=$((FINISH - START))
+
+# todo: might use real time directly?
+# time is too short, might be wrong result
+#[ $seconds -lt 10 ] && echo time is so short. is it right? Let us use real time... && FINISH=`date +%s`
 
 # time in minutes
 min=$((($FINISH - $START + 59)/60))
@@ -78,71 +83,74 @@ memSacct=`echo $jobStat | cut -d" " -f5`
 # node
 node=`echo $jobStat | cut -d" " -f7`
 
-case "$jobStat" in
+
+# todo: might directly delete this part
+#case "$jobStat" in
 # jobRecord.txt header
 #1user 2software 3ref 4inputName 5inputSizeInK 6CPUNumber 7memoryO 8timeO 9readMem 10RequestedTime 11jobID 12memoryM 13minRun 14Node 15 finalStatus
-*COMPLETED* )  jobStatus="COMPLETED" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
+#*COMPLETED* )  jobStatus="COMPLETED" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
 
-*TIMEOUT*   )  jobStatus="OOT";;
+#*TIMEOUT*   )  jobStatus="OOT";;
 
-*OUT_OF_ME*   ) jobStatus="OOM";;
+#*OUT_OF_ME*   ) jobStatus="OOM";;
 
-*CANCELLED*	) jobStatus="Cancelled";;
+#*CANCELLED*	) jobStatus="Cancelled";;
 
-*FAILED*	) jobStatus="Fail";;
+#*FAILED*	) jobStatus="Fail";;
 
-*          )  jobStatus="Unknown";;
+#*          )  jobStatus="Unknown";;
 
 
-esac
+#esac
 
 # for testing
 #jobStatus="OOM"
 
-echo jobStatus: $jobStatus
+#echo jobStatus: $jobStatus
 
 # sacct might give wrong resules
-[[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
+#[[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
+if [ -f $succFile ]; then
+    jobStatus=COMPLETED
+elif [[ "$sacct" == *TIMEOUT* ]]; then
+    jobStatus=OOM
+elif [[ "$sacct" == *OUT_OF_ME* ]]; then
+    jobStatus=OOT
+elif [[ "$sacct" == *FAILED* ]]; then 
+    jobStatus=Fail
+elif [[ "$sacct" == *CANCEL* ]]; then 
+    jobStatus=Canceled    
+else 
+    tLog=`tail -n 22 $out | grep ^srun`
+    if [[ "$tLog" == *"task 0: Out Of Memory"* ]]; then 
+        jobStatus="OOM" 
+        echo The job is actually out-of-memory by according to the log: 
+        echo $tLog
+        scontrol show jobid -dd $SLURM_JOB_ID
+    else 
+       jobStatus="Unknown"
+   fi    
+fi
 
-echo -e  "Last row of job summary: $jobStat"
+echo jobStatus: $jobStatus
+
+#echo -e  "Last row of job summary: $jobStat"
 echo start: $START finish: $FINISH mem: $memSacct min: $min
 
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-srunM=`cut -d' ' -f2 log/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+srunM=`cut -d' ' -f2 $1/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
 #srunM=$((srunM / 1024 / 1024 ))
 
 [ -z "$srunM" ] && srunM=0
 
 echo jobStatus: $jobStatus cgroupMaxMem: $srunM
 
-
 memSacct=${memSacct%M}; memSacct=${memSacct%.*} #remove M and decimals
-
 
 # Not sure if this is needed.
 [[ "$memSacct" != "NA" ]] && [ "$memSacct" -gt "$srunM" ] && srunM=$memSacct
-
-# sometimes, the last row say srun cancelled, but the job is actually out of memory or out
-if [[ $jobStatus == "Cancelled" ]]; then
-    if [[ "$sacct" == *TIMEOUT* ]]; then
-        echo The job is actually timeout
-        jobStatus="OOT"
-    elif [[ "$sacct" == *OUT_OF_ME* ]]; then
-        echo The job is actually out-of-memory
-        jobStatus="OOM"
-    fi
-fi
-#set -x
-
-#some times, it reports unknown, but is it is oom
-if [[ $jobStatus == Unknown ]]; then
-    tLog=`tail -n 22 $out | grep ^srun`
-    [[ "$tLog" == *"task 0: Out Of Memory"* ]] && jobStatus="OOM" && echo The job is actually out-of-memory by according to the log: && echo $tLog
-    scontrol show jobid -dd $SLURM_JOB_ID
-fi
-#set +x
 
 inputs=${13}
 inputSize=$5     # input does not exist when job was submitted.
@@ -312,7 +320,7 @@ if [ ! -f $succFile ]; then
                 #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
                 #set -x
                 #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
-                #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > log/$4.requeueCMD
+                #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > $1/$4.requeueCMD
 
                 hours=$((($totalT + 59) / 60))
                 adjustPartition $hours $partition
@@ -329,7 +337,7 @@ if [ ! -f $succFile ]; then
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
                     IFS=$'\n'
-                    for line in `grep $SLURM_JOBID log/allJobs.txt | grep -v ^$SLURM_JOBID`; do
+                    for line in `grep $SLURM_JOBID $1/allJobs.txt | grep -v ^$SLURM_JOBID`; do
                         job=${line%% *}
                         deps=`echo $line | awk '{print $2}'`
                         if [[ $deps == null ]]; then
@@ -346,8 +354,8 @@ if [ ! -f $succFile ]; then
                         [ -z "$deps" ] || scontrol update jobid=$job $deps
                     done
 
-                    #if `sh $PWD/log/$4.requeueCMD; rm $PWD/log/$4.requeueCMD;`; then
-                    #rm log/$4.requeueCMD #;  then
+                    #if `sh $PWD/$1/$4.requeueCMD; rm $PWD/$1/$4.requeueCMD;`; then
+                    #rm $1/$4.requeueCMD #;  then
                     #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
                     #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
 
@@ -356,10 +364,11 @@ if [ ! -f $succFile ]; then
 
                     s="OOM.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
                     echo -e "" | mail -s "$s" $USER
+                    [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
 
-                    cp log/allJobs.txt log/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
-                    sed -i "s/$SLURM_JOBID/$newJobID/" log/allJobs.txt
-                    cp log/job_$SLURM_JOBID.memCPU.txt log/job_$newJobID.memCPU.txt
+                    cp $1/allJobs.txt $1/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+                    sed -i "s/$SLURM_JOBID/$newJobID/" $1/allJobs.txt
+                    cp $1/job_$SLURM_JOBID.memCPU.txt $1/job_$newJobID.memCPU.txt
                     break
 
                 else
@@ -517,11 +526,11 @@ fi
 
 
 
-#cp /tmp/job_$SLURM_JOBID.mem.txt log/
+#cp /tmp/job_$SLURM_JOBID.mem.txt $1/
 
 summarizeRun.sh $1
 
-toSend="`cat log/summary`\n$toSend"
+toSend="`cat $1/summary`\n$toSend"
 
 s="${toSend%% *} $s"
 
@@ -530,26 +539,26 @@ s="${toSend%% *} $s"
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 else
-    echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
 
 fi
 
 if [[ $USER != ld32 ]]; then
     if [ -f $jobRecordDir/stats/$2.$3.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png ld32
+        echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png -a $jobRecordDir/stats/$2.$3.mem.png -a $jobRecordDir/stats/$2.$3.time.png ld32
     elif [ -f $jobRecordDir/stats/back/$2.$3.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png ld32
+        echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png -a $jobRecordDir/stats/back/$2.$3.mem.png -a $jobRecordDir/stats/back/$2.$3.time.png ld32
 
     else
-        echo -e "$toSend" | mail -s "$s" -a log/job_$SLURM_JOBID.mem.png -a log/job_$SLURM_JOBID.cpu.png -a log/barchartMem.png -a log/barchartTime.png ld32
+        echo -e "$toSend" | mail -s "$s" -a $1/job_$SLURM_JOBID.mem.png -a $1/job_$SLURM_JOBID.cpu.png -a $1/barchartMem.png -a $1/barchartTime.png ld32
     fi
 fi
 

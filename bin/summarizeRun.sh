@@ -1,31 +1,33 @@
 #!/bin/sh
-Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go through job name list in log/allJobs.txt to see if the jobs finish successfully or not."
+Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go through job name list in $1/allJobs.txt to see if the jobs finish successfully or not."
 
 #set -x
 
 echo Running: $0 $@»
 echo pwd: `pwd`
-[ -z "$1" ] || cd ${1%log}
+[ -z "$1" ] || cd $1
 
-[ -f log/allJobs.txt ] || { echo log/allJobs.txt not found.; exit 1; }
+[ -f $1/allJobs.txt ] || { echo $1/allJobs.txt not found.; exit 1; }
+
+echo pwd: `pwd`
 
 IFS=$'\n'
 
 out=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 
-lines=`tail -n +2 log/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+lines=`tail -n +2 $1/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
 current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
-toSend="Summery for jobs in log/allJobs.txt:"
+toSend="Summery for jobs in $1/allJobs.txt:"
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *}; name=${line##* }
 
 
-        if [ -f log/$name.success ]; then
+        if [ -f $1/$name.success ]; then
             toSend="$toSend\n${line:0:40} Done"
             succ=$((succ + 1))
-        elif [ -f log/$name.failed ]; then
+        elif [ -f $1/$name.failed ]; then
             toSend="$toSend\n${line:0:40} Failed"
             fail=$((fail + 1))
         elif [[ "$out" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
@@ -34,7 +36,7 @@ for line in $lines; do
         elif [[ "$out" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
             toSend="$toSend\n${line:0:40} Pending"
             pending=$((pending + 1))
-        elif [ -f log/$name.failed.requeued.1.time ]; then 
+        elif [ -f $1/$name.failed.requeued.1.time ]; then 
             toSend="$toSend\n${line:0:40} Requeued"
             requeue=$((requeue + 1))    
         else
@@ -50,7 +52,7 @@ current=$((succ + fail + requeue))
 total=$((succ + fail + running + pending + +requeue + unknown))
 s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
 
-echo -e "$s\n$toSend" > log/summary
+echo -e "$s\n$toSend" > $1/summary
 
 
 # if [ $((running + pending)) -le 5 ]; then
@@ -58,7 +60,7 @@ echo -e "$s\n$toSend" > log/summary
 #     [ "$USER" != ld32 ] && echo -e "$toSend" | mail -s $s ld32
 # fi
 
-cd log
+#cd log
 
 rm barchartMem.png  barchartTime.png 2>/dev/null
 echo Category,Used,Wasted,Saved2,default,Saved1 > dataMem.csv
@@ -74,7 +76,7 @@ awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5}
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot 'dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
 
 echo To see the plot:
-echo display log/barchartMem.png
+echo display $1/barchartMem.png
 
 echo Category,Used,Wasted,default,Saved > dataTime.csv
 
@@ -88,7 +90,7 @@ awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5}
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot 'dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
 
 echo To see the plot:
-echo display log/barchartTime.png
+echo display $1/barchartTime.png
 
 # time vs. memory for current job
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time (Mins)'; set ylabel 'Mem (M)'; plot 'job_$SLURM_JOBID.memCPU.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
