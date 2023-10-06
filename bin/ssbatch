@@ -18,18 +18,7 @@
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
 
 # todo:
-
-## features with smartPipeline
-# Auto adjust partition according to run-time request if they does not match up
-# Auto check if slurm script exists
-# Auto create output and erro folders if not exist
-# Auto adjust partition according to run-time request if they does not match up
-# Auto adjust memory and run time based on earlier mem time usage
-# Support re-run from breaking-point
-# Auto requeue job with double time when out of time
-# Auto requeue job with double memory when out of memory
-# Keep good log and send informative email
-
+# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt. 
 
 # the logic:
 # If job does not depends on other job, and has input, estimate mem/timed and submit
