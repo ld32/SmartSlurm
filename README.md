@@ -17,7 +17,7 @@
 # Smart sbatch
 ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and ssbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.sh.none.time.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.none.time.png)
 
 ##As the figure shown above, the memory usage is roughly co-related to the input size. We can use input size to allocate memory when submit new jobs.
 
@@ -51,7 +51,7 @@ createBigTextFiles.sh
 # This way, whenever you run sbatch, ssbatch is called. 
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
-# Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput.sh
+# Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
 for i in {1..3}; do
     sbatch --mem 2G -t 2:0:0 --commen="SSBATCH_S=useMemTimeNoInput" \
         --wrap="useMemTimeNoInput.sh $i"
@@ -62,7 +62,7 @@ done
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
 
-# Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput.sh
+# Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
 for i in {1..3}; do
     sbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeWithInput SSBATCH_I=bigText$i.txt" \
         --wrap="useMemTimeWithInput.sh bigText$i.txt"
@@ -70,7 +70,7 @@ done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-sbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeWithInput.sh \
+sbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeWithInput \
     SSBATCH_I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
 
 # The second way to tell the input file name: 
@@ -78,7 +78,7 @@ sbatch -t 2:0:0 --mem 2G job.sh
 
 cat job.sh
 #!/bin/bash
-#SBATCH --commen="SSBATCH_S=useMemTimeWithInput.sh SSBATCH_I=bigText1.txt,bigText2.txt"
+#SBATCH --commen="SSBATCH_S=useMemTimeWithInput SSBATCH_I=bigText1.txt,bigText2.txt"
 useMemTimeWithInput.sh bigText1.txt bigText$2.txt
 
 # After you finish using ssbatch, run these command to disable ssbatch:    
@@ -104,23 +104,23 @@ The data from the three columns are plotted and statistics
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference
 
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useMemTimeWithInput.sh,none
+46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useMemTimeWithInput,none
 
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useMemTimeWithInput.sh,none
+46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useMemTimeWithInput,none
 
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useMemTimeWithInput.sh,none
+46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useMemTimeWithInput,none
 
-\#Here is the input size vs memory plot for useMemTimeWithInput.sh: 
+\#Here is the input size vs memory plot for useMemTimeWithInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.sh.none.mem.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.none.mem.png)
 
-\#Here is the input size vs run-time plot for useMemTimeWithInput.sh: 
+\#Here is the input size vs run-time plot for useMemTimeWithInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.sh.none.time.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeWithInput.none.time.png)
 
-\#Here is the run-time vs memory plot for useMemTimeNoInput.sh: 
+\#Here is the run-time vs memory plot for useMemTimeNoInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeNoInput.sh.none.stat.noInput.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/back/useMemTimeNoInput.none.stat.noInput.png)
 
 2) Auto choose partition according to run-time request
 
@@ -232,22 +232,22 @@ cat $jobRecordDir/scripts/bashScriptV2.sh
 21 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output    
 ```
 
-# Notice that there are a few things added to the script here:
+## Notice that there are a few things added to the script here:
     Before the for loop start, there is #loopStart:i, which means all the steps inside the loop use $i as part of unique job identifier.
 
-    Step 1 is denoted by #@1,0,useMemTimeWithInput.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useMemTimeWithInput.sh, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+    Step 1 is denoted by #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useMemTimeWithInput, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
 
-    Step 2 is denoted by #@2,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useMemTimeWithInput.sh, use the value of $i as unique job identifier for this step, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
+    Step 2 is denoted by #@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useMemTimeWithInput, use the value of $i as unique job identifier for this step, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
 
-    Step 3 is denoted by #@3,1.2,useMemTimeWithInput.sh,,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useMemTimeWithInput.sh with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
+    Step 3 is denoted by #@3,1.2,useMemTimeWithInput,,input (line 19), which means that this is step3 that depends on step1 and step2, and the step runs software useMemTimeWithInput with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
 
 Notice the format of step annotation is #@stepID,dependIDs,sofwareName,uniqueID,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
 
 Here are two more examples:
 
-#@4,1.3,map,,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
+#@4,1.3,map,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
 
-#@3,1.2,align,,,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
+#@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
 # Test run the modified bash script as a pipeline
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
@@ -279,14 +279,14 @@ converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to log/slurmPipeLine.6f
 find loop start: for i in {1..1}; do
 
 find job marker:
-#@1,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+#@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
 useMemTimeWithInput.sh $input; grep 1234 $input > $output
 
 find job marker:
-#@2,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+#@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
 
 find job:
@@ -294,7 +294,7 @@ useMemTimeWithInput.sh $input; grep 5678 $input > $output
 find loop end: done
 
 find job marker:
-#@3,1.2,useMemTimeWithInput.sh,,,input
+#@3,1.2,useMemTimeWithInput,,input
 
 find job:
 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output
@@ -306,9 +306,9 @@ Currently Loaded Modules:
 
 ---------------------------------------------------------
 
-step: 1, depends on: 0, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh.1
+step: 1, depends on: 0, job name: useMemTimeWithInput, flag: useMemTimeWithInput.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --me
 m 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt"
 
 Parsing result from sbatch commandline:
@@ -320,7 +320,7 @@ depend on no job
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -336,17 +336,17 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"1.0.useMemTimeWithInput.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"1.0.useMemTimeWithInput.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I
 ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.success"
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.success"
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.out
- -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.err -J 1.0.useMemTimeWithInput.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.out
+ -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.err -J 1.0.useMemTimeWithInput.1 -c 1 /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.sh
 This is a testing, not really running a job...
 
-step: 2, depends on: 0, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh.1
+step: 2, depends on: 0, job name: useMemTimeWithInput, flag: useMemTimeWithInput.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 2.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --me
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 2.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --me
 m 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt"
 
 Parsing result from sbatch commandline:
@@ -358,7 +358,7 @@ depend on no job
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -373,20 +373,20 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"2.0.useMemTimeWithInput.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "s
-hort"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 2.0.useMemTimeWithInput.sh.1 -I
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"2.0.useMemTimeWithInput.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "s
+hort"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 2.0.useMemTimeWithInput.1 -I
 ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt\"; }" EXIT
 srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useM
-emTimeWithInput.sh.1.success"
+emTimeWithInput.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.out
- -e /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.err -J 2.0.useMemTimeWithInput.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.out
+ -e /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.err -J 2.0.useMemTimeWithInput.1 -c 1 /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.sh
 This is a testing, not really running a job...
 
-step: 3, depends on: 1.2, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh
+step: 3, depends on: 1.2, job name: useMemTimeWithInput, flag: useMemTimeWithInput
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 3.1.2.useMemTimeWithInput.sh -I ,bigText1.txt -D ..123..123 -p s
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 3.1.2.useMemTimeWithInput -I ,bigText1.txt -D ..123..123 -p s
 hort -t 10:0 -c 1 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt"
 
 Parsing result from sbatch commandline:
@@ -400,7 +400,7 @@ working on 123
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -416,18 +416,18 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"3.1.2.useMemTimeWithInput.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 3.1.2.useMemTimeWithInput.sh -I ,bigText1.txt -D ..123..123 -p short -t 10:0 -c 1 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"3.1.2.useMemTimeWithInput\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 3.1.2.useMemTimeWithInput -I ,bigText1.txt -D ..123..123 -p short -t 10:0 -c 1 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.err -J 3.1.2.useMemTimeWithInput.sh --dependency=afterok:123:123 -c 1 /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.out -e /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.err -J 3.1.2.useMemTimeWithInput --dependency=afterok:123:123 -c 1 /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput
 This is a testing, not really running a job...
 
 All submitted jobs:
 job_id       depend_on              job_flag
-123         null                  1.0.useMemTimeWithInput.sh.1
-124         null                  2.0.useMemTimeWithInput.sh.1
-125         ..123..124            3.1.2.useMemTimeWithInput.sh
+123         null                  1.0.useMemTimeWithInput.1
+124         null                  2.0.useMemTimeWithInput.1
+125         ..123..124            3.1.2.useMemTimeWithInput
 ---------------------------------------------------------
 Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above.
 
@@ -454,9 +454,9 @@ Currently Loaded Modules:
 
 ---------------------------------------------------------
 
-step: 1, depends on: 0, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh.1
+step: 1, depends on: 0, job name: useMemTimeWithInput, flag: useMemTimeWithInput.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt" run
 
 sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
 wrapCMD: set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt
@@ -466,7 +466,7 @@ depend on no job
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -482,16 +482,16 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"1.0.useMemTimeWithInput.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"1.0.useMemTimeWithInput.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.err -J 1.0.useMemTimeWithInput.sh.1 -c 1 /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.out -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.err -J 1.0.useMemTimeWithInput.1 -c 1 /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.sh
 Start submtting job...
 
-step: 2, depends on: 0, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh.1
+step: 2, depends on: 0, job name: useMemTimeWithInput, flag: useMemTimeWithInput.1
 Running:
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 2.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 2.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap "set -e; useMemTimeWithInput bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt" run
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 2:0:0 mem: 2G mem-per-cpu: task: core: 1 node: out: err: dep:
@@ -502,7 +502,7 @@ depend on no job
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -518,17 +518,17 @@ Got estimation inputsize: 1465 mem: 9M time: 6
 Building new sbatch command ...
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"2.0.useMemTimeWithInput.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 2.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"2.0.useMemTimeWithInput.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 2.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 5678 bigText1.txt > 5678.1.txt; } && touch /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.out -e /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.err -J 2.0.useMemTimeWithInput.sh.1 -c 1 /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.sh.1.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.out -e /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.err -J 2.0.useMemTimeWithInput.1 -c 1 /home/ld32/smartSlurm/log/2.0.useMemTimeWithInput.1.sh
 Start submtting job...
 
-step: 3, depends on: 1.2, job name: useMemTimeWithInput.sh, flag: useMemTimeWithInput.sh
+step: 3, depends on: 1.2, job name: useMemTimeWithInput, flag: useMemTimeWithInput
 Running:
 
-ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 3.1.2.useMemTimeWithInput.sh -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap "set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
+ssbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 3.1.2.useMemTimeWithInput -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap "set -e; useMemTimeWithInput bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt" run
 
 Parsing result from sbatch commandline:
 sbatch options: partition: short time: 10:0 mem: mem-per-cpu: task: core: 1 node: out: err: dep:
@@ -541,7 +541,7 @@ working on 46632
 
 Check if there input file list and this job does not depend on other jobs
 inputSize: 1465
-Running: estimateMemTime.sh useMemTimeWithInput.sh none 1465
+Running: estimateMemTime.sh useMemTimeWithInput none 1465
 Estimating mem:
 Finala: 0.001952218430034 Finalb: 0.660000000000000 Maximum: 7325.000000000000000
 mem formula: ( 0.001952218430034 x 1465 + 0.660000000000000 ) x 1.0
@@ -558,18 +558,18 @@ Building new sbatch command ...
 
 New slurmScirpt is ready. The content is:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"3.1.2.useMemTimeWithInput.sh\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 3.1.2.useMemTimeWithInput.sh -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"3.1.2.useMemTimeWithInput\" "1465" "1" "2G" "10:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 3.1.2.useMemTimeWithInput -I ,bigText1.txt -D ..46631..46632 -p short -t 10:0 -c 1 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.*.txt 5678.*.txt > all.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; cat 1234.1.txt 1234.2.txt 5678.1.txt 5678.2.txt > all.txt; } && touch /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.success"
 
 New sbatch command to submit job:
-/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.out -e /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.err -J 3.1.2.useMemTimeWithInput.sh --dependency=afterok:46631:46632 -c 1 /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.sh.sh
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.out -e /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput.err -J 3.1.2.useMemTimeWithInput --dependency=afterok:46631:46632 -c 1 /home/ld32/smartSlurm/log/3.1.2.useMemTimeWithInput
 Start submtting job...
 
 All submitted jobs:
 job_id       depend_on              job_flag
-46631       null                  1.0.useMemTimeWithInput.sh.1
-46632       null                  2.0.useMemTimeWithInput.sh.1
-46633       ..46631..46632        3.1.2.useMemTimeWithInput.sh
+46631       null                  1.0.useMemTimeWithInput.1
+46632       null                  2.0.useMemTimeWithInput.1
+46633       ..46631..46632        3.1.2.useMemTimeWithInput
 
 Monitoring the jobs
 
@@ -578,17 +578,17 @@ squeue -u $USER --Format=jobid:10,username:6,partition:14,name:35,state:14,timeu
 
 To see the job status (running, pending, etc.). You also get two emails for each step, one at the start of the step, one at the end of the step.
 Successful job email
-Email subject: Success: job id:46631 name:1.0.useMemTimeWithInput.sh.1
+Email subject: Success: job id:46631 name:1.0.useMemTimeWithInput.1
 
 Email content:
 
 Job script content:
 #!/bin/bash
-trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput.sh" "none" \"1.0.useMemTimeWithInput.sh.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
-srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.success"
+trap "{ cleanUp.sh \"/home/ld32/smartSlurm\" "useMemTimeWithInput" "none" \"1.0.useMemTimeWithInput.1\" "1465" "1" "2G" "2:0:0" "9M" "0-0:6:0" "short"  \"\" \"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run\"; }" EXIT
+srun -n 1 bash -e -c "{ set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt; } && touch /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.success"
 
 #Command used to submit the job:
-#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.out -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.err -J 1.0.useMemTimeWithInput.sh.1     -c 1    /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.sh
+#/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short --mem 9M -t 0-0:6:0 --open-mode=append -o /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.out -e /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.err -J 1.0.useMemTimeWithInput.1     -c 1    /home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.sh
 
 #Sbatch command output:
 #Submitted batch job 46631
@@ -597,7 +597,7 @@ Job output:
 Begin allocating memory...
 ...end allocating memory. Begin sleeping for 60 seconds...
 Done
-Running /home/ld32/smartSlurm/bin/cleanUp.sh /home/ld32/smartSlurm useMemTimeWithInput.sh none 1.0.useMemTimeWithInput.sh.1 1465 1 2G 2:0:0 9M 0-0:6:0 short /home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
+Running /home/ld32/smartSlurm/bin/cleanUp.sh /home/ld32/smartSlurm useMemTimeWithInput none 1.0.useMemTimeWithInput.1 1465 1 2G 2:0:0 9M 0-0:6:0 short /home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run
 
 Job summary:
 JobID                     Submit               Start                 End     MaxRSS      State                       NodeList  Partition                        ReqTRES   TotalCPU        Elapsed      Timelimit
@@ -611,21 +611,21 @@ Last row of job summary: 46631.0      2022-12-21T16:03:25 2022-12-21T16:03:25 20
 start: 1671656605 finish: 1671656665 mem: 3.49M mins: 1
 jobStatus: COMPLETED
 Added this line to $jobRecordDir/myJobRecord.txt:
-46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useMemTimeWithInput.sh,none,1.0.useMemTimeWithInput.sh.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.sh.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput.sh -R none -F 1.0.useMemTimeWithInput.sh.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
+46631,1465,2G,2:0:0,9M,0-0:6:0,3.49,1,COMPLETED,ld32,/home/ld32/smartSlurm,useMemTimeWithInput,none,1.0.useMemTimeWithInput.1,1,compute-x,/home/ld32/smartSlurm/log/1.0.useMemTimeWithInput.1.err,Wed Dec 21 16:04:30 EST 2022,"/home/ld32/smartSlurm/bin/smartSbatch -L /home/ld32/smartSlurm -S useMemTimeWithInput -R none -F 1.0.useMemTimeWithInput.1 -I ,bigText1.txt -D null -p short -c 1 --mem 2G -t 2:0:0 --wrap set -e; useMemTimeWithInput.sh bigText1.txt; grep 1234 bigText1.txt > 1234.1.txt run"
 Running: /home/ld32/smartSlurm/bin/adjustDownStreamJobs.sh /home/ld32/smartSlurm/log
-Find current job id (flag: 1.0.useMemTimeWithInput.sh.1):
+Find current job id (flag: 1.0.useMemTimeWithInput.1):
 46631
 
 Find all downstream jobs which depend on current job
 job idNames:
-..46631..46632 3.1.2.useMemTimeWithInput.sh
-1working on ..46631..46632 3.1.2.useMemTimeWithInput.sh
+..46631..46632 3.1.2.useMemTimeWithInput
+1working on ..46631..46632 3.1.2.useMemTimeWithInput
 2working on 46631
 Ignore. It is the current job. It should adjust the mem and time for the downsteam job.
 2working on 46632
 look for the job flag for 46632
 This job was done!
-Dependants for 3.1.2.useMemTimeWithInput.sh are all done except for the current job. Ready to adjust mem/runtime
+Dependants for 3.1.2.useMemTimeWithInput are all done except for the current job. Ready to adjust mem/runtime
 Do not have a formula. Let us build one...
 Running
 /home/ld32/smartSlurm/bin/jobStatistics.sh 4
@@ -808,14 +808,14 @@ converting bashScriptV3.sh to log/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -988,14 +988,14 @@ converting bashScriptV2.sh to log/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1066,14 +1066,14 @@ converting bashScriptV2.sh to log/slurmPipeLine.a855454a70b2198fa5b2643bb1d41762
 find loop start: for i in A B; do
 
 find job marker:
-#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
 grep -H John $u >>  John.txt; grep -H Mike $u >>  Mike.txt
 
 find job marker:
-#@2,0,find2,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@2,0,find2,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1336,7 +1336,7 @@ converting bashScriptV3.sh to log/slurmPipeLine.b72e7f91da30d312a2c85d0735896f79
 find loop start: for i in A B C; do
 
 find job marker:
-#@1,0,find1,i,u,,sbatch -p short -c 1 -t 2:0:0
+#@1,0,find1,u,,sbatch -p short -c 1 -t 2:0:0
 sbatch options: sbatch -p short -c 1 -t 2:0:0
 
 find job:
@@ -1487,23 +1487,23 @@ $jobRecordDir/jobRecord.txt contains job memory and run-time records. There are 
 The data from the three columns are plotted and statistics  
 __________________________________________________________________________________________________________________   
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useMemTimeWithInput.sh,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-x,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText1.txt run"
+46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,useMemTimeWithInput,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-x,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText1.txt run"
 
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useMemTimeWithInput.sh,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-x,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText2.txt run"
+46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,useMemTimeWithInput,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-x,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText2.txt run"
 
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useMemTimeWithInput.sh,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-x,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText3.txt run"
+46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,useMemTimeWithInput,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-x,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap useMemTimeWithInput.sh bigText3.txt run"
 
-\#Here is the input size vs memory plot for useMemTimeWithInput.sh: 
+\#Here is the input size vs memory plot for useMemTimeWithInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeWithInput.sh.none.mem.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeWithInput.none.mem.png)
 
-\#Here is the input size vs run-time plot for useMemTimeWithInput.sh: 
+\#Here is the input size vs run-time plot for useMemTimeWithInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeWithInput.sh.none.time.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeWithInput.none.time.png)
 
-\#Here is the run-time vs memory plot for useMemTimeNoInput.sh: 
+\#Here is the run-time vs memory plot for useMemTimeNoInput: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeNoInput.sh.none.stat.noInput.png)
+![](https://github.com/ld32/smartSlurm/blob/main/stats/useMemTimeNoInput.none.stat.noInput.png)
 
 2) Auto choose partition according to run-time request
 
