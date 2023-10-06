@@ -257,7 +257,7 @@ else
 fi
 
 # only do checkpont
-[[ "$software" == Checkpoint ]] && skipEstimate=y
+[[ "$software" == *Checkpoint ]] && skipEstimate=y
 
 mkdir -p $logDir
 job=$logDir/$flag.sh
@@ -424,7 +424,7 @@ echoerr
 echoerr Check if there input file list and this job does not depend on other jobs
 
 # has checkpoint
-if [ -z "$deps" ] && [ "$software" == Checkpoint ] && ls $logDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $logDir/$flag.adjust ]; then
+if [ -z "$deps" ] && [ "$software" == *Checkpoint ] && ls $logDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $logDir/$flag.adjust ]; then
     tText=`cat $logDir/$flag.adjust`
     mem=`echo $tText | cut -d' ' -f1`
     min=`echo $tText | cut -d' ' -f2`
@@ -712,7 +712,7 @@ if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
     [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
     # `echo -e "$wrapCMD" | xargs echo -ne`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    if [[ "$software" == Checkpoint ]]; then
+    if [[ "$software" == *Checkpoint ]]; then
         #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
 
         # echo -e "set -x\nps -u $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
@@ -758,7 +758,7 @@ else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
 
-    if [[ "$software" == Checkpoint ]]; then
+    if [[ "$software" == *Checkpoint ]]; then
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas\\\" $flag $mem $min $extraMem; \"" >> $job
     else
         echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
