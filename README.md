@@ -47,7 +47,8 @@ export PATH=$PWD/smartSlurm/bin:$PATH
 # Create some text files for testing
 createBigTextFiles.sh
 
-# Use ssbatch to replace regular sbatch, set up a fuction. This way, whenever you run sbatch, ssbatch is called. 
+# Use ssbatch to replace regular sbatch, set up a fuction. 
+# This way, whenever you run sbatch, ssbatch is called. 
 sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput.sh
@@ -56,7 +57,8 @@ for i in {1..3}; do
         --wrap="useMemTimeNoInput.sh $i"
 done
 
-# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time so that 90% jobs can finish successfully
+# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
+# and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
 sbatch --mem 2G -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
 
@@ -126,47 +128,13 @@ smartSlrm/config/config.txt contains partion time limit and bash function adjust
 
 \# Genernal partions, ordered by maximum allowed run-time in hours 
 
-partition1Name=short   
+partition1Name=short; partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
 
-partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
+partition2Name=medium; partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
 
-partition2Name=medium  
+partition3Name=long; partition3TimeLimit=720 # run-time > 5 days and <= 30 days
 
-partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
-
-partition3Name=long        
-
-partition3TimeLimit=720 # run-time > 5 days and <= 30 days
-
-partition4Name=      
-
-partition4TimeLimit=  
-
-partition5Name=     
-
-partition5TimeLimit=    
-
-\# Special pertitions with special restrictions
-
-partition6Name=priority    # only allow two job running at the same time        
-
-partition6TimeLimit=720    # run-time <= 30 days
-
-partition7Name=highmem     # run-time <= 30 days, special partision     
-
-partition7TimeLimit=720    # run-time <= 30 days 
-
-partition8Name=interactive      
-
-partition8TimeLimit=12     # run-time <= 12 hours
-
-partition9Name=mpi      
-
-partition9TimeLimit=720    # run-time <= 30 days 
-
-partition10Name=        
-
-partition10TimeLimit=       
+...        
 
 \#function 
 
@@ -177,6 +145,10 @@ adjustPartition() {
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
     
     At end of the job, $jobRecordDir/bin/cleanUp.sh checkes memory and time usage, save the data in to log $jobRecordDir/myJobRecord.txt. If job fails, ssbatch re-submit with double memory or double time, clear up the statistic fomular, so that later jobs will re-caculate statistics, 
+
+4 Checkpoint
+    
+    If checkpoint is enabled, before the job run out of memory or time, ssbatch generate checkpoint and resubmit the job.
 
 6) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 
@@ -229,36 +201,41 @@ cat $PWD/smartSlurm/scripts/bashScriptV1.sh
 14 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output
 
 # Notes about bashScriptV1.sh: 
-The script first finds 1234 in file bigText1.txt in row 6, then finds 5678 in bigText1.txt in row 9, then merges the results into all.txt in orow 14 
+The script first finds 1234 in file bigText1.txt in row 6, then finds 
+5678 in bigText1.txt in row 9, then merges the results into all.txt in orow 14 
 
-# In order tell smart pipeline which step/command we want to submit as Slurm jobs, we add comments above the commands also some helping commands:  
+# In order tell smart pipeline which step/command we want to submit as Slurm jobs, 
+# we add comments above the commands also some helping commands:  
 cat $jobRecordDir/scripts/bashScriptV2.sh
 
 # below is the content of bashScriptV2.sh
 1 #!/bin/sh
 2 
 3 outputs=""
-4 for i in {1..1}; do
-5    input=bigText$i.txt
-6    output=1234.$i.txt
-7    #@1,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
-8    useMemTimeWithInput.sh $input; grep 1234 $input > $output
-9    outputs=$outputs,$output
-10
-11    output=5678.$i.txt
-12    #@2,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
-13    useMemTimeWithInput.sh $input; grep 5678 $input > $output
-14    outputs=$outputs,$output
-15 done
-16 
-17 input=bigText1.txt
-18 output=all.txt
-19 #@3,1.2,useMemTimeWithInput.sh,,,input
-20 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output    
+4 #loopStart:i
+5 for i in {1..1}; do
+6    input=bigText$i.txt
+7    output=1234.$i.txt
+8    #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+9    useMemTimeWithInput.sh $input; grep 1234 $input > $output
+10    outputs=$outputs,$output
+11
+12    output=5678.$i.txt
+13    #@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+14    useMemTimeWithInput.sh $input; grep 5678 $input > $output
+15    outputs=$outputs,$output
+16 done
+17 
+18 input=bigText1.txt
+19 output=all.txt
+20 #@3,1.2,useMemTimeWithInput,,input
+21 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output    
+'''
 
 # Notice that there are a few things added to the script here:
+    Before the for loop start, there is #loopStart:i, which means all the steps inside the loop use $i as part of unique job identifier.
 
-    Step 1 is denoted by #@1,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useMemTimeWithInput.sh, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+    Step 1 is denoted by #@1,0,useMemTimeWithInput.sh,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 7 above), which means this is step 1 that depends on no other step, run software useMemTimeWithInput.sh, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
 
     Step 2 is denoted by #@2,0,useMemTimeWithInput.sh,i,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 12 above), which means this is step2 that depends on no other step, run software useMemTimeWithInput.sh, use the value of $i as unique job identifier for this step, does not use any reference file, and file $input is the input file, needs be copy to /tmp directory if user wants to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.  
 
@@ -1494,7 +1471,6 @@ How does the runAsPipeline RCBio pipeline runner work?
 
 In case you wonder how it works, here is a simple example to explain.
 
-```
 
 ## How does smart pipeline work
 
