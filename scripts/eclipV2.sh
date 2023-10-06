@@ -397,7 +397,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
         --direction r
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
-        #@16,15,cliper,,,sbatch -c 1 -p short -t 12:0:0 --mem 8G 
+        #@16,15,cliper,,,sbatch -c 1 -p medium -t 24:0:0 --mem 10G 
         sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
         clipper --species hg19 \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \

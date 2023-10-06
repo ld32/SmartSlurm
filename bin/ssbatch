@@ -656,9 +656,9 @@ fi
 #echoerr looking partition for hour: $hours ##
 
 # at least 100M and 10 minutes
-[ "$mem" -lt 100 ] && mem=100
+#[ "$mem" -lt 100 ] && mem=100
 
-[ "$min" -lt 10 ] && min=10
+#[ "$min" -lt 10 ] && min=10
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 

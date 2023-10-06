@@ -113,9 +113,9 @@ node=`echo $jobStat | cut -d" " -f7`
 if [ -f $succFile ]; then
     jobStatus=COMPLETED
 elif [[ "$sacct" == *TIMEOUT* ]]; then
-    jobStatus=OOM
+    jobStatus=OOTM
 elif [[ "$sacct" == *OUT_OF_ME* ]]; then
-    jobStatus=OOT
+    jobStatus=OOM
 elif [[ "$sacct" == *FAILED* ]]; then 
     jobStatus=Fail
 elif [[ "$sacct" == *CANCEL* ]]; then 
