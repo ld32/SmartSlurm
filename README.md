@@ -146,11 +146,11 @@ adjustPartition() {
     
     At end of the job, $jobRecordDir/bin/cleanUp.sh checkes memory and time usage, save the data in to log $jobRecordDir/myJobRecord.txt. If job fails, ssbatch re-submit with double memory or double time, clear up the statistic fomular, so that later jobs will re-caculate statistics, 
 
-4 Checkpoint
+4) Checkpoint
     
     If checkpoint is enabled, before the job run out of memory or time, ssbatch generate checkpoint and resubmit the job.
 
-6) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
+5) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 
     $jobRecordDir/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
 
@@ -218,19 +218,19 @@ cat $jobRecordDir/scripts/bashScriptV2.sh
 7    output=1234.$i.txt
 8    #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
 9    useMemTimeWithInput.sh $input; grep 1234 $input > $output
-10    outputs=$outputs,$output
+10   outputs=$outputs,$output
 11
-12    output=5678.$i.txt
-13    #@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
-14    useMemTimeWithInput.sh $input; grep 5678 $input > $output
-15    outputs=$outputs,$output
+12   output=5678.$i.txt
+13   #@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
+14   useMemTimeWithInput.sh $input; grep 5678 $input > $output
+15   outputs=$outputs,$output
 16 done
 17 
 18 input=bigText1.txt
 19 output=all.txt
 20 #@3,1.2,useMemTimeWithInput,,input
 21 useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output    
-'''
+```
 
 # Notice that there are a few things added to the script here:
     Before the for loop start, there is #loopStart:i, which means all the steps inside the loop use $i as part of unique job identifier.
