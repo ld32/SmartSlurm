@@ -3,13 +3,19 @@
 #set -x
 #set -e
 
-# note: user can have their own copy of config as: ~/.smartSlurm/config/config.txt, then modify it.
+# Job record folder can be shared with a group of users.
+# Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
+# User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
+jobRecordDir=/data/groupABC/smartSlurm
 
-# each user has their own job record folder
-jobRecordDir=~/.smartSlurm
+# log folder path
+smartSlurmLogDir=$PWD/logSmartSlurm 
 
-# share a folder with a group of users.
-#jobRecordDir=/data/groupABC/smartSlurm
+# input folder path 
+smartSlurmInputDir=$PWD/inputSmartSlurm
+
+# output folder path 
+smartSlurmOutputDir=$PWD/outputSmartSlurm
 
 defaultMem=2048  # in M
 defaultTime=120  # in min
