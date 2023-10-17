@@ -18,11 +18,16 @@ done
 
 totalSize=$(( $totalSize/1024 )); # convert to M turned
 
-delay=$((start + totalSize * 60 - SECONDS))  # 60 seconds per
+delay=$((start + totalSize * 30 - SECONDS))  # 60 seconds per
 
 echo "...end allocating memory. Begin sleeping for $delay seconds..."
 
-[ "$delay" -ge 1 ] && sleep $delay
+if [ "$delay" -ge 1 ]; then 
+    for i in `seq $delay`; do 
+        echo $i
+        sleep 2
+    done 
+fi 
 
 echo "Done"
 

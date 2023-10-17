@@ -15,7 +15,11 @@ echo "...end allocating memory. Begin sleeping..."
 
 delay=$(( start + delay - SECONDS ))
 
-[ "$delay" -ge 1 ] && sleep $delay
-
+if [ "$delay" -ge 1 ]; then 
+    for i in `seq $delay`; do 
+        echo $i
+        sleep 2
+    done 
+fi 
 echo "Done"
 

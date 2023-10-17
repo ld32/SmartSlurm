@@ -8,26 +8,25 @@ usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn me
 
 echoerr Running: estimateMemTime.sh $@
 
-if [ -f ~/.smartSlurm/config/config.txt ]; then 
-    source ~/.smartSlurm/config/config.txt
-else     
-    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
-fi
+# if [ -z "$smartSlurmJobRecordDir" ]; then 
+#     if [ -f ~/.smartSlurm/config/config.txt ]; then
+#         source ~/.smartSlurm/config/config.txt
+#     else
+#         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
+#     fi
+# fi   
 
 software=$1
 ref=$2 
 inputSize=$3
  
-#echoerr content of .rcbio
-#ls -l ~/.rcbio 1>&2  
-
 
 echoerr Estimating mem:
 memFormu=memFormu:
-if [ -s $jobRecordDir/stats/$software.$ref.mem.stat ]; then   
+if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
     
     unset Finala Finalb Maximum STDFIT
-    .  $jobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.mem.stat.final:
 
@@ -59,10 +58,10 @@ fi
 echoerr Estimating time: 
 timeFormu=timeFormu:
 
-if [ -s $jobRecordDir/stats/$software.$ref.time.stat ]; then
+if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
     
     unset Finala Finalb Maximum STDFIT
-    .  $jobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSlurmJobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.time.stat.final:
 
