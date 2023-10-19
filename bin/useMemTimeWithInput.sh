@@ -22,12 +22,8 @@ delay=$((start + totalSize * 30 - SECONDS))  # 60 seconds per
 
 echo "...end allocating memory. Begin sleeping for $delay seconds..."
 
-if [ "$delay" -ge 1 ]; then 
-    for i in `seq $delay`; do 
-        echo $i
-        sleep 2
-    done 
-fi 
+
+sleep $delay
 
 echo "Done"
 

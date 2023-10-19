@@ -59,6 +59,7 @@ function calculate_resource_usage {
 
     local memory=$(echo "$process_info" | awk '{print $1}')
     local cpu=$(echo "$process_info" | awk '{print $2}')
+    [ -z "$cpu" ] && cpu=0
 
     # Calculate memory and CPU usage of children
     local children=$(ps --ppid $pid -o pid=)
@@ -73,7 +74,7 @@ function calculate_resource_usage {
     # Calculate total memory and CPU usage
     total_memory=$((total_memory + memory))
     total_cpu=$(echo "scale=4; $total_cpu + $cpu"|bc)
-
+    
     echo "$total_memory $total_cpu"
 }
 

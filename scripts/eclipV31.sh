@@ -124,8 +124,8 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             echo working on readgroup: $readgroup
             r2=${r1%_*}_2${r1##*_1}
             
-            mkdir -p $outDir/$dir/$dir2/$readgroup
-            cd $outDir/$dir/$dir2/$readgroup
+            mkdir -p $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
+            cd $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
             
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
@@ -346,9 +346,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 samtools sort -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDup.bam; \
                 samtools index EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam  
 
-                #[ -f $outDir/$dir/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
+                #[ -f $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
                 
-                bamList="$bamList $outDir/$dir/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
+                bamList="$bamList $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
                 #Barcode_collapse_se (SE): takes output from STAR genome mapping. Use umi_tools dedup to identify the extracted random-mer from the previous step and perform PCR duplicate removal.
 
                 #umi_tools dedup \
@@ -362,7 +362,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             cd -    
         done    
     
-        cd $outDir/$dir/$dir2/
+        cd $outDir/${dir1#smartSlurmInputs/}/$dir2/
 
         #Samtools  merge (PE only): Takes inputs from multiple final bam files.  Merges the two technical replicates for further downstream analysis.  
        
@@ -385,32 +385,31 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
 
-        #@6,5,samtools1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-        samtools view -cF 4 EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > mapped_readnum.txt
-       
+        #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
+
+        #@6,5,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
+        sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
+        clipper --processors=12 --quiet --species hg19 \
+        --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+        --save-pickle \
+        --outfile EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"; \
+        samtools view -cF 4 EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt
+        #samtools view -cF 4 EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam > input_mapped_readnum.txt
+                 
         cd -
     done
-
-    #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
-
-    #@7,6,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
-    sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
-    clipper --processors=12 --quiet --species hg19 \
-    --bam $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-    --save-pickle \
-    --outfile $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
-
+    
     #EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     #EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
-    #@8,7,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-    overlap_peakfi_with_bam_PE.pl $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-    $outDir/$dir/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-    $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
-    $outDir/$dir/treatment/mapped_readnum.txt $outDir/$dir/input/mapped_readnum.txt \
-    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed; \
-    compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
-    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
-    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.compressed.bed    
+    #@7,6,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+    overlap_peakfi_with_bam_PE.pl $outDir/$dir1/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    $outDir/$dir1/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
+    $outDir/$dir/treatment/ip_mapped_readnum.txt $outDir/$dir/input/ip_mapped_readnum.txt \
+    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed; \
+    perl compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
+    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
+    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.compressed.bed    
 done
 
 # #Peak normalization vs SMInput and reproducible peak / IDR analysis

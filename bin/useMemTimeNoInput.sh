@@ -11,15 +11,12 @@ for index in $(seq $size); do
     eval array$index=$value
     echo $value >> bigText.txt
 done
-echo "...end allocating memory. Begin sleeping..."
 
 delay=$(( start + delay - SECONDS ))
 
-if [ "$delay" -ge 1 ]; then 
-    for i in `seq $delay`; do 
-        echo $i
-        sleep 2
-    done 
-fi 
+echo "...end allocating memory. Begin sleeping... for $delay seonds"
+
+sleep $delay 
+
 echo "Done"
 

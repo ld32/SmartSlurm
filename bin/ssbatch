@@ -683,7 +683,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  ${slurmAcc#*-A } $inputs $extraMem $extraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $extraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
 
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
@@ -718,7 +718,7 @@ if [ -z "$slurmScript" ]; then
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
         # note: if job OOT or OOM, .success or .failed will not be created
-        echo -e "\nsh -e -o pipefail  -c \"$wrapCMD;\"" > ${job%.sh}.cmd
+        echo -e "for i in \`seq 10000\`; do echo Program running time: \${i}0 s; sleep 10; done &\nsh -e -o pipefail  -c \"$wrapCMD; \" && touch $succFlag" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"" >> ${job%.sh}.cmd
@@ -744,7 +744,7 @@ if [ -z "$slurmScript" ]; then
 
 
 
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem && touch $succFlag\"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
         #echo "srun --mem \$srunM -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
         echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
@@ -755,7 +755,7 @@ else
     #echo "touch $startFlag" >> $job
 
     if [ ! -z "$needCheckpoint" ]; then
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas\\\" $flag $mem $min $extraMem; \"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
     else
         echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
     fi

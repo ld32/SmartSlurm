@@ -4,7 +4,7 @@ outputs=""
 for i in {5..5}; do
     input=bigText$i.txt
     output=1234.$i.txt
-    #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 4:0 
+    #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
     useMemTimeWithInput.sh $input; grep 1234 $input > $output
     outputs=$outputs,$output
 exit    

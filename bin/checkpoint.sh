@@ -1,9 +1,9 @@
 #!/bin/sh
 
-set -x
+#set -x
 
-usage(){            #           1                    2             3              4             5        6
-    echo "checkpoint.sh     <logDir>     <one or more commands> <unique name> <total memory> <total time> <extra memory>"
+usage(){            #           1                    2                3             4              5   
+    echo "checkpoint.sh    <one or more commands> <unique name> <total memory> <total time> <extra memory>"
     exit 1
 }
 
@@ -61,11 +61,11 @@ if ls $checkpointDir/ckpt_*.dmtcp >/dev/null 2>&1; then
     echo Starting from $checkpointDir checkpoint dir size:
     du -hs $checkpointDir
     dmtcp_restart -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT  $checkpointDir/ckpt_*.dmtcp  &
-elif ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1; then
-    mv $checkpointDir/back/ckpt_*.dmtcp $checkpointDir 2>/dev/null
-    echo Starting from $checkpointDir/back. checkpoint dir size:
-    du -hs $checkpointDir
-    dmtcp_restart -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT  $checkpointDir/ckpt_*.dmtcp  &
+# elif ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1; then
+#     mv $checkpointDir/back/ckpt_*.dmtcp $checkpointDir 2>/dev/null
+#     echo Starting from $checkpointDir/back. checkpoint dir size:
+#     du -hs $checkpointDir
+#     dmtcp_restart -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT  $checkpointDir/ckpt_*.dmtcp  &
 else
     dmtcp_launch --ckptdir $checkpointDir -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT  $program &
 fi
@@ -74,45 +74,60 @@ fi
 sleep 20
 status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s`
 if [ $? = 0 ] && [[ "$status" == *"RUNNING=yes"* ]]; then
+    #set -x 
     echo Still running ...
-    ls $checkpointDir/back/ckpt_*.dmtcp >/dev/null 2>&1 && echo -e "CPR:$SLURM_JOBID" | mail -s "CPRead:$SLURM_JOBID:$flag" $USER
-    rm $checkpointDir/back/ckpt_*.dmtcp 2>/dev/null
-    mv $checkpointDir/ckpt_*.dmtcp $checkpointDir/back 2>/dev/null
-    
-    lastRecord=$(ls -r $checkpointDir/job*memCPU.txt | tail -n 1)
-    if [ ! -z "$lastRecord" ]; then 
+    lastFile=$(ls -r $checkpointDir/job*memCPU.txt 2>/dev/null | tail -n 1 )
+    if [ ! -z "$lastFile" ]; then 
         mv $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt.overwrittenByPreviousCheckpoint
-        cat $lastRecord > $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt
+        cat $lastFile > $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt
     fi 
-    touch $smartSlurmLogDir/$flag.startFromCheckpoint
-    #rm $smartSlurmLogDir/$flag/checkpointDone*
+
+    if ls $checkpointDir/ckpt_*.dmtcp 2>/dev/null; then 
+        echo -e "Read checkpoint data sucessfully by job $SLURM_JOBID" | mail -s "CPRead:$SLURM_JOBID:$flag" $USER
+        touch $smartSlurmLogDir/$flag.startFromCheckpoint
+        echo 0 0 0 0 0  jobID:$SLURM_JOBID time:`date` resume from  checkpoint >> $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt
+        rm $checkpointDir/back/ckpt_*.dmtcp 2>/dev/null
+        mv $checkpointDir/ckpt_*.dmtcp $checkpointDir/back 2>/dev/null
+    # esif ls $checkpointDir/back/ckpt_*.dmtcp; then 
+    #      echo -e "Read checkpoint data sucessfully by job $SLURM_JOBID" | mail -s "CPRead:$SLURM_JOBID:$flag" $USER
+    #     touch $smartSlurmLogDir/$flag.startFromCheckpoint && echo 0 0 0 0 0  jobID:$SLURM_JOBID time:`date` resume from  checkpoint >> $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt
+
+    fi 
+
 else
-    echo Something is wrong here. likely out of memory
-    echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
-    touch $smartSlurmLogDir/$flag.likelyCheckpointDoNotWork
-    #exit 1
+    
+    
+    if ls $checkpointDir/ckpt_*.dmtcp 2>/dev/null; then
+        touch $smartSlurmLogDir/$flag.likelyCheckpointOOM
+    else 
+        echo Something is wrong here. likely out of memory
+        echo -e "Checkpoint failed by job :$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
+        touch $smartSlurmLogDir/$flag.likelyCheckpointDoNotWork
+    fi    
+    exit 1
 fi
 
 checkpointed=""
 while true; do
     timeR=$(($(date +%s) - START))
-    echo $timeR
+    #echo $timeR
     if [ -z "$checkpointed" ]; then
+        
         #CURRENT_MEMORY_USAGE=$(grep 'total_rss ' $CGROUP_PATH/memory.stat | cut -d' ' -f2)
         CURRENT_MEMORY_USAGE=`tail -1 $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt | awk '{print $2}'`
         #CURRENT_MEMORY_USAGE=$(( CURRENT_MEMORY_USAGE /1024 ))
-        if [ $timeR -gt 30 ]; then # && [ $(( totalM - CURRENT_MEMORY_USAGE )) -gt $checkpointM ]; then
+        if [ $timeR -gt 120 ]; then # && [ $(( totalM - CURRENT_MEMORY_USAGE )) -gt $checkpointM ]; then
 #            echo already run for two minutes and have plenty of memory to do checkpoint
 
-            if [ $(( totalM - CURRENT_MEMORY_USAGE )) -lt $((extraM *2)) ]; then
-                echo mem low
+            if [ $(( totalM - CURRENT_MEMORY_USAGE )) -lt 100 ]; then
+                echo mem low ...
                 date
                 needCheckpoint="Mem"
                 touch $smartSlurmLogDir/$flag.likelyCheckpointOOM
             fi
 
-            if [ $(( totalT * 60 - $timeR )) -lt 200 ]; then
-                echo Run out of time...
+            if [ $(( totalT * 60 - $timeR )) -lt 120 ]; then
+                echo time low ...
                 date
                 needCheckpoint="Time"
             fi
@@ -134,19 +149,17 @@ while true; do
                     status=`dmtcp_command --bcheckpoint`
                     if [[ $? != 0 ]]; then
                         #[ -f $smartSlurmLogDir/$flag.failed ] && exit 1
-                        echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
+                        echo -e "Wrote checkpoint data failed by job $SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
                         touch $smartSlurmLogDir/$flag.likelyCheckpointOOM
                         #exit 1
                     else
-                        echo -e "CPW:$SLURM_JOBID" | mail -s "CPWrite:$SLURM_JOBID:$flag" $USER
+                        echo -e "Wrote checkpoint data sucessfully by job $SLURM_JOBID" | mail -s "CPWrite:$SLURM_JOBID:$flag" $USER
                         checkpointed=y
                         echo after checkpoint folder size:
                         du -hs $checkpointDir
                         rm dmtcp_restart_script*
 
-
                         echo 0 0 0 0 0  jobID:$SLURM_JOBID time:`date` end checkpoint >> $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt
-
 
                         # copy mem and cpu usage to checkpoint folder
                         cp $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt $checkpointDir
@@ -158,7 +171,7 @@ while true; do
                     fi
                 else
 
-                    echo -e "CPF:$SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
+                    echo -e "Checkpoint failed by job $SLURM_JOBID" | mail -s "CPFail:$SLURM_JOBID:$flag" $USER
                     #[ -f $smartSlurmLogDir/$flag.success ] && { rm $smartSlurmLogDir/$flag.adjust 2>/dev/null || : ; exit; } || exit 1
                     touch $smartSlurmLogDir/$flag.likelyCheckpointOOM
                     #exit 1
@@ -168,8 +181,8 @@ while true; do
         fi
     fi
     sleep 10
-
-    [ -f $smartSlurmLogDir/$flag.success ] && exit 
+    
+    [ -f $smartSlurmLogDir/$flag.success ] && exit
     # status=`dmtcp_command -h $DMTCP_COORD_HOST -p $DMTCP_COORD_PORT -s 2>/dev/null`
     # if [ $? -ne 0 ] || [[ "$status" != *"RUNNING=yes"* ]]; then
     #     echo All done!

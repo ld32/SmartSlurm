@@ -5,6 +5,8 @@
 # to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14    
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
 
+#Running /home/ld32/smartSlurm/bin/cleanUp.sh 16.15.cliper.sample1.treatment cliper none 0 12 10240 15 10240 15 short rccg none 5 5
+
 #smartSlurmLogDir=`dirname $1`
 flag=$1 #`basename $1`
 software=$2
@@ -25,9 +27,9 @@ totalM=$SLURM_MEM_PER_NODE
 [ -z "$totalM" ] &&  totalM=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
 totalT=${9}
-partition=$10
-slurmAcc=$11
-inputs=$12
+partition=${10}
+slurmAcc=${11}
+inputs=${12}
 extraMemC=${13}
 extraTime=${14}
 #skipEstimate=${15} # todo. remove it
@@ -184,14 +186,15 @@ memSacct=${memSacct%M}; memSacct=${memSacct%.*} #remove M and decimals
 
 # Not sure if this is needed.
 [[ "$memSacct" != "NA" ]] && [ "$memSacct" -gt "$srunM" ] && srunM=$memSacct
-
-if [ "$inputs" != "none" ] && [ "$inputSize" == "0" ]; then
+ 
+if [[ "$inputs" != "none" ]] && [[ "$inputSize" == "0" ]]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then
-        echo Some or all input files not exist: $inputs
-        echo Error! missingInputFile: ${inputs//,/ }
-        exit
+        echo Some or all input files not exist: .$inputs.
+        echo Error! missingInputFile: .${inputs//,/ }.
+        echo The input size is used for job records to estimame later job resournce needs. 
+        #exit
     fi
 fi
 
