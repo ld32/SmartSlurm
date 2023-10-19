@@ -105,7 +105,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     dir1=${dir1%/}
     dir=`basename $dir1`
     
-    for dir2 in `ls -dr $dir1/input/  $dir1/treatment/ | xargs -n 1 basename`; do
+    for dir2 in `ls -dr $dir1/input/  $dir1/ip/ | xargs -n 1 basename`; do
         echo working on dir2: $dir2
         pwd 
         ls  $dir1/$dir2/*_1.fastq* 2>/dev/null || ls $dir1/$dir2/*_1.fq* 2>/dev/null || { echo Read file not found for $dir2! Please make sure the fastq files are named as xxx_1.fastq, xxx_2.fastq or xxx_1.fq, xxx_2.fq;  exit 1; }
@@ -396,17 +396,17 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     #@7,6,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
     sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
     clipper --processors=12 --quiet --species hg19 \
-    --bam $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    --bam $outDir/$dir/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     --save-pickle \
-    --outfile $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
+    --outfile $outDir/$dir/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
 
     #EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     #EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
     #@8,7,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-    overlap_peakfi_with_bam_PE.pl $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    overlap_peakfi_with_bam_PE.pl $outDir/$dir/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     $outDir/$dir/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-    $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
-    $outDir/$dir/treatment/mapped_readnum.txt $outDir/$dir/input/mapped_readnum.txt \
+    $outDir/$dir/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
+    $outDir/$dir/ip/mapped_readnum.txt $outDir/$dir/input/mapped_readnum.txt \
     $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed; \
     compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
     $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
