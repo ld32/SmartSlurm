@@ -1,14 +1,15 @@
 #!/bin/bash
 
 #set -x
+set -u 
 
 echo Running: $0 $@
-cd ${1%/log/*}
+cd `dirname $1` #${1%/$smartSlurmLogDir/*}
 echo pwd `pwd`
 
 # requeue failed jobs
-#if ls log/*.requeueCMD 2>/dev/null && mkdir log/requeue.start; then
-#    for requeue in log/*.requeueCMD; do
+#if ls $smartSlurmLogDir/*.requeueCMD 2>/dev/null && mkdir $smartSlurmLogDir/requeue.start; then
+#    for requeue in $smartSlurmLogDir/*.requeueCMD; do
 #        if grep -q $SLURM_JOBID $requeue; then
 #            rm $requeue
 #            rm ${requeue%.requeueCMD}.failed
@@ -17,7 +18,7 @@ echo pwd `pwd`
 #        fi
 #        sleep 1
 #    done
-#    rm -r log/requeue.start
+#    rm -r $smartSlurmLogDir/requeue.start
 #fi
 #set +x
 
@@ -25,14 +26,25 @@ sleep 2
 
 counter=0
 
-jobName=${1#*/log/}
-originalMem=$2
-originalTime=$3
+jobName=`basename $1` #${1#*/$smartSlurmLogDir/}
+#reservedMem=$2
+reservedTime=$3
 
+
+# if jobs has --mem
+reservedMem=$SLURM_MEM_PER_NODE
+
+# if job has --mem-per-cpu and -c
+[ -z "$reservedMem" ] && reservedMem=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
+
+# if job has --mem-per-cpu and -n
+[ -z "$reservedMem" ] &&  reservedMem=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
+
+# max mem for all jobs
 defaultMem=$4
 
-[ -f log/$jobName.adjust ] && originalMem=`cat log/$jobName.adjust | cut -d' ' -f1`
-[ -f log/$jobName.adjust ] && originalTime=`cat log/$jobName.adjust | cut -d' ' -f2`
+#[ -f $jobName.adjust ] && reservedMem=`cat $jobName.adjust | cut -d' ' -f1`
+[ -f $jobName.adjust ] && reservedTime=`cat $jobName.adjust | cut -d' ' -f2`
 
 cancelMailSent=""
 
@@ -86,20 +98,20 @@ while true; do
         done
 
         counter=$((counter + 1))
-        saved=$((defaultMem - originalMem))
+        saved=$((defaultMem - reservedMem))
         [ "$saved" -lt 0 ] && saved=0
 
         total_memory_usage=$((total_memory_usage/1024))
 
-	    echo "$counter $total_memory_usage $(($originalMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> log/job_$SLURM_JOB_ID.memCPU.txt
+	    echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*} `date %s`" >> job_$SLURM_JOB_ID.memCPU.txt
 
     else
         exit
     fi
 
-   	if [ -z "$cancelMailSent" ] && [ "$originalTime" -ge 120 ]; then
+   	if [ -z "$cancelMailSent" ] && [ "$reservedTime" -ge 120 ]; then
         CURRENT=`date +%s`
-        min=$(( $originalTime - ($CURRENT - $START + 59)/60))
+        min=$(( $reservedTime - ($CURRENT - $START + 59)/60))
         if [ $min -le 15 ]; then
             echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
             cancelMailSent=yes

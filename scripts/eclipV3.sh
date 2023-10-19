@@ -99,22 +99,18 @@ export PS4='Line $LINENO: '
 #set -e 
 
 outDir="`pwd`/eclipOut"
-
-#loopStart:dir1
+#loopStart:dir
 for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     echo working on dir1:  $dir1
     dir1=${dir1%/}
+    dir=`basename $dir1`
     
-    inputBamList=""; treatmentBamList=""
-    inputSumList=""; treatmentSumList=""
-    #loopStart:dir2
     for dir2 in `ls -dr $dir1/input/  $dir1/treatment/ | xargs -n 1 basename`; do
         echo working on dir2: $dir2
         pwd 
         ls  $dir1/$dir2/*_1.fastq* 2>/dev/null || ls $dir1/$dir2/*_1.fq* 2>/dev/null || { echo Read file not found for $dir2! Please make sure the fastq files are named as xxx_1.fastq, xxx_2.fastq or xxx_1.fq, xxx_2.fq;  exit 1; }
         
         bamList=""
-        #loopStart:r1
         for r1 in `ls $dir1/$dir2/*_1.fastq* $dir1/$dir2/*_1.fq* 2>/dev/null | xargs -n 1 basename`; do 
             #echo r1 is $r1
             readgroup=${r1%_*}
@@ -128,13 +124,13 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             echo working on readgroup: $readgroup
             r2=${r1%_*}_2${r1##*_1}
             
-            mkdir -p $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
-            cd $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
+            mkdir -p $outDir/$dir/$dir2/$readgroup
+            cd $outDir/$dir/$dir2/$readgroup
             
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
             # umi_tools extract \
-            # --random-seed 1 \
+            # --random-seed 1 \ 
             # --bc-pattern NNNNNNNNNN \
             # --log EXAMPLE_SE.rep1_clip.---.--.metrics \
             # --stdin $r1 \
@@ -143,7 +139,6 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             #Demultiplexing inline barcodes and identify UMIs (PE): Perform demultiplexing using a supplied barcodes FASTA file. Depending on protocol, --length may be longer than 5.
             input=$outDir/../$dir1/$dir2/$r1
 
-            
             #@1,0,demux,,input,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
             demux \
             --metrics EXAMPLE_PE.rep1_clip.---.--.metrics \
@@ -152,9 +147,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             --fastq_2 $outDir/../$dir1/$dir2/$r2 \
             --newname rep2_clip \
             --dataset EXAMPLE_PE \
-            --barcodesfile $outDir/../yeolabbarcodes_20170101.fasta \
+            --barcodesfile /n/data1/cores/bcbio/eclip/eCLIP/example/inputs/yeolabbarcodes_20170101.fasta \
             --length 5  #note: changed from 5
-
+#exit 
             # 	•	Use the FASTA ID for --expectedbarcodeida and --expectedbarcodeidb corresponding to each expected barcode of your IP dir2. Use "NIL" for barcode-less size-matched input
             # 	•	--length describes the length of the UMI to save.
             # 	•	--metrics, --newname, --dataset are all labels that can be used to customize output file names
@@ -188,11 +183,21 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             # To the 5’ adapter
             # CTTCCGATCT
 
-            # Cutadapt round 1: Takes output from demultiplexed files.  Run to trim off both 5’ and 3’ adapters on both reads 
-            #loopStart:barcodeID
+            
+               
+
             for barcodeID in $barcodeIDs; do 
                 
-                #@3,1,cutadapt1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                # Cutadapt round 1: Takes output from demultiplexed files.  Run to trim off both 5’ and 3’ adapters on both reads 
+            
+                #Fastqc round 1: Run and examined by eye to make sure libraries look alright
+            
+                # Cutadapt round 2: Takes output from cutadapt round 1. Run to trim off the 3’ adapters on read 2, to control for double ligation events.  
+
+                #Fastqc round 2: Takes output from STAR rmRep.  Runs a second round of fastqc to verify that after read grooming the data still is usable.  
+                #Fastq-sort: Takes cutadapt round 2 output and sorts to reduce randomness 
+
+                #@2,1,cutadapt,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
                 sh -c "module load python/2.7.12 cutadapt/1.14; cutadapt \
                 -f fastq \
                 --match-read-wildcards \
@@ -227,15 +232,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq \
                 -p EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq \
                 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.gz \
-                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.gz" 
-
-                #Fastqc round 1: Run and examined by eye to make sure libraries look alright
-                #@4,3,fastqc,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.gz";  \
                 fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq -o .; \
-                fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq -o .
-
-                # Cutadapt round 2: Takes output from cutadapt round 1. Run to trim off the 3’ adapters on read 2, to control for double ligation events.  
-                #@5,3,cutadapt,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq -o . ; \
                 sh -c "module load python/2.7.12 cutadapt/1.14; cutadapt \
                 -f fastq \
                 --match-read-wildcards \
@@ -267,25 +266,23 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.fq \
                 -p EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.fq \
                 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTr.fq \
-                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq; "
-
-                #Fastqc round 2: Takes output from STAR rmRep.  Runs a second round of fastqc to verify that after read grooming the data still is usable.  
-                #Fastq-sort: Takes cutadapt round 2 output and sorts to reduce randomness 
-
-                #@6,5,fastqc-fastq,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTr.fq; "; \
                 fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.fq -o .; \
                 fastqc -t 2 --extract -k 7 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.fq -o . ; \
                 fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.fq; \
                 fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r2.fqTrTr.sorted.fq
 
                 #STAR rmRep: Takes sorted output from cutadapt round 2.  Maps to human specific version of RepBase used to remove repetitive elements, helps control for spurious artifacts from rRNA (& other) repetitive reads. 
+
+                #Fastq-sort: Takes unmapped output from STAR rmRep and sorts it to account for issues with STAR not outputting first and second mate pairs in order
+
                 rIndex=$outDir/../hg113seqs_repbase_starindex
                 input=EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.fq
-                #@7,6,star,rIndex,input,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
+                #@3,2,star,rIndex,input,sbatch -c 2 -p short -t 2:0:0 --mem 20G  
                 STAR \
                 --runMode alignReads \
                 --runThreadN 2 \
-                --genomeDir $outDir/../hg113seqs_repbase_starindex \
+                --genomeDir /n/data1/cores/bcbio/eclip/eCLIP/example/inputs/hg113seqs_repbase_starindex \
                 --genomeLoad NoSharedMemory \
                 --alignEndsType EndToEnd \
                 --outSAMunmapped Within \
@@ -305,21 +302,22 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 mv EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.STARAligned.out.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-mapped.bam; \
                 mv EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.STARUnmapped.out.mate1 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.fq; \
                 mv EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.STARUnmapped.out.mate2 EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.repeat-unmapped.fq; \
-                cat EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.STARLog.out
-
-                #Fastq-sort: Takes unmapped output from STAR rmRep and sorts it to account for issues with STAR not outputting first and second mate pairs in order
-                #@8,7,fastq-sort1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                cat EXAMPLE_PE.rep2_clip.$barcodeID.r1.fqTrTr.sorted.STARLog.out; \
                 fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.fq; \
                 fastq-sort --id EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.repeat-unmapped.fq > EXAMPLE_PE.rep2_clip.$barcodeID.r2.fq.repeat-unmapped.sorted.fq
 
                 #STAR genome mapping: Takes output from STAR rmRep.  Maps unique reads to the human genome
-                gIndex=$outDir/../hg19chr19kbp550_starindex    
+                #Name sort BAM: sort output from STAR by name to ensure read pairs are adjacent.
+                #Barcode_collapse_pe (PE): takes output from STAR genome mapping.  Custom random-mer-aware script for PCR duplicate removal. 
+                #Position sort BAM:  Takes output from barcode collapse PE (or from SE namesort bam).  Sorts resulting bam file for use downstream.  
+
+                gIndex=hg19chr19kbp550_starindex    
                 input=EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.fq
-                #@9,8,star1,gIndex,,sbatch -c 2 -p short -t 2:0:0 --mem 20G 
+                #@4,3,star1,gIndex,,sbatch -c 2 -p short -t 2:0:0 --mem 20G 
                 STAR \
                 --runMode alignReads \
                 --runThreadN 2 \
-                --genomeDir $outDir/../hg19chr19kbp550_starindex \
+                --genomeDir /n/data1/cores/bcbio/eclip/eCLIP/example/inputs/hg19chr19kbp550_starindex \
                 --genomeLoad NoSharedMemory \
                 --readFilesIn \
                 EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.fq \
@@ -339,31 +337,18 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 --outBAMcompression 10 \
                 --outSAMmode Full; \
                 mv EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.STARAligned.out.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mapped.bam; \
-                cat EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.STARLog.out
-
-                #Name sort BAM: sort output from STAR by name to ensure read pairs are adjacent.
-    
-                #@10,9,satools,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-                samtools sort -n -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mapped.bam; 
-                #\
-                #samtools index EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.bam
-
-                #Barcode_collapse_pe (PE): takes output from STAR genome mapping.  Custom random-mer-aware script for PCR duplicate removal.  
-                #@11,10,collap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                cat EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.repeat-unmapped.sorted.STARLog.out; \
+                samtools sort -n -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mapped.bam; \
                 barcodecollapsepe.py \
                 -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDup.bam \
                 -m EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDup.metrics \
-                -b EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.bam 2>&1 > $barcodeID.barcodecollapsepe.log
-
-
-                #Position sort BAM:  Takes output from barcode collapse PE (or from SE namesort bam).  Sorts resulting bam file for use downstream.  
-                #@12,11,samtools1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+                -b EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.bam 2>&1 > $barcodeID.barcodecollapsepe.log; \
                 samtools sort -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDup.bam; \
                 samtools index EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam  
 
-                #[ -f $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
+                #[ -f $outDir/$dir/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
                 
-                bamList="$bamList $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
+                bamList="$bamList $outDir/$dir/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
                 #Barcode_collapse_se (SE): takes output from STAR genome mapping. Use umi_tools dedup to identify the extracted random-mer from the previous step and perform PCR duplicate removal.
 
                 #umi_tools dedup \
@@ -377,73 +362,55 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             cd -    
         done    
     
-        cd $outDir/${dir1#smartSlurmInputs/}/$dir2/
+        cd $outDir/$dir/$dir2/
 
         #Samtools  merge (PE only): Takes inputs from multiple final bam files.  Merges the two technical replicates for further downstream analysis.  
+       
         #samtools  merge EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.merged.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.D8f.r1.fq.genome-mappedSo.rmDupSo.bam; \
-        #@13,12,samtools2,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-        samtools  merge -f EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam $bamList; \
-        samtools  index  EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam  
-
+        
         #Samtools view (PE only):  Takes output from samtools merge.  Only outputs the second read in each pair for use with a single stranded peak caller.  This is the final bam file to perform analysis on.  
-        #@14,13,samtools3,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-        samtools view -f 128 -b -o EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam
-
+        
         #Make normalized read density bigwig files: Takes input from samtools view.  Makes bw files to be uploaded to the genome browser or for other visualization. Use --direction f for SE clip as reads are not reversed.
 
-        #@15,14,wig,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+        #@5,4,samtools,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+        samtools  merge -f EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam $bamList; \
+        samtools  index  EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam; \
+        samtools view -f 128 -b -o EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.bam; \
         makebigwigfiles \
         --bw_pos EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.pos.bw \
         --bw_neg EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.norm.neg.bw \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-        --genome $outDir/../hg19chr19kbp550_starindex/chrNameLength.txt \
+        --genome /n/data1/cores/bcbio/eclip/eCLIP/example/inputs/hg19chr19kbp550_starindex/chrNameLength.txt \
         --direction r
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
-        #@16,15,cliper,,,sbatch -c 1 -p medium -t 24:0:0 --mem 10G 
-        sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
-        clipper --species hg19 \
-        --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
-        --save-pickle \
-        --outfile EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
 
-        #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
-        #@17,16,samtools4,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-        samtools view -cF 4 EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt
-        #samtools view -cF 4 EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam > input_mapped_readnum.txt
-                 
-        if [[ "$dir2" == *input ]]; then 
-            inputBamList="$inputBamList $outDir/$dir1/$dir2/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam"
-            inputSumList="$inputSumList $outDir/$dir1/$dir2/ip_mapped_readnum.txt"   
-        else 
-            treatmentBamList="$treatmentBamList $outDir/$dir1/$dir2/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam"
-            treatmentSumList="$treatmentSumList $outDir/$dir1/$dir2/ip_mapped_readnum.txt"
-        fi
+        #@6,5,samtools1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+        samtools view -cF 4 EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > mapped_readnum.txt
+       
         cd -
     done
-    
-    [ ! -z "$inputBamList" ] && [ ! -z "$treatmentBamList" ] || continue 
+
+    #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
+
+    #@7,6,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
+    sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
+    clipper --processors=12 --quiet --species hg19 \
+    --bam $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    --save-pickle \
+    --outfile $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
+
     #EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     #EXAMPLE_PE.rep2_input.NIL.r1.fq.genome-mappedSo.rmDupSo.r2.bam \
-    #@18,17,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-    overlap_peakfi_with_bam_PE.pl $inputBamList \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClustersInput.bed \
-    $inputSumList \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClustersInput.normed.bed; \
-    perl compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normedInput.bed \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normedInput.compressed.bed   
-
-    #@19,17,overlap1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-    overlap_peakfi_with_bam_PE.pl $treatmentBamList \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
-    $treatmentSumList \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed
-
-    #@20,18.19,perl,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-    perl compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normedTreatment.bed \
-    EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normedTreatment.compressed.bed      
+    #@8,7,overlap,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
+    overlap_peakfi_with_bam_PE.pl $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    $outDir/$dir/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
+    $outDir/$dir/treatment/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed \
+    $outDir/$dir/treatment/mapped_readnum.txt $outDir/$dir/input/mapped_readnum.txt \
+    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed; \
+    compress_l2foldenrpeakfi_for_replicate_overlapping_bedformat.pl \
+    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.bed \
+    $outDir/$dir/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.normed.compressed.bed    
 done
 
 # #Peak normalization vs SMInput and reproducible peak / IDR analysis

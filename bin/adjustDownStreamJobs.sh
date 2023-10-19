@@ -8,18 +8,12 @@ echo
 
 echo Running: $0  $@
 
-if [ -f ~/.smartSlurm/config/config.txt ]; then
-    source ~/.smartSlurm/config/config.txt
-else
-    source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
-fi
+smartSlurmJobRecordDir=$1
 
-path=$1
-
-[ -f $path/allJobs.txt ] || { echo -e "job id file $path/allJobs.txt does not exist\n$Usage"; exit 1; }
+[ -f $smartSlurmLogDir/allJobs.txt ] || { echo -e "job id file $smartSlurmLogDir/allJobs.txt does not exist\n$Usage"; exit 1; }
 
 # jobid, deps, flag, software, ref, input, inputSize
-text=`cat $path/allJobs.txt`
+text=`cat $smartSlurmLogDir/allJobs.txt`
 
 #job=$2
 
@@ -29,7 +23,7 @@ IFS=$' ';
 #id=`echo $text | awk '{if ($3 ~ /'"$job/"') print $1;}' | tail -n 1`
 
 #echo -e "Find current job id (flag: $job):\n$id"
-#[ -z "$id" ] && { echo -e "job id for job name $job not found in $path/allJobs.txt!"; exit; }
+#[ -z "$id" ] && { echo -e "job id for job name $job not found in $smartSlurmLogDir/allJobs.txt!"; exit; }
 
 #echo
 
@@ -51,10 +45,10 @@ for i in $output; do
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]}
 
-    #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $jobRecordDir/stats/extraMem.$software.$ref | tail -n1`
-    #[ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $jobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
+    #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1`
+    #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
 
-    [ -f $jobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $jobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
+    [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
 
     allDone=""
     IFS=$' ';
@@ -63,7 +57,7 @@ for i in $output; do
         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
-        [ -f "$path/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; }
+        [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; }
     done
 
 
@@ -72,24 +66,24 @@ for i in $output; do
         # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
         [[ "$inputs" == "none" ]] && scontrol release $id && continue
 
-        [ -f $path/$name.adjust ] && scontrol release $id && continue
+        [ -f $smartSlurmLogDir/$name.adjust ] && scontrol release $id && continue
 
-        #ls -lrt $path
+        #ls -lrt $smartSlurmLogDir
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
 
-        echo -e "Re-adjust resource by upsteam job job:" >> $path/$name.out
-        grep ^$SLURM_JOB_ID $path/allJobs.txt | awk '{print $1,  $2,  $3}' >> $path/$name.out
+        echo -e "Re-adjust resource by upsteam job job:" >> $smartSlurmLogDir/$name.out
+        grep ^$SLURM_JOB_ID $smartSlurmLogDir/allJobs.txt | awk '{print $1,  $2,  $3}' >> $smartSlurmLogDir/$name.out
 
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
         if [[ "$inputSize" == "notExist" ]]; then
             scancel $id
-            pwd >> $path/$name.out
-            echo One or multiple inputs are missing for this job. Cancelling it... >> $path/$name.out
-            echo -e "inputs:.${inputs}.-.${inputs//,/}." >> $path/$name.out
-            echo ${inputs//,/ } >> $path/$name.out
-            touch $path/$name.missingInnput.has.to.cancel
-            toSend=`cat $path/$name.out`
+            pwd >> $smartSlurmLogDir/$name.out
+            echo One or multiple inputs are missing for this job. Cancelling it... >> $smartSlurmLogDir/$name.out
+            echo -e "inputs:.${inputs}.-.${inputs//,/}." >> $smartSlurmLogDir/$name.out
+            echo ${inputs//,/ } >> $smartSlurmLogDir/$name.out
+            touch $smartSlurmLogDir/$name.missingInnput.has.to.cancel
+            toSend=`cat $smartSlurmLogDir/$name.out`
             s="Cancel:$id:MissingInput:${inputs//,/ }"
             echo -e "$toSend" | mail -s "$s" $USER && echo Cancel email sent by second try. || \
             { echo Cancel email still not sent!! Try again.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Cancel email sent by second try. || echo Cancel email still not sent!!; }
@@ -97,10 +91,10 @@ for i in $output; do
             continue
         fi
 
-        if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then
+        if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
             output=`estimateMemTime.sh $software $ref $inputSize`
-            resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
-            resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $jobRecordDir/stats/$software.$ref.time.stat`\n"
+            resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`\n"
+            resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat`\n"
             resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
             echo "Output from estimateMemTime.sh: $output"
 
@@ -115,12 +109,12 @@ for i in $output; do
             fi
         fi
 
-        if [[ "$output" == "outOfRange" ]] && test `find $jobRecordDir/stats/$software.$ref.mem.stat -mmin +20` || [ ! -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then
+        if [[ "$output" == "outOfRange" ]] && test `find $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat -mmin +20` || [ ! -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
             echo "Do not have a formula, or it is old and out of range. Let us build one..."
 
-            echo "Do not have a formula, or it is old and out of range. Let us build one..."  >> $path/$name.out
+            echo "Do not have a formula, or it is old and out of range. Let us build one..."  >> $smartSlurmLogDir/$name.out
 
-            #[ test `find $jobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $jobRecordDir/jobRecord.txt
+            #[ test `find $smartSlurmJobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
 
             #jobStatistics.sh $software ${ref//\//-} 4 1>&2
 
@@ -128,19 +122,19 @@ for i in $output; do
 
             #filter by software and reference
 
-            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $jobRecordDir/stats/$software.$ref.mem.txt
-            grep COMPLETED $jobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $jobRecordDir/stats/$software.$ref.time.txt
+            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
+            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt | awk -F"," -v a=$software -v b=$ref '{ if($12 == a && $13 == b) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
 
-            echo "Got mem data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.mem.txt):"
-            cat $jobRecordDir/stats/$software.$ref.mem.txt
+            echo "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt):"
+            cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
 
-            echo "Got time data from jobRecord.txt (content of $jobRecordDir/stats/$software.$ref.time.txt):"
-            cat $jobRecordDir/stats/$software.$ref.time.txt
+            echo "Got time data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$software.$ref.time.txt):"
+            cat $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
 
-            if [[ $(wc -l <$jobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
+            if [[ $(wc -l <$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
 
                 echo There are less than 3 records. No way to fit a curve.
-                echo There are less than 3 records. No way to fit a curve. >> $path/$name.out
+                echo There are less than 3 records. No way to fit a curve. >> $smartSlurmLogDir/$name.out
 
             else
 
@@ -155,43 +149,43 @@ for i in $output; do
 
                 # echo RSquare="$(gnuplot -e 'stats "time.txt" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> time.stat.txt
 
-                # mv $OUT/mem.stat.txt $jobRecordDir/stats/$software.$ref.mem.stat
-                # mv $OUT/time.stat.txt $jobRecordDir/stats/$software.$ref.time.stat
+                # mv $OUT/mem.stat.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
+                # mv $OUT/time.stat.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
                 # echo There are more than $ref jobs already run for this software, statics is ready for current job:
                 # echo Memeory statisics:
                 # echo "inputsize vs. mem(M)"
-                # cat $jobRecordDir/stats/$software.$ref.mem.stat
+                # cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
                 # echo
                 # echo Time statistics:
                 # echo "inputsize  vs. time(minute)"
-                # cat $jobRecordDir/stats/$software.$ref.time.stat
+                # cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
 
-                # mv $OUT/mem.txt $jobRecordDir/stats/$software.$ref.mem.txt
-                # mv $OUT/time.txt $jobRecordDir/stats/$software.$ref.time.txt
+                # mv $OUT/mem.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
+                # mv $OUT/time.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
 
-                # convert $OUT/mem.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.mem.pdf
-                # convert $OUT/time.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.time.pdf
-                # pdftoppm $jobRecordDir/stats/$software.$ref.mem.pdf  -png > $jobRecordDir/stats/$software.$ref.mem.png
-                # pdftoppm $jobRecordDir/stats/$software.$ref.time.pdf  -png > $jobRecordDir/stats/$software.$ref.time.png
+                # convert $OUT/mem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
+                # convert $OUT/time.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
+                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
+                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.time.png
 
                 # echo
                 # echo You can see the plot using commands:
-                # echo display $jobRecordDir/stats/$software.$ref.mem.pdf
-                # echo display $jobRecordDir/stats/$software.$ref.time.pdf
+                # echo display $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
+                # echo display $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
 
                 # cd -
 
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$jobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.mem.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
 
-                echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.mem.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.mem.stat
+                echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
 
-                sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.mem.stat
+                sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
 
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$jobRecordDir/stats/$software.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $jobRecordDir/stats/$software.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $jobRecordDir/stats/$software.$ref.time.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$software.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$software.$ref.time.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$software.$ref.time.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.time.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
 
-                echo RSquare="$(gnuplot -e 'stats "'"$jobRecordDir/stats/$software.$ref.time.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $jobRecordDir/stats/$software.$ref.time.stat
+                echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.time.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
 
-                sed -i 's/\x0//g' $jobRecordDir/stats/$software.$ref.time.stat
+                sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
 
                 # make plot and calculate statistics
                 # gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> time.stat.txt
@@ -200,38 +194,38 @@ for i in $output; do
                 echo There are more than 3 $software $ref jobs already run for this software, statics is ready for current job:
                 # echo Memeory statisics:
                 # echo "inputsize mem(M)"
-                # cat $jobRecordDir/stats/$software.$ref.mem.stat
+                # cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
                 # echo
                 # echo Time statistics:
                 # echo "inputsize time(minute)"
-                # cat $jobRecordDir/stats/$software.$ref.time.stat
+                # cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
 
-                # mv $OUT/mem.txt $jobRecordDir/stats/$software.$ref.mem.txt
-                # mv $OUT/time.txt $jobRecordDir/stats/$software.$ref.time.txt
+                # mv $OUT/mem.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
+                # mv $OUT/time.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
 
-                # convert $OUT/mem.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.mem.pdf
-                # convert $OUT/time.pdf -background White -flatten $jobRecordDir/stats/$software.$ref.time.pdf
-                # pdftoppm $jobRecordDir/stats/$software.$ref.mem.pdf  -png > $jobRecordDir/stats/$software.$ref.mem.png
-                # pdftoppm $jobRecordDir/stats/$software.$ref.time.pdf  -png > $jobRecordDir/stats/$software.$ref.time.png
+                # convert $OUT/mem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
+                # convert $OUT/time.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
+                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
+                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.time.png
 
                 echo
                 echo You can see the plot using commands:
-                echo display $jobRecordDir/stats/$software.$ref.mem.png
-                echo display $jobRecordDir/stats/$software.$ref.time.png
+                echo display $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
+                echo display $smartSlurmJobRecordDir/stats/$software.$ref.time.png
 
                 # cd -
 
 
 
-                # echo got files in $jobRecordDir/stats:
-                # ls -lrt $jobRecordDir/stats
+                # echo got files in $smartSlurmJobRecordDir/stats:
+                # ls -lrt $smartSlurmJobRecordDir/stats
 
-                if [ -f $jobRecordDir/stats/$software.$ref.mem.stat ]; then
+                if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
                     output=`estimateMemTime.sh $software $ref $inputSize`
-                    #resAjust="$resAjust`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
-                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $jobRecordDir/stats/$software.$ref.mem.stat`\n"
+                    #resAjust="$resAjust`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`\n"
+                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the mem fomular:\n`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`\n"
 
-                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $jobRecordDir/stats/$software.$ref.time.stat`\n"
+                    resAjust="$resAjust\nInputSize: $inputSize\nHere is the time fomular:\n`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat`\n"
 
                     resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
                     echo "Output from estimateMemTime.sh: $output"
@@ -256,7 +250,7 @@ for i in $output; do
 
         echo -e "$resAjust"
 
-        echo -e "$resAjust\n" >> $path/$name.out
+        echo -e "$resAjust\n" >> $smartSlurmLogDir/$name.out
 
         [ -z "$mem" ] && continue
 
@@ -264,7 +258,7 @@ for i in $output; do
 
         #echo Got estimation inputsize: $inputSize mem: $mem  time: $min
 
-        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $path/$name.out
+        #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $smartSlurmLogDir/$name.out
         hours=$((($min + 59) / 60))
 
         echo looking partition for hour: $hours
@@ -279,20 +273,20 @@ for i in $output; do
 
         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
 
-        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $path/$name.out
+        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $smartSlurmLogDir/$name.out
 
         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
         #scontrol show job $id
 
         scontrol release $id
 
-        echo $mem $min $extraMem > $path/$name.adjust
+        echo $mem $min $extraMem > $smartSlurmLogDir/$name.adjust
 
-        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> $path/$name.out
+        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> $smartSlurmLogDir/$name.out
 
-        #echo $mem $min> $path/$name.adjust
-        #touch $path/$name.adjusted
-        #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $path/$name.sh
+        #echo $mem $min> $smartSlurmLogDir/$name.adjust
+        #touch $smartSlurmLogDir/$name.adjusted
+        #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $smartSlurmLogDir/$name.sh
     else
         echo Need wait for other jobs to finish before we can ajust mem and runtime...
     fi

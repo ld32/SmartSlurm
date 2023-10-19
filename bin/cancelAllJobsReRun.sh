@@ -8,9 +8,11 @@ out=`squeue -u $USER -t PD,R -o "%.18i"`
 
 [ -z "$out" ] && exit 0;
 
+#smartSlurmLogDir=$1
+
 declare -A nmap
 
-lines=`tail -n +2 log/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+lines=`tail -n +2 $smartSlurmLogDir/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
@@ -36,11 +38,11 @@ if [ ! -z "${ids/ /}" ]; then
         for id in $ids; do #`echo -e "$ids" | cut -d' ' -f1`; do
           scancel $id
           echo ${nmap[$id]} cancelled.
-          touch log/${nmap[$id]}.user.killed
+          touch $smartSlurmLogDir/${nmap[$id]}.user.killed
         done
     elif [[ "$x" == "n" ]]; then
-        #cat log/allJobs.txt.old >> log/allJobs.txt
-        echo -e  "$notDone" > log/keepRunningJobs.txt
+        #cat $smartSlurmLogDir/allJobs.txt.old >> $smartSlurmLogDir/allJobs.txt
+        echo -e  "$notDone" > $smartSlurmLogDir/keepRunningJobs.txt
         #echo This is still under development!
         #exit 1
     else

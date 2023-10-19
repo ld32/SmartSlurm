@@ -6,6 +6,8 @@ usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least colum
 
 #set -x 
 
+smartSlurmLogDir=`dirname $1`
+
 IFS=$'\n'
 
 out=`squeue -u $USER -o "%.18i"`
@@ -37,7 +39,7 @@ if [ ! -z "${ids/ /}" ]; then
         for id in $ids; do #`echo -e "$ids" | cut -d' ' -f1`; do
           scancel $id
           echo ${nmap[$id]} cancelled.
-          touch log/${nmap[$id]}.user.killed
+          touch $smartSlurmLogDir/${nmap[$id]}.user.killed
         done
     else
         exit 1;

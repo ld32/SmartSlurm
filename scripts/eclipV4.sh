@@ -99,22 +99,20 @@ export PS4='Line $LINENO: '
 #set -e 
 
 outDir="`pwd`/eclipOut"
-
-#loopStart:dir1
+#loopStart:dir
 for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     echo working on dir1:  $dir1
     dir1=${dir1%/}
-    
+    dir=`basename $dir1`
     inputBamList=""; treatmentBamList=""
     inputSumList=""; treatmentSumList=""
-    #loopStart:dir2
+    
     for dir2 in `ls -dr $dir1/input/  $dir1/treatment/ | xargs -n 1 basename`; do
         echo working on dir2: $dir2
         pwd 
         ls  $dir1/$dir2/*_1.fastq* 2>/dev/null || ls $dir1/$dir2/*_1.fq* 2>/dev/null || { echo Read file not found for $dir2! Please make sure the fastq files are named as xxx_1.fastq, xxx_2.fastq or xxx_1.fq, xxx_2.fq;  exit 1; }
         
         bamList=""
-        #loopStart:r1
         for r1 in `ls $dir1/$dir2/*_1.fastq* $dir1/$dir2/*_1.fq* 2>/dev/null | xargs -n 1 basename`; do 
             #echo r1 is $r1
             readgroup=${r1%_*}
@@ -134,7 +132,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
             # umi_tools extract \
-            # --random-seed 1 \
+            # --random-seed 1 \ 
             # --bc-pattern NNNNNNNNNN \
             # --log EXAMPLE_SE.rep1_clip.---.--.metrics \
             # --stdin $r1 \
@@ -143,7 +141,6 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             #Demultiplexing inline barcodes and identify UMIs (PE): Perform demultiplexing using a supplied barcodes FASTA file. Depending on protocol, --length may be longer than 5.
             input=$outDir/../$dir1/$dir2/$r1
 
-            
             #@1,0,demux,,input,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
             demux \
             --metrics EXAMPLE_PE.rep1_clip.---.--.metrics \
@@ -154,7 +151,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             --dataset EXAMPLE_PE \
             --barcodesfile $outDir/../yeolabbarcodes_20170101.fasta \
             --length 5  #note: changed from 5
-
+#exit 
             # 	•	Use the FASTA ID for --expectedbarcodeida and --expectedbarcodeidb corresponding to each expected barcode of your IP dir2. Use "NIL" for barcode-less size-matched input
             # 	•	--length describes the length of the UMI to save.
             # 	•	--metrics, --newname, --dataset are all labels that can be used to customize output file names
@@ -189,7 +186,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             # CTTCCGATCT
 
             # Cutadapt round 1: Takes output from demultiplexed files.  Run to trim off both 5’ and 3’ adapters on both reads 
-            #loopStart:barcodeID
+            
             for barcodeID in $barcodeIDs; do 
                 
                 #@3,1,cutadapt1,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
@@ -400,13 +397,13 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
         --direction r
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
-        #@16,15,cliper,,,sbatch -c 1 -p medium -t 24:0:0 --mem 10G 
+        #@16,15,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
         sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
-        clipper --species hg19 \
+        clipper --processors=12 --quiet --species hg19 \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
         --save-pickle \
         --outfile EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed"
-
+ 
         #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
         #@17,16,samtools4,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
         samtools view -cF 4 EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam > ip_mapped_readnum.txt
