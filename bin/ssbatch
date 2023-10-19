@@ -38,7 +38,6 @@ usage() { echoerr -e "Short Usage: \n${0##*/} [-S software] [-R reference] [-F u
 [[ "-h" == "$1" ]] && usage
 
 [[ "--help" == "$1" ]] && usage
-smartSlurmJobRecordDir=smartSlurmJobRecordDir/lo
 
 if [ -z "$smartSlurmJobRecordDir" ]; then 
     if [ -f ~/.smartSlurm/config/config.txt ]; then
