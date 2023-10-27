@@ -357,23 +357,47 @@ if [[ "$testRun" == "run" ]]; then
         # check the third column for the job name, then find the the job id in column 1
         out=`cat $smartSlurmLogDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }
-        if [ ! -z "$id" ]; then
+        
+        # this job was submitted earlier
+        if [ ! -z "$id" ]; then 
+            
+            # this job still running or pending
+            # todo: need troubleshoot this part. If dependency condition changed, need resubmit the job
             if grep ^$id $smartSlurmLogDir/keepRunningJobs.txt 1>/dev/null; then
-                echoerr thisJobStillRunning $id here
-                echo $id
-                exit
+                
+                # check if upsteam job is resubmitted
+                upstreamResubmitted=""
+                if [[ $de != null ]]; then
+                    if [[ $de == ${de/\./} ]]; then
+                        [ -f $smartSlurmLogDir/${de/\./}.resubmitted ] && upstreamResubmitted=y
+                    else
+                        for t in ${de//\./ }; do
+                            [ -f $smartSlurmLogDir/$t.resubmitted ] && upstreamResubmitted=y
+                        done
+                    fi
+                fi
+
+                # the job still running, but the dependency contidtion is change, need cancel it. 
+                if [ ! -z "$upstreamResubmitted" ] || [[ "$de" != "$depsO" ]]; then 
+                    echoerr "Running job job is cancelled: $id" && scancel $id  
+                else 
+                
+                    echoerr thisJobStillRunning $id here
+                    echo $id
+                    exit
+                fi     
             else
-                if [[ $de == null ]]; then
+                if [[ $depsO == null ]]; then
                     depsR="" #dependency=\"\""
                     #resAjust="#Depend on
 
-                elif [[ $de == ${de/\./} ]]; then
+                elif [[ $depsO == ${depsO/\./} ]]; then
                     #resAjust="#Depend on single job\n"
-                    depsR="dependency=afterok:${de/\./}"
+                    depsR="dependency=afterok:${depsO/\./}"
                 else
                     #resAjust="#Depend on multiple jobs\n"
                     tmp=""
-                    for t in ${de//\./ }; do
+                    for t in ${depsO//\./ }; do
                         #echoerr working on $t  test
                         tmp="$tmp:$t"
                     done
@@ -382,18 +406,15 @@ if [[ "$testRun" == "run" ]]; then
 
                 scontrol requeue $id
 
+                touch $smartSlurmLogDir/$id.resubmitted
+
                 [ ! -z "$depsR" ] && scontrol update job=$id  $depsR && scontrol hold $id
                 echo "Resubmit#$id-#$de-#$flag" >> $smartSlurmLogDir/allJobs.txt
                 echo $id
                 #rm $smartSlurmLogDir/$flag.success 2>/dev/null
                 rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
                 exit
-            fi
-            
-            # if the job is still active, need cancel it, because the depency condition might changed 
-        elif [ -f $smartSlurmLogDir/keepRunningJobs.txt ]; then  
-            $id=`cat $smartSlurmLogDir/keepRunningJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1;}' | tail -n 1`
-            [ ! -z "$id" ] && echoerr "previous job is cancelled: $id" && scancel $id         
+            fi       
         fi
         #set +x
     fi

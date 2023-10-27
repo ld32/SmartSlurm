@@ -64,9 +64,15 @@ for i in $output; do
     if [ -z "$allDone" ]; then
         date
         # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
-        [[ "$inputs" == "none" ]] && scontrol release $id && continue
+        if [[ "$inputs" == "none" ]]; then 
+            scontrol release $id 
+            continue
+        fi    
 
-        [ -f $smartSlurmLogDir/$name.adjust ] && scontrol release $id && continue
+        if [ -f $smartSlurmLogDir/$name.adjust ]; then 
+            scontrol release $id
+            continue
+        fi 
 
         #ls -lrt $smartSlurmLogDir
         echo Dependants for $name are all done. Ready to adjust mem/runtime...

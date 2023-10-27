@@ -1,0 +1,28 @@
+#!/usr/bin/env eCLIP_full_IDR_pipeline_2inputs_scatter_singleNode
+
+species: hg19
+samples:
+  - 
+    - name: "rep1"
+      ip_bam: 
+        class: File
+        path: eclipOut/rep1/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam
+      input_bam:
+        class: File
+        path: eclipOut/rep1/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam
+      peak_clusters:
+        class: File
+        path: eclipOut/rep1/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed
+    - name: "rep2"
+      ip_bam: 
+        class: File
+        path: eclipOut/rep2/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam
+      input_bam:
+        class: File
+        path: eclipOut/rep2/input/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam
+      peak_clusters:
+        class: File
+        path: eclipOut/rep2/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.peakClusters.bed
+chrom_sizes:
+  class: File
+  path: /n/data1/cores/bcbio/eclip/eCLIP/example/inputs/hg19.chrom.sizes

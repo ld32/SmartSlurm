@@ -70,6 +70,6 @@ while true; do
         gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time (Mins)'; set ylabel 'CPU Usage (%)'; plot 'job_$SLURM_JOBID.memCPU.txt' using 8:xtic(1) title 'Used' lc rgb 'green'"
         exit
     fi
-    sleep 5
+    sleep 20
 done
 
