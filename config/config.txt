@@ -6,9 +6,9 @@
 # Job record folder can be shared with a group of users.
 # Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
 # User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
-export smartSlurmJobRecordDir=$PWD/jobRecordSmartSlurm #/data/groupABC/smartSlurm
+export smartSlurmJobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm #$PWD/jobRecordSmartSlurm #/data/groupABC/smartSlurm
 
-export smartSlurmLogDir=log
+export smartSlurmLogDir=logTest
 
 # input folder name
 export smartSlurmInputDir=inputSmartSlurm
@@ -19,8 +19,8 @@ export smartSlurmOutputDir=$PWD/outputSmartSlurm
 export defaultMem=2048  # in M
 export defaultTime=120  # in min
 
-export extraTime=5     # in min. extra minutes than the estimated time
-export extraMem=5      # in M. extra memory than the estinated memory
+export defaultExtraTime=5     # in min. extra minutes than the estimated time
+export defaultExtraMem=5      # in M. extra memory than the estinated memory
 
 # Genernal partions, ordered by maximum allowed run-time in hours
 export partition1Name=short

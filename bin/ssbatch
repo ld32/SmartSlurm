@@ -424,7 +424,7 @@ fi
 
 #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
 
-[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
+[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$(($defaultExtraMem * 2))
 
  #extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1`
 
@@ -494,10 +494,10 @@ else
             # mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + extraMem))M
 
             min=`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
-            min=$((${min/\.*/} + extraTime))
+            min=$((${min/\.*/} + defaultExtraTime))
 
             resAjust="$resAjust#Got estimation based on software.reference: $software.$ref.\n"
-            resAjust="$resAjust#Give ${extraMem} M extra memory and $extraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
+            resAjust="$resAjust#Give ${extraMem} M extra memory and $defaultExtraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
 
         else
             resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
@@ -530,7 +530,7 @@ else
                 elif [ ! -z "$output" ]; then
                     output=${output% *}
                     [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
-                    [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime mins more time."
+                    [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime mins more time."
                     resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
                 fi
 
@@ -627,7 +627,7 @@ else
                         elif [ ! -z "$output" ]; then
                             output=${output% *}
                             [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
-                            [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                            [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime more minutes."
                             resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
 
                         fi
@@ -703,7 +703,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $extraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
 
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}

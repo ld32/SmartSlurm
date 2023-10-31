@@ -153,7 +153,7 @@ while true; do
                         touch $smartSlurmLogDir/$flag.likelyCheckpointOOM
                         #exit 1
                     else
-                        echo -e "Wrote checkpoint data sucessfully by job $SLURM_JOBID" | mail -s "CPWrite:$SLURM_JOBID:$flag" $USER
+                        echo -e "Wrote checkpoint data sucessfully by job $SLURM_JOBID" | mail -s "CPWrite.$needCheckpoint:$SLURM_JOBID:$flag" $USER
                         checkpointed=y
                         echo after checkpoint folder size:
                         du -hs $checkpointDir

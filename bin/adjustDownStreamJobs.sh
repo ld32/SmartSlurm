@@ -8,7 +8,7 @@ echo
 
 echo Running: $0  $@
 
-smartSlurmJobRecordDir=$1
+smartSlurmLogDir=$1
 
 [ -f $smartSlurmLogDir/allJobs.txt ] || { echo -e "job id file $smartSlurmLogDir/allJobs.txt does not exist\n$Usage"; exit 1; }
 
@@ -48,7 +48,7 @@ for i in $output; do
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
 
-    [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 ))
+    [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$(( $defaultExtraMem * 2 ))
 
     allDone=""
     IFS=$' ';
@@ -64,20 +64,22 @@ for i in $output; do
     if [ -z "$allDone" ]; then
         date
         # todo: even this is no input, we may need to modify the runtime becaue we might have new stats from jobs finished after the job is submitted.
-        if [[ "$inputs" == "none" ]]; then 
-            scontrol release $id 
-            continue
-        fi    
-
-        if [ -f $smartSlurmLogDir/$name.adjust ]; then 
+        if [[ "$inputs" == "none" ]]; then
+            echo No input, do not need to adjust, directly release and run.
             scontrol release $id
             continue
-        fi 
+        fi
+
+        if [ -f $smartSlurmLogDir/$name.adjust ]; then
+            echo Already adjusted? Directly release and run.
+            scontrol release $id
+            continue
+        fi
 
         #ls -lrt $smartSlurmLogDir
         echo Dependants for $name are all done. Ready to adjust mem/runtime...
 
-        echo -e "Re-adjust resource by upsteam job job:" >> $smartSlurmLogDir/$name.out
+        echo -e "Re-adjust resource by upsteam job job $SLURM_JOB_ID:" >> $smartSlurmLogDir/$name.out
         grep ^$SLURM_JOB_ID $smartSlurmLogDir/allJobs.txt | awk '{print $1,  $2,  $3}' >> $smartSlurmLogDir/$name.out
 
         inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
@@ -109,8 +111,11 @@ for i in $output; do
                 # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
             elif [ ! -z "$output" ]; then
                 output=${output% *}
-                [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. "
-                [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                #m=${output% *}
+                echo extra: .$extraMem.$defaultExtraTime.
+                [ "${output% *}" -gt 0 ] && mem=$((${output% *} + extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. "
+                #t=${output#* }
+                [ "${output#* }" -gt 0 ] && min=$((${output#* } + defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime more minutes."
                 resAjust="$resAjust\n#So use this to adjust the job: $mem M ${min} mins"
             fi
         fi
@@ -242,7 +247,7 @@ for i in $output; do
                     elif [ ! -z "$output" ]; then
                         output=${output% *}
                         [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem}M extra memory. "
-                        [[ ${output#* } != 0 ]] && min=$((${output#* }+extraTime)) && resAjust="$resAjust\n#Give $extraTime more minutes."
+                        [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime more minutes."
                         resAjust="$resAjust\n#So use this to adjust the job: $mem M ${min} mins"
                     fi
                 fi

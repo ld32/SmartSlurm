@@ -231,7 +231,7 @@ if [ "$memO" -ne "$totalM" ] && [ "$totalT" -ne "$totalT" ]; then
 fi
 #set +x
                                 #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOB_ID,$inputSize,$memO,$totalT,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$extraTime,$ratioM,$ratioT,`date`"  # 16 extraM
+record="$SLURM_JOB_ID,$inputSize,$memO,$totalT,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,$ratioM,$ratioT,`date`"  # 16 extraM
 echo dataToPlot,$record
 
 
