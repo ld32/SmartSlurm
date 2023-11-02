@@ -231,8 +231,8 @@ for t in `cat ${1%% *}`; do
         #echo "debug: ${cloper[$step]} ${cloper[$de]} .$multipleJobs. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
 
-        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.${name%.Checkpoint}$loper  $useTmp " >> $run
-        echo "${space}flag=${step}.$de.${name%.Checkpoint}$loper"  >> $run
+        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.$name$loper  $useTmp " >> $run
+        echo "${space}flag=${step}.$de.$name$loper"  >> $run
         echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _
 
         echo -e "${space}deps=\"\""  >> $run

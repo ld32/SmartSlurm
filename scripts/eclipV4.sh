@@ -436,11 +436,4 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
 
 done
 
-sed "s#eclipOut#$PWD/eclipOut#g" /n/data1/cores/bcbio/eclip/merge_peaks/wf/merge_peaks_2inputs.yaml > merge_peaks_2inputs.yaml
-chmod +x merge_peaks_2inputs.yaml
-source deactivate
-source activate /n/data1/cores/bcbio/eclip/eclipEnvPython3.9
-export PATH=/n/data1/cores/bcbio/eclip/merge_peaks/wf:/n/data1/cores/bcbio/eclip/merge_peaks/bin:/n/data1/cores/bcbio/eclip/merge_peaks/bin/perl:$PATH
 
-#@9,7,merge,,,sbatch -c 12 -p short -t 12:0:0 --mem 40G
-rm -r merge_peaks_2inputs || echo;  ./merge_peaks_2inputs.yaml

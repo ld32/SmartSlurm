@@ -205,13 +205,10 @@ fi
 [ -z "$ref" ] && [ ! -z "$SSBATCH_R" ] && ref="$SSBATCH_R"
 [ -z "$input" ] && [ ! -z "$SSBATCH_I" ] && inputs="$SSBATCH_I"
 [ -z "$deps" ] && [ ! -z "$SSBATCH_D" ] && deps="$SSBATCH_D"
-[[ "$Software" == *Checkpoint ]] || Software=$Software$SSBATCH_C
+[[ "$software" == *Checkpoint ]] || software=$software$SSBATCH_C
 [ -z "$out" ] || out=`realpath $out`
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
-
-
-[[ "$software" == *Checkpoint ]] && software=${software%.Checkpoint} && needCheckpoint=y || needCheckpoint=""
 
 
 # this is not pipeline
@@ -224,7 +221,6 @@ if [ ! -z "$runningSingleJob" ]; then
         #echoerr Need software name to work
         #usage  # need software name to work
 
-       # needCheckpoint=y
         if [ ! -z "$wrapCMD" ]; then
             arr=($wrapCMD)
             # need remove the parameters, to get unique name for job types
@@ -245,12 +241,10 @@ if [ ! -z "$runningSingleJob" ]; then
     [ -z "$name" ] || flag=$name
 else
     [ -d "$smartSlurmLogDir/" ] || { echoerr Directory not exist: $smartSlurmLogDir/; usage; }
-    #[ -z "$software" ] && needCheckpoint=y #{ echoerr software is emtpty; usage; }
+
     flag=${flag//\//-}
 fi
 
-# only do checkpont
-# [[ "$software" == *Checkpoint ]] && needCheckpoint=y
 
 mkdir -p $smartSlurmLogDir/
 job=$smartSlurmLogDir/$flag.sh
@@ -436,7 +430,7 @@ echoerr
 echoerr Check if there input file list and this job does not depend on other jobs
 
 # has checkpoint ready to resume from
-if [ -z "$deps" ] && [ ! -z "$needCheckpoint" ] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
+if [ -z "$deps" ] && [[ "$software" == *.Checkpoint ]] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
     tText=`cat $smartSlurmLogDir/$flag.adjust`
     mem=`echo $tText | cut -d' ' -f1`
     min=`echo $tText | cut -d' ' -f2`
@@ -728,7 +722,7 @@ if [ -z "$slurmScript" ]; then
     #echo "touch $startFlag" >> $job
     [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
     # `echo -e "$wrapCMD" | xargs echo -ne`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
-    if [ ! -z "$needCheckpoint" ]; then
+    if [[ "$software" == *.Checkpoint ]]; then
         #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
 
         # echo -e "set -x\nps -u $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
@@ -774,7 +768,7 @@ else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
 
-    if [ ! -z "$needCheckpoint" ]; then
+    if [[ "$software" == *.Checkpoint ]]; then
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
     else
         echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
