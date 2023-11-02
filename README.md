@@ -158,7 +158,8 @@ adjustPartition() {
 # Run bash script as smart pipeline using smart sbatch
 Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
-\#Here is the memeory usage by the optimzed workflow: Pink is saved memory by split the workflow input steps. Yellow is the saved memory by dynamic memeory allocation:  
+\#Here is the memeory usage by the optimzed workflow: The orignal pipeline has 11 steps. Most of the steps only need less than 10G memory to run. But one of the step needs 140G. Because the original pipeline is submitted as a single huge job, 140G is reserved for all the steps. (Each compute node in the cluster has 256 GB RAM.) By submitting each step as a separate job, most steps only need to reserve 10G, which decreases the memory usage dramatically. (The pink part of the graph below shows these savings.) Another optimization is to dynamically allocate memory based on the reference genome size and input sequencing data size. (This in shown in the yellow part of the graph.)
+Because of the decreased resource demand, the jobs can start earlier, and in turn increase the overall throughput.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMemSaved.png)
 
