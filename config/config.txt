@@ -8,7 +8,7 @@
 # User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
 export smartSlurmJobRecordDir=/n/data1/cores/ntc/pipeline2_smartSlurm #$PWD/jobRecordSmartSlurm #/data/groupABC/smartSlurm
 
-export smartSlurmLogDir=logTest
+export smartSlurmLogDir=log
 
 # input folder name
 export smartSlurmInputDir=inputSmartSlurm

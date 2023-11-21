@@ -2,7 +2,7 @@
 
 #set -x
 
-# to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14    
+# to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
 
 #Running /home/ld32/smartSlurm/bin/cleanUp.sh 16.15.cliper.sample1.treatment cliper none 0 12 10240 15 10240 15 short rccg none 5 5
@@ -44,13 +44,13 @@ echo pwd: `pwd`
 
 #cd ${1%log}
 
-# if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then 
+# if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
 #     if [ -f ~/.smartSlurm/config/config.txt ]; then
 #         source ~/.smartSlurm/config/config.txt
 #     else
 #         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 #     fi
-# fi   
+# fi
 
 #touch /tmp/job_$SLURM_JOB_ID.done
 #if [[ -z "$1" ]]; then
@@ -141,9 +141,9 @@ node=`echo $jobStat | cut -d" " -f7`
 # sacct might give wrong resules
 #[[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
 
-#if [ -f $smartSlurmLogDir/$flag/checkpointDoneMem ]; then 
+#if [ -f $smartSlurmLogDir/$flag/checkpointDoneMem ]; then
 #    jobStatus=OOM
-#elif [ -f $smartSlurmLogDir/$flag/checkpointDoneTime ]; then 
+#elif [ -f $smartSlurmLogDir/$flag/checkpointDoneTime ]; then
 #    jobStatus=OOT
 if [ -f $succFile ]; then
     jobStatus=COMPLETED
@@ -151,20 +151,20 @@ elif [[ "$sacct" == *TIMEOUT* ]]; then
     jobStatus=OOT
 elif [[ "$sacct" == *OUT_OF_ME* ]]; then
     jobStatus=OOM
-elif [[ "$sacct" == *FAILED* ]]; then 
+elif [[ "$sacct" == *FAILED* ]]; then
     jobStatus=Fail
-elif [[ "$sacct" == *CANCEL* ]]; then 
-    jobStatus=Canceled    
-else 
+elif [[ "$sacct" == *CANCEL* ]]; then
+    jobStatus=Canceled
+else
     tLog=`tail -n 22 $out | grep ^srun`
-    if [[ "$tLog" == *"task 0: Out Of Memory"* ]]; then 
-        jobStatus="OOM" 
-        echo The job is actually out-of-memory by according to the log: 
+    if [[ "$tLog" == *"task 0: Out Of Memory"* ]]; then
+        jobStatus="OOM"
+        echo The job is actually out-of-memory by according to the log:
         echo $tLog
         scontrol show jobid -dd $SLURM_JOB_ID
-    else 
+    else
        jobStatus="Unknown"
-   fi    
+   fi
 fi
 
 echo jobStatus: $jobStatus
@@ -186,14 +186,14 @@ memSacct=${memSacct%M}; memSacct=${memSacct%.*} #remove M and decimals
 
 # Not sure if this is needed.
 [[ "$memSacct" != "NA" ]] && [ "$memSacct" -gt "$srunM" ] && srunM=$memSacct
- 
+
 if [[ "$inputs" != "none" ]] && [[ "$inputSize" == "0" ]]; then
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
 
     if [[ "$inputSize" == "notExist" ]]; then
         echo Some or all input files not exist: .$inputs.
         echo Error! missingInputFile: .${inputs//,/ }.
-        echo The input size is used for job records to estimame later job resournce needs. 
+        echo The input size is used for job records to estimame later job resournce needs.
         #exit
     fi
 fi
@@ -362,7 +362,7 @@ if [ ! -f $succFile ]; then
                 export  myPartition=$partition
                 export myTime=$totalT
                 export myMem=${mem}M
-                requeueCmd=`grep "Command used to submit the job:" $script`
+                requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
                 requeueCmd=${requeueCmd#*submit the job: }
                 requeueCmd=${requeueCmd//\$myPartition/$myPartition}
                 requeueCmd=${requeueCmd//\$myTime/$myTime}
@@ -370,22 +370,30 @@ if [ ! -f $succFile ]; then
                 newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
+                    echo "# mem=$myMem time=$myTime " >> $script
                     IFS=$'\n'
                     for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
                         job=${line%% *}
                         deps=`echo $line | awk '{print $2}'`
+
                         if [[ $deps == null ]]; then
                             deps=""
                         elif [[ $deps == ${deps/\./} ]]; then
                             deps="Dependency=afterok:$newJobID"
                         else
-                            tmp=""
+                            tmp=""; IFS=$' '
                             for t in ${deps//\./ }; do
                                  [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
                             done
                             [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
                         fi
-                        [ -z "$deps" ] || scontrol update jobid=$job $deps
+                        if [ ! -z "$deps" ]; then
+                            scontrol update jobid=$job $deps
+                            flg=`echo $line | awk '{print $3}'`
+                            echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
+                        fi
+
+
                     done
 
                     #if `sh $PWD/$smartSlurmLogDir/$flag.requeueCMD; rm $PWD/$smartSlurmLogDir/$flag.requeueCMD;`; then
