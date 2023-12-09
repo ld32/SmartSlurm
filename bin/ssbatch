@@ -78,6 +78,8 @@ caller=`ps -f $PPID` && [[ "$caller" == *slurmPipeLine* ]] && runningSingleJob="
 
 logDir=$smartSlurmLogDir
 
+slurmScriptPosition=$(($(($#))-2))
+
 # get the first few parameters for ssbatch
 for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
@@ -121,7 +123,7 @@ for (( i=0; i<$(($#)); i++ )); do
         "run"           )   [ $i -eq $(($#)) ] && continue;;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}"; };;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [ "$i" -eq "$slurmScriptPosition" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}"; };;
     esac
 
     # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
@@ -761,8 +763,8 @@ if [ -z "$slurmScript" ]; then
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
         #echo "srun --mem \$srunM -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
- 
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c 'set -x; $wrapCMD; ' && touch $succFlag" >> $job
+        #echo "sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
     fi
 else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job

@@ -10,24 +10,37 @@ readCount="${@: -1}"
 
 test -n "$readCount" -a "$readCount" -ge 0 2>/dev/null || usage
 
-rowCount=$(( $readCount * 4000000 ))
+rowCount=$(( $readCount * 4 ))
 million=`echo "scale=6;$readCount/1000000"|bc| sed 's/^\./0./' | sed 's/0\{1,\}$//'`
 
 million=${million%.}
 #[[ "$million" == 0* ]] && million="$million."
-folder=fastq.$.million.subset
+folder=fastq.${million}m.subset
 
 mkdir -p $folder
 for i in $@; do 
     if [ -f $i ] && [[ "$j" == *fastq.gz ]]; then 
-        file=$folder/subset.$million.${i##*/}
+        file=$folder/subset.${million}m.${i##*/}
         [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
         echo Working on $j ...  && zcat $j  | head -n $rowCount | gzip > $file;    
     elif [ -d $i ]; then 
         for j in $i/*.fastq.gz; do 
-            file=$folder/subset.$million.${j##*/}
+            file=$folder/subset.${million}m.${j##*/}
             [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
             echo Working on $j ...  && zcat $j  | head -n $rowCount | gzip > $file; 
         done
-    fi    
+    fi  
+
+    if [ -f $i ] && [[ "$j" == *fastq.bz2 ]]; then 
+        file=$folder/subset.${million}m.${i##*/}
+        [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
+        echo Working on $j ...  && bzcat $j  | head -n $rowCount | bzip2 > $file;    
+    elif [ -d $i ]; then 
+        for j in $i/*.fastq.bz2; do 
+            file=$folder/subset.${million}m.${j##*/}
+            [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
+            echo Working on $j ...  && bzcat $j  | head -n $rowCount | bzip2 > $file; 
+        done
+    fi   
 done
+

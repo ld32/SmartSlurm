@@ -3,7 +3,7 @@
 usage() { echo -e "Usage: \n${0##*/} <bashScriptV2.sh [parameter1] [parameter2] ...> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" . Notice: it should be double quoted.> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
 
 #set -x
-#set -u 
+#set -u
 
 [ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
 
@@ -115,10 +115,10 @@ fi
 
 IFS=$'\n'; firstRowBelowLoopStart=""; findLoopStart=""
 for t in `cat ${1%% *}`; do
-    [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes
+    [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
     #echo original row: .$t.
-    
+
     # get space and the real command
     space=""
     for (( i=0; i<${#t}; i++ )); do
@@ -185,21 +185,44 @@ for t in `cat ${1%% *}`; do
         echo find job:
         echo $i
 
+        i=${i//\\/\\\\}   # escape back slash
+
+        set -x
+        # check to see if we need escape bash variables
+        IFS=';'
+        for c in ${i%% #*}; do
+            vs=$(echo "$c" | grep -oP '\$\w+|\$\{\w+\}' | tr -d '${}' | sort -u)
+            for v in ${vs//\n/ }; do
+                pat="* $v\=*"
+                # has variable assignment in the command, so we need escapte it
+                [[ " $cmd" == $pat ]] && c=${c//\$$v/\\\$$v}
+            done
+            cmd="$cmd $c;"
+            echo $cmd
+        done
+        set +x
+
         # command maybe multiple lines
         if [[ "$i" == *\\ ]]; then  # command have multiple lines, at end of the line is a \
-          cmd="$cmd ${i%\\}"
+          cmd="${cmd%\\\\;}"
           continue
         fi
         space="$oldspace"
-        cmd="$cmd ${i%% #*}" # remove comments
+        #cmd="$cmd ${i%% #*}" # remove comments
         cmd="${cmd# }"       # remove leading space
 
         findjob=""
         [ ! -z ${find[$step]} ] && { echo job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
 
-        cmd=${cmd//\\/\\\\}   # escape back slash
-
+        # don't need this anymore, because we are uing single quotation in srun command
         cmd=${cmd//\"/\\\"} # escape double quotes
+
+        cmd=${cmd//\'/\\\"} # escape single quotes to double
+
+        cmd=${cmd//\$(/\\\$(} # escap $((a+b)) and $(command)
+
+        cmd=${cmd//\`/\\\`} # escape `
+
 
         [ -z "$name" ] && name=${cmd%% *}
 
@@ -219,14 +242,14 @@ for t in `cat ${1%% *}`; do
                     break
                 fi
             done
-        else 
+        else
             #echo $step:${cloper[$step]}:$de:${cloper[$de]}:
             l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
             ll=$(expr length ${cloper[$de]} 2>/dev/null) || ll=0
             [ $l -ge $ll ] && multipleJobs=""
-            
+
         fi
-         
+
 
         #echo "debug: ${cloper[$step]} ${cloper[$de]} .$multipleJobs. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
@@ -247,7 +270,7 @@ for t in `cat ${1%% *}`; do
         fi
 
         # escape double quota. bsub does not need this? not sure
-        cmd=${cmd//\"/\\\\\"}
+        #cmd=${cmd//\"/\\\\\"}
 
         # replace space with ., if the job depends on something
         echo "${space}[ -z \"\${deps// /}\" ] && deps=null || deps=\${deps// /.}" >> $run
@@ -324,13 +347,13 @@ for t in `cat ${1%% *}`; do
             loper=${loper%.\$*}
         elif [[ "$i" == for* ]]; then
             echo; echo find for loop start: $i
-            [ ! -z "$firstRowBelowLoopStart" ] && firstRowBelowLoopStart="" && continue 
+            [ ! -z "$firstRowBelowLoopStart" ] && firstRowBelowLoopStart="" && continue
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#* }; a=${a%% *}
             loper="$loper.\$$a"
         #    loper="$loper.for"
-        #else 
-            
+        #else
+
         #elif [[ "$i" == while* ]]; then
         #    echo; echo find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
@@ -348,7 +371,7 @@ done
 
 # go back to the original folder?
 #echo "cd \$cwd/.." >> $run
-# exit
+#exit
 echo "echo; echo All submitted jobs: " >> $run
 #echo "cat \$cwd/$smartSlurmLogDir/allJobs.txt" >> $run
 echo "awk '{print substr(\$0, 1, 155)}' $smartSlurmLogDir/allJobs.txt" >> $run
