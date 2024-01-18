@@ -185,32 +185,41 @@ for t in `cat ${1%% *}`; do
         echo find job:
         echo $i
 
-        i=${i//\\/\\\\}   # escape back slash
 
-        set -x
-        # check to see if we need escape bash variables
-        IFS=';'
-        for c in ${i%% #*}; do
-            vs=$(echo "$c" | grep -oP '\$\w+|\$\{\w+\}' | tr -d '${}' | sort -u)
-            for v in ${vs//\n/ }; do
-                pat="* $v\=*"
-                # has variable assignment in the command, so we need escapte it
-                [[ " $cmd" == $pat ]] && c=${c//\$$v/\\\$$v}
-            done
-            cmd="$cmd $c;"
-            echo $cmd
-        done
-        set +x
-
+        cmd="$cmd ${i%\\}"
         # command maybe multiple lines
         if [[ "$i" == *\\ ]]; then  # command have multiple lines, at end of the line is a \
-          cmd="${cmd%\\\\;}"
+          #cmd="$cmd ${i%\\}"
           continue
         fi
-        space="$oldspace"
-        #cmd="$cmd ${i%% #*}" # remove comments
-        cmd="${cmd# }"       # remove leading space
 
+        #cmd="${cmd%% #*}" # remove comments
+
+        echo before parsing cmd: $cmd
+        #set -x
+
+        # check to see if we need escape bash variables
+        IFS=';'; tmp=''
+        for c in ${cmd%% #*}; do
+            [[ -z $(echo $c | xargs) ]] && continue
+            vs=$(echo $c | grep -oP '\$\w+|\$\{\w+\}|\$\{\w+\#|\$\{\w+\%|\$\{\w+\/' | tr -d '${}#%/' | sort -u | tr '\n' ';')
+            # find bash vaiable such as $abc, ${abc}, ${abc#..., ${abc%... or ${abc/...
+            for v in $vs; do
+                echo working on .$v.
+                pat="* $v\=*"
+                # has variable assignment in the command, for example "z='abc'; k=$z; x=${z//c/ }; x=${z#a}; x=${z%%b*};", so we need escapte $z...
+                [[ " $tmp" == $pat ]] && { c=${c//\$$v/\\\$$v}; c=${c//\${$v/\\\$\{$v}; }
+            done
+            [ -z "$tmp" ] && tmp="$c;" || tmp="$tmp$c;"
+            echo ."$tmp".
+        done
+        #set +x
+
+        cmd="$tmp"
+        space="$oldspace"
+        #
+
+        #echo after remove space: ."$cmd".
         findjob=""
         [ ! -z ${find[$step]} ] && { echo job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
 
@@ -223,6 +232,7 @@ for t in `cat ${1%% *}`; do
 
         cmd=${cmd//\`/\\\`} # escape `
 
+        #echo cmd: ".$cmd."
 
         [ -z "$name" ] && name=${cmd%% *}
 

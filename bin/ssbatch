@@ -18,7 +18,7 @@
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
 
 # todo:
-# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt. 
+# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt.
 
 # the logic:
 # If job does not depends on other job, and has input, estimate mem/timed and submit
@@ -27,7 +27,7 @@
 
 #set -e
 #set -x
-#set -u 
+#set -u
 
 echoerr() { echo "$@" >&2; }
 
@@ -39,13 +39,13 @@ usage() { echoerr -e "Short Usage: \n${0##*/} [-S software] [-R reference] [-F u
 
 [[ "--help" == "$1" ]] && usage
 
-if [ -z "$smartSlurmJobRecordDir" ]; then 
+if [ -z "$smartSlurmJobRecordDir" ]; then
     if [ -f ~/.smartSlurm/config/config.txt ]; then
         source ~/.smartSlurm/config/config.txt
     else
         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
     fi
-fi     
+fi
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
@@ -353,14 +353,14 @@ if [[ "$testRun" == "run" ]]; then
         # check the third column for the job name, then find the the job id in column 1
         out=`cat $smartSlurmLogDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }
-        
+
         # this job was submitted earlier
-        if [ ! -z "$id" ]; then 
-            
+        if [ ! -z "$id" ]; then
+
             # this job still running or pending
             # todo: need troubleshoot this part. If dependency condition changed, need resubmit the job
             if grep ^$id $smartSlurmLogDir/keepRunningJobs.txt 1>/dev/null; then
-                
+
                 # check if upsteam job is resubmitted
                 upstreamResubmitted=""
                 if [[ $de != null ]]; then
@@ -373,15 +373,15 @@ if [[ "$testRun" == "run" ]]; then
                     fi
                 fi
 
-                # the job still running, but the dependency contidtion is change, need cancel it. 
-                if [ ! -z "$upstreamResubmitted" ] || [[ "$de" != "$depsO" ]]; then 
-                    echoerr "Running job job is cancelled: $id" && scancel $id  
-                else 
-                
+                # the job still running, but the dependency contidtion is change, need cancel it.
+                if [ ! -z "$upstreamResubmitted" ] || [[ "$de" != "$depsO" ]]; then
+                    echoerr "Running job job is cancelled: $id" && scancel $id
+                else
+
                     echoerr thisJobStillRunning $id here
                     echo $id
                     exit
-                fi     
+                fi
             else
                 if [[ $depsO == null ]]; then
                     depsR="" #dependency=\"\""
@@ -410,7 +410,7 @@ if [[ "$testRun" == "run" ]]; then
                 #rm $smartSlurmLogDir/$flag.success 2>/dev/null
                 rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
                 exit
-            fi       
+            fi
         fi
         #set +x
     fi
@@ -714,7 +714,7 @@ echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $
 # #echo "   totalM=\${sacct#*,mem=}; totalM=\${totalM%%M,n*}" >> $job
 # echo "fi" >> $job
 
-# when submit jobs from interactive job, need this. Otherwise get error: 
+# when submit jobs from interactive job, need this. Otherwise get error:
 # echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 echo -e "unset SLURM_CPU_BIND" >> $job
 
@@ -763,7 +763,7 @@ if [ -z "$slurmScript" ]; then
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
         #echo "srun --mem \$srunM -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c 'set -x; $wrapCMD; ' && touch $succFlag" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag" >> $job
         #echo "sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
     fi
 else
@@ -880,7 +880,7 @@ else
     #jobID=
 fi
 
-echo -e "\n#mem=$mem time=$time" >> $job 
+echo -e "\n#mem=$mem time=$time" >> $job
 
 # add this to the job script
 echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
