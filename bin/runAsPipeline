@@ -205,13 +205,13 @@ for t in `cat ${1%% *}`; do
             vs=$(echo $c | grep -oP '\$\w+|\$\{\w+\}|\$\{\w+\#|\$\{\w+\%|\$\{\w+\/' | tr -d '${}#%/' | sort -u | tr '\n' ';')
             # find bash vaiable such as $abc, ${abc}, ${abc#..., ${abc%... or ${abc/...
             for v in $vs; do
-                echo working on .$v.
+                #echo working on .$v.
                 pat="* $v\=*"
                 # has variable assignment in the command, for example "z='abc'; k=$z; x=${z//c/ }; x=${z#a}; x=${z%%b*};", so we need escapte $z...
                 [[ " $tmp" == $pat ]] && { c=${c//\$$v/\\\$$v}; c=${c//\${$v/\\\$\{$v}; }
             done
             [ -z "$tmp" ] && tmp="$c;" || tmp="$tmp$c;"
-            echo ."$tmp".
+            #echo ."$tmp".
         done
         #set +x
 
