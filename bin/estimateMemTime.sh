@@ -25,7 +25,7 @@ echoerr Estimating mem:
 memFormu=memFormu:
 if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
     
-    unset Finala Finalb Maximum STDFIT
+    unset Finala Finalb Maximum STDFIT SCount
     .  $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.mem.stat.final:
@@ -44,7 +44,10 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
         mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
         memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
-    else
+    elif (( $SCount > 9 )); then 
+        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
+        memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
+    else 
         echoerr outOfRange 
         echo outOfRange
         exit  
@@ -60,7 +63,7 @@ timeFormu=timeFormu:
 
 if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
     
-    unset Finala Finalb Maximum STDFIT
+    unset Finala Finalb Maximum STDFIT SCount
     .  $smartSlurmJobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.time.stat.final:

@@ -1,13 +1,13 @@
 #!/bin/sh
 
 outputs=""
-for i in {5..5}; do
+for i in {1..3}; do
     input=bigText$i.txt
     output=1234.$i.txt
     #@1,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
     useMemTimeWithInput.sh $input; grep 1234 $input > $output
     outputs=$outputs,$output
-exit    
+    
     output=5678.$i.txt
     #@2,0,useMemTimeWithInput,,input,sbatch -p short -c 1 --mem 2G -t 50:0
     useMemTimeWithInput.sh $input; grep 5678 $input > $output

@@ -72,7 +72,9 @@ while true; do
             [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count && "$xx" -ne 0 ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
         fi
         failedJob=`echo -e "$failedJobs" | head -n $xx | tail -n1 | awk '{print $NF}'`
-
+        
+        echo less ${failedJob/.failed/.out} >&2
         less ${failedJob/.failed/.out}
+        echo less ${failedJob/.failed/.sh} >&2
     done
 done
