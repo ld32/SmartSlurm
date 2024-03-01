@@ -649,8 +649,8 @@ fi
 
 #echoerr
 
-# for OOM memtesting
-#mem=2
+# for OOM testing
+#mem=1412
 
 [ -z "$min" ] && { echoerr did not find time limit; exit 1; }
 
@@ -678,7 +678,7 @@ adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 seconds=$(( $min * 60 ))
 
 # timetesting
-#seconds=65
+seconds=30
 
 #set +x
 #[ $seconds -le 60 ] && time=11:0 && seconds=60
@@ -706,10 +706,7 @@ echoerr
 echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
-echo -e "#!/bin/bash\ndate\n\nmemCpuMonitor.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; &\n" > $job
-
-
-#echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
 
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}
@@ -744,7 +741,7 @@ if [ -z "$slurmScript" ]; then
         # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
 
         # note: if job OOT or OOM, .success or .failed will not be created
-        echo -e "for i in \`seq 10000\`; do echo Program running time: \${i}0 s; sleep 10; done &\nsh -e -o pipefail  -c \"$wrapCMD; \" && touch $succFlag" > ${job%.sh}.cmd
+        echo -e "for i in \`seq 10000\`; do echo Program running time: \${i}0 s; sleep 10; done &\nsh -e -o pipefail  -c \"$wrapCMD; \" && touch $succFlag && adjustDownStreamJobs.sh $smartSlurmLogDir" > ${job%.sh}.cmd
         ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
         ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
         #echo -e "ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"" >> ${job%.sh}.cmd
@@ -770,9 +767,9 @@ if [ -z "$slurmScript" ]; then
 
 
 
-        echo "srun1 -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
-        echo "srun -n 1 $slurmAcc sh -e -x -o pipefail -c '(( $wrapCMD; )) && { touch $succFlag; sleep 180; } || { touch $failFlag; echo failed, sleeping; sleep 180; exit 1; }'" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && adjustDownStreamJobs.sh $smartSlurmLogDir" >> $job
         
     fi
 else
@@ -780,9 +777,9 @@ else
     #echo "touch $startFlag" >> $job
 
     if [[ "$software" == *.Checkpoint ]]; then
-        echo "srun3 -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag && adjustDownStreamJobs.sh $smartSlurmLogDir\\\" $flag $mem $min $extraMem; \"" >> $job
     else
-        echo "srun4 -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag || touch $failFlag" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag && adjustDownStreamJobs.sh $smartSlurmLogDir" >> $job
     fi
 fi
 #echo "kill -9 \$mypid" >> $job
@@ -808,8 +805,8 @@ fi
 # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
 # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
-# testing
-#mem=2000M
+# memtesting
+mem=20M
 
 #if [ -z "$smartSlurmLogDir/" ]; then
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"

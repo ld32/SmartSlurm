@@ -44,7 +44,6 @@ fi
 
 [ -d $smartSlurmLogDir ] && [[ "$4" == run ]] && cp -rp $smartSlurmLogDir $smartSlurmLogDir.$(stat -c '%.19z' $smartSlurmLogDir | tr " " "." | tr ":" "-")
 
-
 mkdir -p $smartSlurmLogDir
 
 checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
@@ -392,4 +391,4 @@ echo "#cmd: $0 $@" >> $run
 
 echo $run ${1#* } is ready to run. Starting to run ...
 
-eval "/bin/bash $run ${1#* }"
+eval "sh $run ${1#* }"

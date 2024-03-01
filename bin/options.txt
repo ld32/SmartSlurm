@@ -1,0 +1,1 @@
+-a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export 

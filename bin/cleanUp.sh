@@ -61,9 +61,15 @@ echo pwd: `pwd`
     out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 #fi
 
+#if [ -f $succFile ]; then
+
+    adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
+    #rm $failFile 2>/dev/null
+#fi 
+
 
 # wait for slurm database update
-sleep 10
+sleep 5
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
@@ -322,7 +328,7 @@ if [ ! -f $succFile ]; then
         #    maxExtra=5
         #fi
 
-        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old
+        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
         (
         #set -x;
         for try in {1..5}; do
@@ -447,7 +453,7 @@ if [ ! -f $succFile ]; then
 #set -x
         for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
-                sleep 2
+                sleep 1
                 echo trying to requeue $try
                 touch $failFile.requeued.$try.time
 
@@ -530,11 +536,9 @@ if [ ! -f $succFile ]; then
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
     if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
-        ( sleep 4;  scontrol requeue $SLURM_JOBID; ) &
+        ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
     fi
-else #if [ ! -z "$1" ]; then
-    adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
-    rm $failFile 2>/dev/null
+
 fi
 
 echo "Sending email..."
@@ -613,4 +617,4 @@ echo
 # move this to job sbumission time,
 
 # wait for email to be sent
-sleep 10
+sleep 5

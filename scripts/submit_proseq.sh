@@ -225,24 +225,26 @@ do
 #exit
     if [[ "$genomeRef" == "fm_library" ]]; then
     
+        chrsr=`echo ${chrs[$genomeSpike]}`
         # filter ref from spike reads
         #@4,3,samtools4,,bowtieOut,sbatch -c 1 -p short -t 12:0:0 --mem 8G
         rm $outDir/mapping/$spikePrefix.bam.tmp* $outDir/mapping/${refPrefix}.bam.tmp* &>/dev/null || : ; \
         samtools index $bowtieOut; \
-        samtools view -u $bowtieOut ${chrs[$genomeSpike]} | samtools sort -@ 6 -o $outDir/mapping/$spikePrefix.bam; \
+        samtools view -u $bowtieOut $chrsr  | samtools sort -@ 6 -o $outDir/mapping/$spikePrefix.bam; \
         samtools index $outDir/mapping/$spikePrefix.bam; \
         samtools view -u -L $scriptsPath/chromSizes/fm_library.bed $bowtieOut | samtools sort -@ 6 -o $outDir/mapping/${refPrefix}.bam; \
         samtools index $outDir/mapping/${refPrefix}.bam
 
     else
-        chrsr=`echo ${chrs[$genomeRef]}`
+        chrsr=`echo ${chrs[$genomeSpike]}`
+        chrsr1=`echo ${chrs[$genomeRef]}`
         # filter ref from spike reads
         #@5,3,samtools5,,bowtieOut,sbatch -c 1 -p short -t 12:0:0 --mem 8G
         rm $outDir/mapping/$spikePrefix.bam* $outDir/mapping/${refPrefix}.bam* &>/dev/null || echo; \
         samtools index $bowtieOut; \
-        samtools view -u $bowtieOut ${chrs[$genomeSpike]} | samtools sort -@ 6 -o $outDir/mapping/$spikePrefix.bam; \
+        samtools view -u $bowtieOut $chrsr | samtools sort -@ 6 -o $outDir/mapping/$spikePrefix.bam; \
         samtools index $outDir/mapping/$spikePrefix.bam; \
-        samtools view -u $bowtieOut $chrsr | samtools sort -@ 6 -o $outDir/mapping/${refPrefix}.bam; \
+        samtools view -u $bowtieOut $chrsr1 | samtools sort -@ 6 -o $outDir/mapping/${refPrefix}.bam; \
         samtools index $outDir/mapping/${refPrefix}.bam
     fi
 

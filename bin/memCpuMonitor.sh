@@ -23,11 +23,13 @@ echo pwd `pwd`
 
 sleep 2
 
+START=`date +%s`
+
 counter=0
 
 jobName=$1 #`basename $1` #${1#*/$smartSlurmLogDir/}
 #reservedMem=$2
-reservedTime=$3
+reservedTime=$9
 
 
 # if jobs has --mem
@@ -40,12 +42,16 @@ reservedMem=$SLURM_MEM_PER_NODE
 [ -z "$reservedMem" ] &&  reservedMem=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
 # max mem for all jobs
-defaultMem=$4
+defaultMem=$6
+
+
+#echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+
 
 #[ -f $jobName.adjust ] && reservedMem=`cat $jobName.adjust | cut -d' ' -f1`
 [ -f $jobName.adjust ] && reservedTime=`cat $jobName.adjust | cut -d' ' -f2`
 
-cancelMailSent=""
+#cancelMailSent=""
 
 function calculate_resource_usage {
     local pid=$1
@@ -106,18 +112,23 @@ while true; do
 
 	    echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOB_ID.memCPU.txt
 
-    else
-        exit
     fi
 
-   	if [ -z "$cancelMailSent" ] && [ "$reservedTime" -ge 120 ]; then
-        CURRENT=`date +%s`
-        min=$(( $reservedTime - ($CURRENT - $START + 59)/60))
-        if [ $min -le 15 ]; then
-            echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
-            cancelMailSent=yes
-        fi
-    fi
+   	# if [ -z "$cancelMailSent" ] && [ "$reservedTime" -ge 120 ]; then
+    #     CURRENT=`date +%s`
+    #     min=$(( $reservedTime - ($CURRENT - $START + 59)/60))
+    #     if [ $min -le 15 ]; then
+    #         echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
+    #         cancelMailSent=yes
+    #     fi
+    # fi
+    timeR=$(($(date +%s) - START))
+    if if [ -f $jobName.success ] || [ -f $jobName.failed ] || [ $reservedMem -le $((total_memory_usage + 5)) ] || [ $(( reservedTime * 60 - $timeR )) -lt 180 ] ; then 
+        echo cleanup.sh $1 $2 $3 $4 $5 $6 $7 $8 $9 "${10}"  "${11}" ${12} ${13}
+    else 
+        echo no
+    fi 
+
     sleep 5
 done
 

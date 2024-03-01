@@ -1,0 +1,147 @@
+#!/bin/sh
+
+#set -x
+
+usage() {
+    echo "Usage: checkRun [Optional log folder name, such log, or smartSlurmLog]
+          This script can guild user to debug smartSlurm runs." 
+    exit 1; 
+}
+
+
+if [ -z "$1" ]; then 
+
+    if [ -f ~/.smartSlurm/config/config.txt ]; then
+        source ~/.smartSlurm/config/config.txt
+    else
+        source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
+    fi
+    # [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+elif [[ $1 == "-h" ||  $i == "--help" ]]; then
+    usage; 
+else 
+    smartSlurmLogDir=$1
+fi
+
+logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20* 2>/dev/null`
+
+[ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
+
+IFS=$'\n'
+activeJobs=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
+
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+GREEN='\033[0;32m'
+
+#echo -e "I ${RED}love${NC} Stack Overflow"
+
+
+while true; do
+    echo Availale logFolders:
+    count=1
+    for i in $logFolders; do
+        echo -e "${GREEN}$count${NC} $i"
+        count=$((count + 1))
+    done
+    if [ $count -eq 2 ] && [ -z "$x" ]; then
+        
+        echo Only one logFolder. No need to select.
+        x=1 
+        #firstRound=y
+        #x=1
+    else
+        echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
+        read -p "" x </dev/tty
+        [[ "$x" == "q" ]] && break
+        [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
+    fi
+    
+    logFolder=`echo $logFolders | cut -d' ' -f$x`
+
+    lines=`tail -n +2 $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+
+    current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
+    toShow="Summery for jobs in allJobs.txt:"
+    for line in $lines; do
+        if [ ! -z "${line/ /}" ]; then
+            id=${line%% *}; name=${line##* }
+
+            if [ -f $logFolder/$name.success ]; then
+                toShow="$toShow\n${NC}Done $line"
+                succ=$((succ + 1))
+            elif [ -f $logFolder/$name.failed ]; then
+                toShow="$toShow\n${RED}Fail${NC} $line"
+                fail=$((fail + 1))
+            elif [[ "$activeJobs" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
+                toShow="$toShow\n${GREEN}Runn${NC} $line"
+                running=$((running + 1))
+            elif [[ "$activeJobs" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
+                toShow="$toShow\n${RED}Pend${NC} $line"
+                pending=$((pending + 1))
+            elif [ -f $logFolder/$name.failed.requeued.1.time ]; then 
+                toShow="$toShow\n${RED}Requ${NC} $line"
+                requeue=$((requeue + 1))    
+            else
+                toShow="$toShow\n${RED}Unkn${NC} $line"
+                unknown=$((unknown + 1))
+            fi
+        fi
+    done
+
+    while true; do
+        echo Available logs:
+        count=1
+        IFS=$'\n'
+        #set -x 
+        for i in `echo -e "$toShow" | tail -n +2`; do
+            echo -e "$GREEN$count ${i#*\/}"
+            count=$((count + 1))
+        done
+      
+        if [ $count -eq 2 ] && [ -z "$xx" ]; then
+            echo Only one failed step. No need to select.
+            xx=1 
+            #xx=1
+        else
+            [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
+Or ${RED}r${NC} to run the job command. 
+Or ${RED}l${NC} to list all log file related to this job. Or "
+            echo -e "Select a failed step to check the .out log or type ${RED}q${NC} to quit:"
+            read -p "" xx </dev/tty;
+        
+            [[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
+
+            if [[ "$xx" == r ]]; then 
+                #set -x 
+                echo -e "${RED}Command to re-run the job interactively:"
+                echo 
+                jobStep=${failedJob##*/}
+                jobStep=${jobStep%%.*}
+                file=`ls -lrt $logFolder/slurm*.run.sh`
+                txt=`cat ${file##* }`
+                txt=${txt%%\#@$jobStep*}
+                echo -e "$txt" | grep "module load \|export PATH" 
+                 
+                txt=`grep pipefail $logFolder/$failedJob.sh`
+                txt=${txt#*-c \'}
+                txt=${txt%\' && touch*}
+                echo $txt | less 
+                #set +x 
+                continue
+            fi 
+            [[ "$xx" == q ]] && break
+            
+            [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
+
+            # n=${xx:1:1}; xx=${xx:0:1}; [ -z "$n" ] && n=o  # if x=1a, x=a and n=a 
+            [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count";  continue; }
+        fi
+        
+        failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $NF}'`
+        
+        less $logFolder/$failedJob.out
+
+        #set +x 
+    done
+done

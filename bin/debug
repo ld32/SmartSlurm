@@ -34,25 +34,24 @@ while true; do
         echo "$count $i"
         count=$((count + 1))
     done
-    if [ $count -eq 2 ]; then
-        [[ "$xx" == "q" ]] && xx="" && break
+    if [ $count -eq 2 ] && [ -z "$x" ]; then
+        
         echo Only one logFolder. No need to select.
-        x=1
+        x=1 
+        #firstRound=y
+        #x=1
     else
         echo -e "Please select the logFolder you want to check (type q to quit):"
         read -p "" x </dev/tty
-
-        [[ "$x" == q ]] && break;
-
         [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo "Out of range. Should be between > 0 and < $count"; continue; }
     fi
+    [[ "$x" == "q" ]] && x="" && break
 
     logFolder=`echo $logFolders | cut -d' ' -f$x`
 
-    failedJobs=`ls -l $logFolder/*.*.*.*.failed` 
+    failedJobs=`ls -l $logFolder/*.*.*.failed` 
 
     while true; do
-
         echo Available failedJobs:
         count=1
         IFS=$'\n'
@@ -60,21 +59,42 @@ while true; do
             echo $count ${i#*\/}
             count=$((count + 1))
         done
-
-        if [ $count -eq 2 ]; then
-            [[ "$xxx" == q ]] && xxx="" && break
+      
+        if [ $count -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
-            xx=1
+            xx=1 
+            #xx=1
         else
-            echo -e "Please select a failed step (type q to quit):"; read -p "" xx </dev/tty;
-            [[ "$xx" == q ]] && break;
+           [ ! -z "$xx" ] && echo -n "Type s to see the slurm script for last .out log. Or r to run the job command. Or "
+            echo -e "Select a failed step to check the .out log (type q to quit):"; read -p "" xx </dev/tty;
+            
+            [[ "$xx" == s ]] && less ${failedJob/.failed/.sh} && continue
 
+            if [[ "$xx" == r ]]; then 
+                #set -x 
+                echo Command to re-run the job interactively:
+                echo 
+                jobStep=${failedJob##*/}
+                jobStep=${jobStep%%.*}
+                file=`ls -lrt $logFolder/slurm*.run.sh`
+                txt=`cat ${file##* }`
+                txt=${txt%%\#@$jobStep*}
+                echo -e "$txt" | grep "module load \|export PATH" 
+                 
+                txt=`grep pipefail ${failedJob/.failed/.sh}`
+                txt=${txt#*-c \'}
+                txt=${txt%\' && touch*}
+                echo $txt | less 
+                #set +x 
+                continue
+            fi 
+
+            # n=${xx:1:1}; xx=${xx:0:1}; [ -z "$n" ] && n=o  # if x=1a, x=a and n=a 
             [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count && "$xx" -ne 0 ]] || { echo "Out of range. Should be > 0 and < $count";  continue; }
         fi
+        [[ "$xx" == q ]] && xx="" && break
         failedJob=`echo -e "$failedJobs" | head -n $xx | tail -n1 | awk '{print $NF}'`
         
-        echo less ${failedJob/.failed/.out} >&2
         less ${failedJob/.failed/.out}
-        echo less ${failedJob/.failed/.sh} >&2
     done
 done
