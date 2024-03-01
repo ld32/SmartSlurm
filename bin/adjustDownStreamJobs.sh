@@ -27,6 +27,13 @@ IFS=$' ';
 
 #echo
 
+while true; do
+    if `mkdir $smartSlurmLogDir/downsteamjob.adjusting  2>/dev/null`; then
+        break
+    fi
+    sleep 1
+done 
+
 # directly get id, deps, software, ref, and input here, if input is none, directly skip this job
 output=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $1, $2, $3, $4, $5, $6;}'`
 
@@ -45,6 +52,9 @@ for i in $output; do
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]}
 
+    
+    
+    
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
 
@@ -57,9 +67,10 @@ for i in $output; do
         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
-        [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; }
+        [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; break;}
     done
 
+    
 
     if [ -z "$allDone" ]; then
         date
@@ -149,42 +160,6 @@ for i in $output; do
 
             else
 
-                #cd $OUT
-                # make plot and calculate statistics
-                # gnuplot -e 'set term pdf; set output "mem.pdf"; set title "Input Size vs. Memory Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "mem.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "mem.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "mem.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > mem.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> mem.stat.txt
-
-                # echo RSquare="$(gnuplot -e 'stats "mem.txt" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> mem.stat.txt
-
-                # # make plot and calculate statistics
-                # gnuplot -e 'set term pdf; set output "time.pdf"; set title "Input Size vs. Time Usage" font "Helvetica Bold,18"; set xlabel "Input Size(K)"; set ylabel "Time(Min)"; f(x)=a*x+b; fit f(x) "time.txt" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "time.txt" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "time.txt" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<4{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > time.stat.txt; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> time.stat.txt
-
-                # echo RSquare="$(gnuplot -e 'stats "time.txt" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> time.stat.txt
-
-                # mv $OUT/mem.stat.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
-                # mv $OUT/time.stat.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
-                # echo There are more than $ref jobs already run for this software, statics is ready for current job:
-                # echo Memeory statisics:
-                # echo "inputsize vs. mem(M)"
-                # cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
-                # echo
-                # echo Time statistics:
-                # echo "inputsize  vs. time(minute)"
-                # cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
-
-                # mv $OUT/mem.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
-                # mv $OUT/time.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
-
-                # convert $OUT/mem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
-                # convert $OUT/time.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
-                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
-                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.time.png
-
-                # echo
-                # echo You can see the plot using commands:
-                # echo display $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
-                # echo display $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
-
-                # cd -
 
                 gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
 
@@ -203,22 +178,7 @@ for i in $output; do
                 # echo RSquare="$(gnuplot -e 'stats "time.txt" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> time.stat.txt
 
                 echo There are more than 3 $software $ref jobs already run for this software, statics is ready for current job:
-                # echo Memeory statisics:
-                # echo "inputsize mem(M)"
-                # cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
-                # echo
-                # echo Time statistics:
-                # echo "inputsize time(minute)"
-                # cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
-
-                # mv $OUT/mem.txt $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt
-                # mv $OUT/time.txt $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
-
-                # convert $OUT/mem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf
-                # convert $OUT/time.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf
-                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.mem.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
-                # pdftoppm $smartSlurmJobRecordDir/stats/$software.$ref.time.pdf  -png > $smartSlurmJobRecordDir/stats/$software.$ref.time.png
-
+               
                 echo
                 echo You can see the plot using commands:
                 echo display $smartSlurmJobRecordDir/stats/$software.$ref.mem.png
@@ -262,7 +222,8 @@ for i in $output; do
 
         echo -e "$resAjust\n" >> $smartSlurmLogDir/$name.out
 
-        [ -z "$mem" ] && continue
+        
+        [ -z "$mem" ] && echo Fail to estimate new resource. Directly release job. && scontrol release $id && continue
 
         #[ "$mem" -lt 20 ] && mem=20 # at least 20M
 
@@ -279,6 +240,8 @@ for i in $output; do
 
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
+        #set -x 
+
         #scontrol show job $id
 
         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
@@ -290,6 +253,8 @@ for i in $output; do
 
         scontrol release $id
 
+        #scontrol show job $id
+
         echo $mem $min $extraMem > $smartSlurmLogDir/$name.adjust
 
         #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> $smartSlurmLogDir/$name.out
@@ -297,8 +262,11 @@ for i in $output; do
         #echo $mem $min> $smartSlurmLogDir/$name.adjust
         #touch $smartSlurmLogDir/$name.adjusted
         #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $smartSlurmLogDir/$name.sh
+
+        #set +x 
     else
         echo Need wait for other jobs to finish before we can ajust mem and runtime...
     fi
 done
 
+rm -r $smartSlurmLogDir/downsteamjob.adjusting 
