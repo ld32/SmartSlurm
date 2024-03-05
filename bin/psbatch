@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -x
+#set -x
 
 #echoerr() { echo "$@" >&2; }
 
