@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#set -x
+set -x
 
 #echoerr() { echo "$@" >&2; }
 
@@ -36,7 +36,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}" && additionalPara="$additionalPara ${array[$i]}";;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ ! -z "$slurmScript" ] && echoerr find additional parameter for sbatch ${array[$i]} && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && echoerr find additional parameter for sbatch ${array[$i]} && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
     esac
 done
 
