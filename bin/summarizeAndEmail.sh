@@ -92,7 +92,7 @@ minimumsize=9000
 
 actualsize=`wc -c $out || echo 0`
 
-[ -f $smartSlurmLogDir/job_$SLURM_JOBID.succ ] && s="${overReserved}Succ:$SLURM_JOBID:$title" || s="$jobStatus:$SLURM_JOBID:$title"
+[ -f $smartSlurmLogDir/job_$SLURM_JOBID.succ ] && s="${overReserved}Succ:$SLURM_JOBID: $title" || s="$jobStatus:$SLURM_JOBID:$title"
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
