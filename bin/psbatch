@@ -1,0 +1,80 @@
+#!/bin/sh
+
+#set -x
+
+#echoerr() { echo "$@" >&2; }
+
+echoerr() { :; }
+
+usage() { echoerr -e "Short Usage: \n${0##*/} <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\">"; exit 1; }
+
+echoerr Running: $0 $@
+echoerr pwd: `pwd`
+
+[ ! -z "$1" ] || [[ "-h" != "$1" ]] || [[ "--help" != "$1" ]] || usage
+
+if [ -z "$smartSlurmJobRecordDir" ]; then
+    if [ -f ~/.smartSlurm/config/config.txt ]; then
+        source ~/.smartSlurm/config/config.txt
+    else
+        source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
+    fi
+fi
+mkdir -p $smartSlurmLogDir/
+
+echoerr
+array=( "$@" )
+
+# get the first few parameters for ssbatch
+for (( i=0; i<$(($#)); i++ )); do
+    [ -z "${array[$i]}" ] && continue
+  	#echoerr $i " / " $(($#)) " : " ${array[$i]}
+  	case "${array[$i]}" in
+        "-o" 			)   out="${array[$i+1]}" && additionalPara="$additionalPara -e $out" && array[$i+1]="" ;;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/} && additionalPara="$additionalPara ${array[$i]}"";;
+  		"-e" 			)   err="${array[$i+1]}" && additionalPara="$additionalPara -e $err" && array[$i+1]="";;
+  		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}" && additionalPara="$additionalPara ${array[$i]}";;
+        "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
+        --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ ! -z "$slurmScript" ] && echoerr find additional parameter for sbatch ${array[$i]} && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
+    esac
+done
+
+echoerr Parsing result from sbatch commandline:
+
+job=$smartSlurmLogDir/`mktemp XXXXXXXX --dry-run`.sh
+echo "#!/bin/sh" > $job 
+
+if [ -z "$slurmScript" ]; then
+    echoerr wrapCMD: $wrapCMD
+
+    [ -z "$out" ] && out=slurm-\$SLURM_JOBID.out
+    [ -z "$err" ] && err=slurm-\$SLURM_JOBID.err
+
+    echo -e "date\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$wrapCMD\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
+    echo -e "$wrapCMD"  >> $job     
+else
+
+    [ -z "$out" ] && out=`grep "^#SBATCH -o" $slurmScript` && out=${out##* }
+    [ -z "$out" ] && out=`grep "^#SBATCH --out=" $slurmScript` && out=${out##*=}
+    [ -z "$out" ] && out=`grep "^#SBATCH --out " $slurmScript` && out=${out##* }
+    [ -z "$err" ] && err=`grep "^#SBATCH -e" $slurmScript` && err=${out##* }
+    [ -z "$err" ] && err=`grep "^#SBATCH --err=" $slurmScript` && err=${out##*=}
+    [ -z "$err" ] && err=`grep "^#SBATCH --err " $slurmScript` && err=${out##* }
+    [ -z "$out" ] && out=slurm-\$SLURM_JOBID.out
+    [ -z "$err" ] && err=slurm-\$SLURM_JOBID.err
+
+
+    echoerr slurmScript: $slurmScript
+    echoerr additionalPara: $additionalPara
+    echoerr slurmScriptParas: $slurmScriptParas 
+    
+    grep "^#SBATCH" $slurmScript >> $job
+    echo -e "date\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$slurmScript $slurmScriptParas\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
+    grep -v "^#SBATCH" $slurmScript | grep -v "^#!" >> $job
+    
+fi
+
+echo -e "touch $smartSlurmLogDir/job_\$SLURM_JOBID.succ" >> $job
+
+sbatch $additionalPara $job $slurmScriptParas 

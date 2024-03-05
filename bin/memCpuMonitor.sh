@@ -4,7 +4,7 @@
 
 echo Running: $0 $@
 cd $smartSlurmLogDir #`dirname $1` #${1%/$smartSlurmLogDir/*}
-echo pwd `pwd`
+#echo pwd `pwd`
 
 # requeue failed jobs
 #if ls $smartSlurmLogDir/*.requeueCMD 2>/dev/null && mkdir $smartSlurmLogDir/requeue.start; then
@@ -28,7 +28,11 @@ counter=0
 jobName=$1 #`basename $1` #${1#*/$smartSlurmLogDir/}
 #reservedMem=$2
 reservedTime=$3
+defaultMem=$4
 
+[ -z "$jobName" ] && jobName=nothing
+
+[ -z "$defaultMem" ] && defaultMem=0
 
 # if jobs has --mem
 reservedMem=$SLURM_MEM_PER_NODE
@@ -39,11 +43,11 @@ reservedMem=$SLURM_MEM_PER_NODE
 # if job has --mem-per-cpu and -n
 [ -z "$reservedMem" ] &&  reservedMem=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
-# max mem for all jobs
-defaultMem=$4
 
 #[ -f $jobName.adjust ] && reservedMem=`cat $jobName.adjust | cut -d' ' -f1`
 [ -f $jobName.adjust ] && reservedTime=`cat $jobName.adjust | cut -d' ' -f2`
+
+[ -z "$reservedTime" ] && reservedTime=0; 
 
 cancelMailSent=""
 

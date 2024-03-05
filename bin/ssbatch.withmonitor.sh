@@ -26,7 +26,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-#set -x
+set -x
 #set -u
 
 echoerr() { echo "$@" >&2; }
@@ -123,11 +123,13 @@ for (( i=0; i<$(($#)); i++ )); do
         "run"           )   [ $i -eq $(($#)) ] && continue;;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ ! -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; };;
-
-        # options with value
-        # -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export 
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [ "$i" -eq "$slurmScriptPosition" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}"; };;
     esac
+
+    # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
+  	# [ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
+    # [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
+    # [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
 done
 
 echoerr
@@ -141,10 +143,10 @@ if [ -z "$slurmScript" ]; then
     echoerr wrapCMD: $wrapCMD
 else
     echoerr slurmScript: $slurmScript
-    echoerr additionalPara: $additionalPara
+    echoerr slurmScriptParas: $slurmScriptParas
 fi
 #echoerr test or run: $testRun
-echoerr
+#echoerr
 
 if [ ! -z "$slurmScript" ]; then
   echoerr Validating slurmScript:
@@ -200,7 +202,7 @@ if [[ ! -z "$slurmScript" ]]; then
     echoerr time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err deps: $deps
 
     echoerr slurmScript: $slurmScript
-    echoerr additionalPara: $additionalPara
+    echoerr slurmScriptParas: $slurmScriptParas
 fi
 
 [ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
@@ -238,7 +240,7 @@ if [ ! -z "$runningSingleJob" ]; then
         else
             software=${slurmScript##*/}
             #[ -z "$flag" ] &&
-            flag=$software.${additionalPara// /}
+            flag=$software.${slurmScriptParas// /}
             flag=${flag%.}
         fi
     fi
@@ -258,6 +260,13 @@ failFlag=$smartSlurmLogDir/$flag.failed
 killFlag=$smartSlurmLogDir/$flag.user.killed
 outFlag=$smartSlurmLogDir/$flag.out
 errFlag=$smartSlurmLogDir/$flag.err
+
+if [ ! -z "$runningSingleJob" ]; then 
+    [ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
+    [ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
+    outFlag=$out
+    errFlag=$err
+fi 
 
 deps=${deps#.}
 
@@ -406,7 +415,7 @@ if [[ "$testRun" == "run" ]]; then
 
                 touch $smartSlurmLogDir/$id.resubmitted
 
-                [ ! -z "$depsR" ] && scontrol update job=$id  $depsR && scontrol hold $id
+                [ ! -z "$depsR" ] && scontrol update job=$id $depsR && scontrol hold $id 
                 echo "Resubmit#$id-#$de-#$flag" >> $smartSlurmLogDir/allJobs.txt
                 echo $id
                 #rm $smartSlurmLogDir/$flag.success 2>/dev/null
@@ -647,8 +656,8 @@ fi
 
 #echoerr
 
-# for OOM testing
-#mem=1412
+# for OOM memtesting
+#mem=2
 
 [ -z "$min" ] && { echoerr did not find time limit; exit 1; }
 
@@ -674,6 +683,9 @@ adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
 # 10 minutes less than the time in sbatch command
 seconds=$(( $min * 60 ))
+
+# timetesting
+#seconds=65
 
 #set +x
 #[ $seconds -le 60 ] && time=11:0 && seconds=60
@@ -749,31 +761,32 @@ if [ -z "$slurmScript" ]; then
         #echo -e "ps -fu $USER\nwait" >> ${job%.sh}.cmd
         #echo -e "echo done > ${job%.sh}.success" >> ${job%.sh}.cmd
 
-        # x="bash -e -c \"set -e; sh sleeping1.sh; \""
-        # pid=`ps -f -u $USER | grep -v awk | grep -v srun | awk -v pat="$x"  '$0 ~ pat { print $2 }' | tail -n 1`
-        # echo $pid > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessID.txt
+# x="bash -e -c \"set -e; sh sleeping1.sh; \""
+# pid=`ps -f -u $USER | grep -v awk | grep -v srun | awk -v pat="$x"  '$0 ~ pat { print $2 }' | tail -n 1`
+# echo $pid > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessID.txt
 
-        #pid=$!
-        # #echo $pid >
-        # ps -f -u ld32
-        # wait
+ #pid=$!
+# #echo $pid >
+# ps -f -u ld32
+# wait
 
-        # echo done > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessStatus.txt
+# echo done > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessStatus.txt
 
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd $additionalPara\\\" $flag $mem $min $extraMem \"" >> $job
+
+
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
-        #echo "srun --mem \$srunM -n 1 $slurmAcc sh -e -o pipefail -c \"$wrapCMD $additionalPara ; \" && touch $succFlag" >> $job
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD $additionalPara;' && touch $succFlag" >> $job
-        #echo "sh -e -o pipefail -c \"$wrapCMD; \" && touch $succFlag" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag" >> $job
+        
     fi
 else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
 
     if [[ "$software" == *.Checkpoint ]]; then
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $additionalPara && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
     else
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $additionalPara; \" && touch $succFlag" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
     fi
 fi
 #echo "kill -9 \$mypid" >> $job
@@ -805,25 +818,25 @@ fi
 #if [ -z "$smartSlurmLogDir/" ]; then
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
-    if [ -z "$err" ]; then #errFlag=$smartSlurmLogDir/$flag.err
+   # if [ -z "$err" ]; then #errFlag=$smartSlurmLogDir/$flag.err
         cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
         echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" >> $job
-    else
-        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
-        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
-    fi
+    # else
+    #     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
+    #     echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
+    # fi
 
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
 #fi
-#if [ -z "$slurmScript" ]; then
-#    cmd="$cmd $additionalPara $job"
-#    echo -e " $additionalPara $job" >> $job
-#else
-    cmd="$cmd $job $additionalPara"
-    echo -e " $job $additionalPara" >> $job
-#fi
+if [ -z "$slurmScript" ]; then
+    cmd="$cmd $additionalPara $job"
+    echo -e " $additionalPara $job" >> $job
+else
+    cmd="$cmd $additionalPara $job $slurmScriptParas"
+    echo -e " $additionalPara $job $slurmScriptParas" >> $job
+fi
 
-exit 
+
 
 #echo -e "\n#Command used to submit the job: $cmd" >> $job
 
@@ -836,6 +849,8 @@ if [[ "$testRun" == "run" ]]; then
     #output=`$cmd`
     #echoerr $output
     #jobID=`$cmd`
+
+ #set -x
 
     # try to submit the job three time in case it fails
     for i in {1..3}; do
@@ -868,7 +883,9 @@ if [[ "$testRun" == "run" ]]; then
 
     echoerr final output is: $jobID
 
-  #  set +x
+    [ ! -z "$deps" ] && [[ "$jobID" =~ ^[0-9]+$ ]] && scontrol hold $jobID 
+
+    #  set +x
 
     #touch $submitFlag
 else
