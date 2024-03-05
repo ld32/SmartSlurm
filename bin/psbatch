@@ -51,7 +51,7 @@ if [ -z "$slurmScript" ]; then
     [ -z "$out" ] && out=slurm-\$SLURM_JOBID.out
     [ -z "$err" ] && err=slurm-\$SLURM_JOBID.err
 
-    echo -e "date\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$wrapCMD\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
+    echo -e "\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$wrapCMD\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
     echo -e "$wrapCMD"  >> $job     
 else
 
@@ -70,8 +70,8 @@ else
     echoerr slurmScriptParas: $slurmScriptParas 
     
     grep "^#SBATCH" $slurmScript >> $job
-    echo -e "date\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$slurmScript $slurmScriptParas\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
-    grep -v "^#SBATCH" $slurmScript | grep -v "^#!" >> $job
+    echo -e "\nset -e\ntrap \"{ summarizeAndEmail.sh $out $err \\\"$slurmScript $slurmScriptParas\\\"; }\" EXIT\nmemCpuMonitor.sh&\n" >> $job
+    grep -v "^#SBATCH" $slurmScript | grep -v "^#!" | grep -v -e '^[[:space:]]*$'  >> $job
     
 fi
 
