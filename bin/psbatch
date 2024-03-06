@@ -6,12 +6,11 @@
 
 echoerr() { :; }
 
-usage() { echoerr -e "Short Usage: \n${0##*/} <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\">"; exit 1; }
+usage() { echoerr -e "Usage: \n${0##*/} <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\">"; exit 1; }
 
-echoerr Running: $0 $@
-echoerr pwd: `pwd`
+echoerr Running: $0 $@ 
 
-[ ! -z "$1" ] || [[ "-h" != "$1" ]] || [[ "--help" != "$1" ]] || usage
+[ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
 
 if [ -z "$smartSlurmJobRecordDir" ]; then
     if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -31,12 +30,12 @@ for (( i=0; i<$(($#)); i++ )); do
   	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
         "-o" 			)   out="${array[$i+1]}" && additionalPara="$additionalPara -e $out" && array[$i+1]="" ;;
-  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/} && additionalPara="$additionalPara ${array[$i]}"";;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--output=/} && additionalPara="$additionalPara ${array[$i]}"";;
   		"-e" 			)   err="${array[$i+1]}" && additionalPara="$additionalPara -e $err" && array[$i+1]="";;
   		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}" && additionalPara="$additionalPara ${array[$i]}";;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && echoerr find additional parameter for sbatch ${array[$i]} && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
     esac
 done
 

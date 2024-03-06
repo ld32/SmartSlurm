@@ -33,11 +33,7 @@ echoerr() { echo "$@" >&2; }
 
 usage() { echoerr -e "Short Usage: \n${0##*/} [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
-[ -z "$1" ] && usage
-
-[[ "-h" == "$1" ]] && usage
-
-[[ "--help" == "$1" ]] && usage
+[ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
 
 if [ -z "$smartSlurmJobRecordDir" ]; then
     if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -46,6 +42,10 @@ if [ -z "$smartSlurmJobRecordDir" ]; then
         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
     fi
 fi
+
+
+
+
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
@@ -123,7 +123,7 @@ for (( i=0; i<$(($#)); i++ )); do
         "run"           )   [ $i -eq $(($#)) ] && continue;;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [ "$i" -eq "$slurmScriptPosition" ] && echoerr Found slurmScript ${array[$i]} && slurmScript="${array[$i]}"; [ -z "$slurmScript$wrapCMD" ] && echoerr find additional parameter for sbatch ${array[$i]} && additionalPara="$additionalPara ${array[$i]}"; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}"; };;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
     esac
 
     # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
