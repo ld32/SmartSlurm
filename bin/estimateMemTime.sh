@@ -34,6 +34,7 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
 
     Finala=`printf "%.15f\n" $Finala`
     Finalb=`printf "%.15f\n" $Finalb`
+
     Maximum=`printf "%.15f\n" $Maximum`
     STDFIT=`printf "%.15f\n" $STDFIT`
     
@@ -44,9 +45,11 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
         mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
         memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
+        mem=${mem%.*}; [[ "$mem" -le 100 ]] && mem=100
     elif (( $SCount > 9 )); then 
         mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
         memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
+        mem=${mem%.*}; [[ "$mem" -lt 100 ]] && mem=100
     else 
         echoerr outOfRange 
         echo outOfRange
@@ -83,6 +86,8 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
     time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
     timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb+$STDFIT*2
     #echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
+  
+    time=${time%.*}; [[ "$time" -lt 10 ]] && time=10
 else 
     time=0
 fi
@@ -90,6 +95,6 @@ echoerr Got  $mem $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
-output="$((${mem%.*} + 1)) $((${time%.*} + 1)) \n$memFormu\n$timeFormu\nRSquare=$RSquare" 
+output="$mem $time \n$memFormu\n$timeFormu\nRSquare=$RSquare" 
       
 echo $output

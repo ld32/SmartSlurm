@@ -38,7 +38,7 @@ done
 output=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $1, $2, $3, $4, $5, $6;}'`
 
 echo -e "Jobs on the same dependency level with current job:\n$output"
-[ -z "$output" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; exit; }
+[ -z "$output" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; rm -r $smartSlurmLogDir/downsteamjob.adjusting; exit; }
 
 IFS=$'\n';
 for i in $output; do

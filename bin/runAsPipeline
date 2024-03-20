@@ -295,7 +295,7 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -d \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
-        echo "${space}echo -e \"get output from ssbatch: \n\$id\"" >> $run
+        #echo "${space}echo -e \"get output from ssbatch: \n\$id\"" >> $run
 
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 

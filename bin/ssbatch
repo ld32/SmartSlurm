@@ -650,7 +650,7 @@ fi
 #echoerr
 
 # for OOM memtesting
-#mem=2
+#mem=4000
 
 [ -z "$min" ] && { echoerr did not find time limit; exit 1; }
 
@@ -678,7 +678,7 @@ adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 seconds=$(( $min * 60 ))
 
 # timetesting
-#seconds=65
+#seconds=36000
 
 #set +x
 #[ $seconds -le 60 ] && time=11:0 && seconds=60
@@ -707,6 +707,8 @@ echoerr Building new sbatch command ...
 #echo "#!/bin/bash" > $job
 
 echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+
+# echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime &\n" > $job
 
 
 # [[ "$mem" == *G ]] && totalM=$(( 1024 * ${mem%G})) || totalM=${mem%M}

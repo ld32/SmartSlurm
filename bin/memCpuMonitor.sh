@@ -23,6 +23,8 @@ cd $smartSlurmLogDir #`dirname $1` #${1%/$smartSlurmLogDir/*}
 
 sleep 2
 
+START=`date +%s`
+
 counter=0
 
 jobName=$1 #`basename $1` #${1#*/$smartSlurmLogDir/}

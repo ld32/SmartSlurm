@@ -61,11 +61,11 @@ echo pwd: `pwd`
     out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 #fi
 
-#if [ -f $succFile ]; then
+if [ -f $succFile ]; then
 
     adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
     #rm $failFile 2>/dev/null
-#fi 
+fi 
 
 
 # wait for slurm database update
@@ -413,6 +413,8 @@ if [ ! -f $succFile ]; then
                     s="OOM.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
                     echo -e "" | mail -s "$s" $USER
                     [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
+
+                    touch $out.$newJobID
 
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
                     sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
