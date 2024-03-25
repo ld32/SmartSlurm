@@ -644,7 +644,7 @@ else
         resAjust="$resAjust#Use default mem and time. Has input, but this job depends on $deps."
 
     fi
-    echo -e "$resAjust\n" > $outFlag
+    
 fi
 
 #echoerr
@@ -672,13 +672,21 @@ fi
 
 #[ "$min" -lt 10 ] && min=10
 
+[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+
+[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+
+echo -e "$resAjust\n" > $outFlag
+
+# testtime
+#min=60
+# testmem
+#mem=4
+
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
 # 10 minutes less than the time in sbatch command
 seconds=$(( $min * 60 ))
-
-# timetesting
-#seconds=36000
 
 #set +x
 #[ $seconds -le 60 ] && time=11:0 && seconds=60

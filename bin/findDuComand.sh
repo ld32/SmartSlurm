@@ -10,7 +10,7 @@ for node in $nodes; do
 
     echo "Computing node: $node" >> $log
 
-    ssh $node "ps -Af | grep -v '$USER\|root' | grep ' du -'" >> $log 2>&1 || echo ssh failed or no du is found. >> $log
+    ssh $node "ps -Af | grep -v '$USER\|root' | grep ' du -'" >> $log 2>&1 || echo ssh failed or no DU command is found. >> $log
 
     # break
 
@@ -18,5 +18,7 @@ for node in $nodes; do
 done
 
 date >> $log
+
+grep -B 1 " du " $log
 
 #cat $log
