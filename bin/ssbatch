@@ -667,11 +667,6 @@ fi
 
 #echoerr looking partition for hour: $hours ##
 
-# at least 100M and 10 minutes
-#[ "$mem" -lt 100 ] && mem=100
-
-#[ "$min" -lt 10 ] && min=10
-
 [ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
 
 [ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
@@ -679,17 +674,13 @@ fi
 echo -e "$resAjust\n" > $outFlag
 
 # testtime
-#min=60
+#min=1
 # testmem
-#mem=4
+#mem=2000
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
-# 10 minutes less than the time in sbatch command
 seconds=$(( $min * 60 ))
-
-#set +x
-#[ $seconds -le 60 ] && time=11:0 && seconds=60
 
 #echoerr srun seconds: $seconds
 
