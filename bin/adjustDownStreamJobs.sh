@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#set -x
+set -x
 
 Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 

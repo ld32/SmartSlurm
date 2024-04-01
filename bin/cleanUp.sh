@@ -1,6 +1,8 @@
 #!/bin/bash
 
-#set -x
+set -x
+
+for i in {1..200}; do sleep 1; echo sleep $i; done & 
 
 # to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir

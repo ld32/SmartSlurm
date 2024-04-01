@@ -19,6 +19,6 @@ done
 
 date >> $log
 
-grep -B 1 " du " $log
+grep -B 1 " du " $log && date
 
 #cat $log

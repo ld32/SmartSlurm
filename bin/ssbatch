@@ -674,7 +674,7 @@ fi
 echo -e "$resAjust\n" > $outFlag
 
 # testtime
-#min=1
+min=10
 # testmem
 #mem=2000
 
