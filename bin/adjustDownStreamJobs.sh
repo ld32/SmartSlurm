@@ -1,10 +1,11 @@
 #!/bin/sh
 
-set -x
+#set -x
 
 Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 
 echo
+for i in {1..200}; do sleep 1; echo adjusting $i; done & 
 
 echo Running: $0  $@
 
@@ -27,18 +28,19 @@ IFS=$' ';
 
 #echo
 
-while true; do
-    if `mkdir $smartSlurmLogDir/downsteamjob.adjusting  2>/dev/null`; then
-        break
-    fi
-    sleep 1
-done 
+# while true; do
+#     if `mkdir $smartSlurmLogDir/downsteamjob.adjusting  2>/dev/null`; then
+#         break
+#     fi
+#     echo waiting for lock to adjust downsteam jobs 
+#     sleep 1
+# done 
 
 # directly get id, deps, software, ref, and input here, if input is none, directly skip this job
 output=`echo $text | awk '{if ($2 ~ /'"$SLURM_JOBID/"') print $1, $2, $3, $4, $5, $6;}'`
 
 echo -e "Jobs on the same dependency level with current job:\n$output"
-[ -z "$output" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; rm -r $smartSlurmLogDir/downsteamjob.adjusting; exit; }
+[ -z "$output" ] && { echo -e "Downstream job ids not found for $SLURM_JOBID"; rm -r $smartSlurmLogDir/downsteamjob.adjusting 2>/dev/null; exit; }
 
 IFS=$'\n';
 for i in $output; do
@@ -52,9 +54,6 @@ for i in $output; do
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]}
 
-    
-    
-    
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1`
     #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1` && oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1` && extraMem=$(( $maxExtra * $oomCount ))
 
@@ -69,8 +68,6 @@ for i in $output; do
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
         [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; break;}
     done
-
-    
 
     if [ -z "$allDone" ]; then
         date
@@ -154,13 +151,10 @@ for i in $output; do
             cat $smartSlurmJobRecordDir/stats/$software.$ref.time.txt
 
             if [[ $(wc -l <$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt) -lt 3 ]]; then
-
                 echo There are less than 3 records. No way to fit a curve.
                 echo There are less than 3 records. No way to fit a curve. >> $smartSlurmLogDir/$name.out
 
             else
-
-
                 gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
 
                 echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$software.$ref.mem.txt"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
@@ -269,4 +263,4 @@ for i in $output; do
     fi
 done
 
-rm -r $smartSlurmLogDir/downsteamjob.adjusting 
+rm -r $smartSlurmLogDir/downsteamjob.adjusting 2>/dev/null

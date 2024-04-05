@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -x
+#set -x
 
-for i in {1..200}; do sleep 1; echo sleep $i; done & 
+for i in {1..200}; do sleep 1; echo cleanup $i; done & 
 
 # to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
@@ -38,7 +38,7 @@ extraTime=${14}
 #smartSlurmJobRecordDir=${15}
 
 echo Running $0 $@
-echo pwd: `pwd`
+#echo pwd: `pwd`
 
 # if not successful, delete cromwell error file, so that the job not labeled fail
 #ls -l execution
