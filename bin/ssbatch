@@ -70,6 +70,7 @@ unset SSBATCH_S SSBATCH_R SSBATCH_I SSBATCH_D SSBATCH_C
 
 echoerr
 array=( "$@" )
+arrayC=("${array[@]}")  
 
 export alwaysRequeueIfFail=""
 caller=`ps -f $PPID` && [[ "$caller" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
@@ -123,7 +124,7 @@ for (( i=0; i<$(($#)); i++ )); do
         "run"           )   [ $i -eq $(($#)) ] && continue;;
         "--wrap"        )   echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   echoerr Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
-        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${array[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -S -t -F -w -x -B -G --nice --export " != *" ${arrayC[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
     esac
 
     # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
@@ -217,8 +218,7 @@ fi
 #todo: err is ignored. will work on it later
 
 
-# this is not pipeline
-if [ ! -z "$runningSingleJob" ]; then
+if [ -z "$flag" ]; then
     mkdir -p $smartSlurmLogDir/
     #[ -z "$software" ] && software=regularSbatch
     tm=`mktemp XXXXXXXX --dry-run`
@@ -243,8 +243,10 @@ if [ ! -z "$runningSingleJob" ]; then
             flag=$software.${slurmScriptParas// /}
             flag=${flag%.}
         fi
+    else 
+        flag=$software.$tm
     fi
-    [ -z "$name" ] || flag=$name
+    #[ -z "$name" ] || flag=$name
 else
     [ -d "$smartSlurmLogDir/" ] || { echoerr Directory not exist: $smartSlurmLogDir/; usage; }
 
@@ -306,9 +308,15 @@ fi
 
 resAjust="#Original mem $mem M, Original time: $min mins\n"
 
+
+
+
 # check job done before or not
 if [[ "$testRun" == "run" ]]; then
-    if [ -f $succFlag ]; then
+    
+    echoerr ps command output 
+    parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
+    if [ -f $succFlag ] && [[ "$parentCmd" != */bin/snakemake* ]]; then
         stepID=${flag%%.*}
         if ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
             echo skipThisJob
@@ -770,17 +778,28 @@ if [ -z "$slurmScript" ]; then
 
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
     else
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag" >> $job
         
+        if [ ! -z "$runningSingleJob" ]; then
+
+            echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
+        else 
+            echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
+        fi 
     fi
 else
     grep "^#SBATCH" $slurmScript >> $job || true >> $job
     #echo "touch $startFlag" >> $job
 
     if [[ "$software" == *.Checkpoint ]]; then
-        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem; \"" >> $job
+        echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobs.sh $smartSlurmLogDir; \"" >> $job
     else
-        echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
+        
+        if [ ! -z "$runningSingleJob" ]; then
+            echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job
+        else 
+            echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag" >> $job
+
+        fi     
     fi
 fi
 #echo "kill -9 \$mypid" >> $job
@@ -879,7 +898,7 @@ if [[ "$testRun" == "run" ]]; then
 
     [ ! -z "$deps" ] && [[ "$jobID" =~ ^[0-9]+$ ]] && scontrol hold $jobID 
 
-    #  set +x
+    #set +x
 
     #touch $submitFlag
 else
@@ -896,14 +915,14 @@ echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
 
 if [ ! -z "$runningSingleJob" ]; then
     if [ -z "$out" ]; then
-        touch $outFlag && ln $outFlag slurm-$jobID.out
+        touch $outFlag && ln -s $outFlag slurm-$jobID.out
     else
         out=${out/\%j/$jobID};
-        touch $outFlag && ln $outFlag $out
+        touch $outFlag && ln -s $outFlag $out
     fi
     if [ ! -z "$err" ]; then
         err=${err/\%j/$jobID};
-        touch $errFlag && ln $errFlag $err
+        touch $errFlag && ln -s $errFlag $err
     fi
 fi
 

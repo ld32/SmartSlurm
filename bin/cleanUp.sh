@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x
+set -x
 
 for i in {1..200}; do sleep 1; echo cleanup $i; done & 
 
@@ -63,11 +63,11 @@ echo Running $0 $@
     out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 #fi
 
-if [ -f $succFile ]; then
+# if [ -f $succFile ]; then
 
-    adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
-    #rm $failFile 2>/dev/null
-fi 
+#     adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
+#     #rm $failFile 2>/dev/null
+# fi 
 
 
 # wait for slurm database update
@@ -419,7 +419,28 @@ if [ ! -f $succFile ]; then
                     touch $out.$newJobID
 
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+
+                    while true; do
+                        if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
+                            break
+                        else 
+                            folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
+                            current_time=$(date +%s)
+
+                            if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
+                                touch $smartSlurmLogDir/job.adjusting.lock 
+                                break
+                            fi    
+                        fi
+                        echo waiting for lock to adjust job ids 
+                        sleep 1
+                    done  
+
+
+
                     sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
+                    rm -r $smartSlurmLogDir/job.adjusting.lock
+
                     cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
                     echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
                     break
@@ -541,7 +562,24 @@ if [ ! -f $succFile ]; then
                     touch $out.$newJobID
 
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+                    while true; do
+                        if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
+                            break
+                        else 
+                            folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
+                            current_time=$(date +%s)
+
+                            if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
+                                touch $smartSlurmLogDir/job.adjusting.lock 
+                                break
+                            fi    
+                        fi
+                        echo waiting for lock to adjust job ids 
+                        sleep 1
+                    done                     
+
                     sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
+                    rm -r $smartSlurmLogDir/job.adjusting.lock
                     cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
                     echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
                     break

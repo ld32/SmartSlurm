@@ -91,7 +91,7 @@ echo "cwd=\`realpath ./\`" >> $run
 
 echo "[ -f $smartSlurmLogDir/allJobs.txt ] && cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.txt.old"  >> $run
 
-echo "rm -r $smartSlurmLogDir/downsteamjob.adjusting $smartSlurmLogDir/requeue.start $smartSlurmLogDir/skipAllSuccessJobs*.txt $smartSlurmLogDir/reRunAllSuccessJobs*.txt $smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
+echo "rm -r $smartSlurmLogDir/downsteamjob.adjusting $smartSlurmLogDir/job.adjusting.lock $smartSlurmLogDir/requeue.start $smartSlurmLogDir/skipAllSuccessJobs*.txt $smartSlurmLogDir/reRunAllSuccessJobs*.txt $smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
 
 echo "[ ! -f $smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag software reference inputs > $smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> $smartSlurmLogDir/allJobs.txt">> $run
 echo "echo ---------------------------------------------------------" >> $run
