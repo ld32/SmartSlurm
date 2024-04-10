@@ -5,6 +5,11 @@
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work)
+- [Use sbatch in Snakemake pipeline]
+
+- [Use sbatch in Cromwell pipeline]
+
+- [Use sbatch in Nextflow pipeline]
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
