@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 for i in {1..200}; do sleep 1; echo cleanup $i; done & 
 

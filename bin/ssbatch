@@ -908,10 +908,10 @@ else
     #jobID=
 fi
 
-echo -e "\n#mem=$mem time=$time" >> $job
+echo -e "\n#myMem=$mem myTime=$time" >> $job
 
 # add this to the job script
-echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
+# echo -e "\n#Sbatch command output:\n#Submitted batch job $jobID" >> $job
 
 if [ ! -z "$runningSingleJob" ]; then
     if [ -z "$out" ]; then

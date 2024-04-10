@@ -70,4 +70,6 @@ read -p "" xx </dev/tty;
 
 sudo scontrol update JobId=$jid TimeLimit=$newTime
 
+squeue  --states RUNNING --noheader --Format=jobid:20,username:10,partition:20,timelimit:22,timeleft:22 -j $jid
+
 echo -e "\nThanks for contacting us.\nI just extended the job as you requested. Let me close this ticket for now. Please contact us again at rchelp@hms.harvard.edu.\n\nBest"
