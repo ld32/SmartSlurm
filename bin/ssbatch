@@ -66,7 +66,7 @@ echoerr $cmd
 
 testRun=${@: -1}
 
-unset SSBATCH_S SSBATCH_R SSBATCH_I SSBATCH_D SSBATCH_C
+unset S R I D C
 
 echoerr
 array=( "$@" )
@@ -208,11 +208,11 @@ fi
 
 [ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
 
-[ -z "$software" ] && [ ! -z "$SSBATCH_S" ] && software="$SSBATCH_S"
-[ -z "$ref" ] && [ ! -z "$SSBATCH_R" ] && ref="$SSBATCH_R"
-[ -z "$input" ] && [ ! -z "$SSBATCH_I" ] && inputs="$SSBATCH_I"
-[ -z "$deps" ] && [ ! -z "$SSBATCH_D" ] && deps="$SSBATCH_D"
-[[ "$software" == *Checkpoint ]] || software=$software$SSBATCH_C
+[ -z "$software" ] && [ ! -z "$S" ] && software="$S"
+[ -z "$ref" ] && [ ! -z "$R" ] && ref="$R"
+[ -z "$input" ] && [ ! -z "$I" ] && inputs="$I"
+[ -z "$deps" ] && [ ! -z "$D" ] && deps="$D"
+[[ "$software" == *Checkpoint ]] || software=$software$C
 [ -z "$out" ] || out=`realpath $out`
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later

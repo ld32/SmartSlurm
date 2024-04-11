@@ -58,32 +58,32 @@ sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
 for i in {1..3}; do
-    sbatch --mem 2G -t 2:0:0 --commen="SSBATCH_S=useMemTimeNoInput" \
+    sbatch --mem 2G -t 2:0:0 --commen="S=useMemTimeNoInput" \
         --wrap="useMemTimeNoInput.sh $i"
 done
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
 # and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
+sbatch --mem 2G -t 2:0:0 --mem 2G --commen="S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
 for i in {1..3}; do
-    sbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeWithInput SSBATCH_I=bigText$i.txt" \
+    sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput I=bigText$i.txt" \
         --wrap="useMemTimeWithInput.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-sbatch -t 2:0:0 --mem 2G --commen="SSBATCH_S=useMemTimeWithInput \
-    SSBATCH_I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
+sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput \
+    I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
 
 # The second way to tell the input file name: 
 sbatch -t 2:0:0 --mem 2G job.sh
 
 cat job.sh
 #!/bin/bash
-#SBATCH --commen="SSBATCH_S=useMemTimeWithInput SSBATCH_I=bigText1.txt,bigText2.txt"
+#SBATCH --commen="S=useMemTimeWithInput I=bigText1.txt,bigText2.txt"
 useMemTimeWithInput.sh bigText1.txt bigText$2.txt
 
 # After you finish using ssbatch, run these command to disable ssbatch:    
