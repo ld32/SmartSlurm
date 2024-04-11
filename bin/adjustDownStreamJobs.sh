@@ -63,7 +63,8 @@ for i in $output; do
     IFS=$' ';
     for j in ${deps//\./ }; do
         echo 2working on $j
-        echo look for the job flag for $j
+        [[ "$j" == "$SLURM_JOBID" ]] && continue; # ignore current job
+         echo look for the job flag for $j
         job=`echo $text | awk '{if ($1 ~ /'"$j/"') print $3;}'`
         #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
         [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { echo This job is not done yet: $job; allDone=no; break;}
