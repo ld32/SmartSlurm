@@ -31,7 +31,7 @@
 
 echoerr() { echo "$@" >&2; }
 
-usage() { echoerr -e "Short Usage: \n${0##*/} [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+usage() { echo -e "Short Usage: \n${0##*/} [-S software] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-D Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-S software, optional. Such as: bowtie2-4core. If empty, use script name as software name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
 [ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
 
@@ -42,9 +42,6 @@ if [ -z "$smartSlurmJobRecordDir" ]; then
         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
     fi
 fi
-
-
-
 
 
 mkdir -p $smartSlurmJobRecordDir/stats
@@ -314,7 +311,7 @@ resAjust="#Original mem $mem M, Original time: $min mins\n"
 # check job done before or not
 if [[ "$testRun" == "run" ]]; then
     
-    echoerr ps command output 
+    #echoerr ps command output 
     parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
     if [ -f $succFlag ] && [[ "$parentCmd" != */bin/snakemake* ]]; then
         stepID=${flag%%.*}
@@ -325,11 +322,11 @@ if [[ "$testRun" == "run" ]]; then
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
             echoerr $flag was done before, do you want to re-run it?
             echoerr -e "y:        To re-run this job, press y, then enter key."
-            echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
-            echoerr -e "yall:     To re-run all jobs, type yall, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key."
             echoerr -e "enter:    To not re-run this job, directly press enter key."
-            echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
-            echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
             read -p "" x </dev/tty
 
             echoerr You typed: \"$x\"
@@ -894,7 +891,7 @@ if [[ "$testRun" == "run" ]]; then
         sleep 2
     done
 
-    echoerr final output is: $jobID
+    #echoerr final output is: $jobID
 
     [ ! -z "$deps" ] && [[ "$jobID" =~ ^[0-9]+$ ]] && scontrol hold $jobID 
 
@@ -934,7 +931,7 @@ fi
 printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs >> $smartSlurmLogDir/allJobs.txt;
 #fi
 
-echoerr New slurmScirpt is ready. The content is:
-cat $job >&2
+#echoerr New slurmScirpt is ready. The content is:
+#cat $job >&2
 
 echo Submitted batch job $jobID
