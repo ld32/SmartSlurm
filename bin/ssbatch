@@ -146,11 +146,26 @@ fi
 #echoerr test or run: $testRun
 #echoerr
 
+parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
+
 if [ ! -z "$slurmScript" ]; then
   echoerr Validating slurmScript:
   firstRow=`head -n 1 $slurmScript`
   echoerr FirstRow of the script: $firstRow
   [[ "$firstRow" =~ ^#\!/bin/bash ]] || [[ "$firstRow" =~ ^#\!/usr/bin/bash ]] || [[ "$firstRow" =~ ^#\!/bin/sh ]] || [[ "$firstRow" =~ ^#\!/usr/bin/sh ]]|| { echoerr "Error: first row of the slurm script ($slurmScript) does not start with #!/bin/bash, #!/usr/bin/bash, #!/bin/sh, #!/usr/bin/sh";  exit 1;}
+
+
+  # get software (rule), input, threads from 
+  if [[ "$parentCmd" == */bin/snakemake* ]]; then
+    #properties='{"local": false, "params": {}, "input": ["data/genome.fa", "data/samples/A.fastq"], "rule": "bwa_map", "resources": {}, "output": ["mapped_reads/A.bam"], "cluster": {}, "threads": 2}'
+    properties=`grep "^# properties =" $slurmScript`
+    properties=${properties#\# properties =}
+    [ -z "$software" ] && software=$(echo $properties | jq -r '.rule')
+    [ -z "$core" ] && core=$(echo $properties | jq -r '.threads')
+    [ -z "$inputs" ] && inputs=$(echo $properties | jq -r '.input | join(" ")')
+
+    echoerr Got snakemake parameter: rule: $software, threads: $core input: $inputs 
+  fi 
 fi
 
 [ -z "$wrapCMD" ] && [ -z "$slurmScript" ] && echoerr Error: Did not find --wrap, did not find slurmScript either. && exit 1
@@ -190,10 +205,6 @@ if [[ ! -z "$slurmScript" ]]; then
             esac
         fi
     done < $slurmScript
-
-
-    
-
 
     echoerr
     echoerr Parsing result from slurm script:
@@ -243,13 +254,15 @@ if [ -z "$flag" ]; then
     else 
         flag=$software.$tm
     fi
-    #[ -z "$name" ] || flag=$name
+    
 else
     [ -d "$smartSlurmLogDir/" ] || { echoerr Directory not exist: $smartSlurmLogDir/; usage; }
 
     flag=${flag//\//-}
 fi
 
+
+[ -z "$name" ] && name=$flag
 
 mkdir -p $smartSlurmLogDir/
 job=$smartSlurmLogDir/$flag.sh
@@ -312,7 +325,7 @@ resAjust="#Original mem $mem M, Original time: $min mins\n"
 if [[ "$testRun" == "run" ]]; then
     
     #echoerr ps command output 
-    parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
+    
     if [ -f $succFlag ] && [[ "$parentCmd" != */bin/snakemake* ]]; then
         stepID=${flag%%.*}
         if ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
@@ -829,11 +842,11 @@ fi
 #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
 #else
     if [ -z "$err" ]; then #errFlag=$smartSlurmLogDir/$flag.err
-        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc"
-        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $flag $deps $slurmAcc" >> $job
+        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $name $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $name $deps $slurmAcc" >> $job
     else
-        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc"
-        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $flag $deps $slurmAcc" >> $job
+        cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc"
+        echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc" >> $job
     fi
 
     #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
