@@ -5,11 +5,12 @@
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work)
-- [Use sbatch in Snakemake pipeline]
+      
+- [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
-- [Use sbatch in Cromwell pipeline]
+- [Use sbatch in Cromwell pipeline](#Use-ssbatch-in-Cromwell-pipeline])
 
-- [Use sbatch in Nextflow pipeline]
+- [Use sbatch in Nextflow pipeline](#Use-ssbatch-in-Nextflow-pipeline)
 
 - [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
     - [Smart pipeline features](#smart-pipeline-features)
@@ -52,31 +53,26 @@ export PATH=$PWD/smartSlurm/bin:$PATH
 # Create some text files for testing
 createBigTextFiles.sh
 
-# Use ssbatch to replace regular sbatch, set up a fuction. 
-# This way, whenever you run sbatch, ssbatch is called. 
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
-
 # Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
 for i in {1..3}; do
-    sbatch --mem 2G -t 2:0:0 --commen="S=useMemTimeNoInput" \
-        --wrap="useMemTimeNoInput.sh $i"
+    ssbatch --mem 2G -t 2:0:0 -S useMemTimeNoInput --wrap="useMemTimeNoInput.sh $i"
 done
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
 # and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --commen="S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
+ssbatch --mem 2G -t 2:0:0 --mem 2G -S useMemTimeNoInput --wrap="useMemTimeNoInput.sh 1"
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
 for i in {1..3}; do
-    sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput I=bigText$i.txt" \
+    ssbatch -t 2:0:0 --mem 2G -S useMemTimeWithInput -I bigText$i.txt \
         --wrap="useMemTimeWithInput.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput \
-    I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
+ssbatch -t 2:0:0 --mem 2G -S useMemTimeWithInput \
+    -I "bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
 
 # The second way to tell the input file name: 
 sbatch -t 2:0:0 --mem 2G job.sh
@@ -85,9 +81,6 @@ cat job.sh
 #!/bin/bash
 #SBATCH --commen="S=useMemTimeWithInput I=bigText1.txt,bigText2.txt"
 useMemTimeWithInput.sh bigText1.txt bigText$2.txt
-
-# After you finish using ssbatch, run these command to disable ssbatch:    
-unset sbatch
 
 ```
 
@@ -160,6 +153,135 @@ adjustPartition() {
     $smartSlurmJobRecordDir/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
 
 
+# Use ssbatch in Snakemake pipeline
+
+``` bash
+# Download smartSlurm if it is not done yet 
+git clone https://github.com/ld32/smartSlurm.git  
+
+# Download snakemake tutorial (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
+wget https://bitbucket.org/snakemake/snakemake-tutorial/get/v3.9.0-1.tar.bz2
+tar -xf v3.9.0-1.tar.bz2 --strip 1
+cp $PWD/smartSlurm/Snakefile snakemake-tutorial/
+
+# Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
+module load miniconda3
+mamba env create --name snakemake-tutorial --file $PWD/smartSlurm/config/snakemakeEnv.yaml
+
+# Review Snakefile, activate the snakemake env and run test
+module load miniconda3
+export PATH=$PWD/smartSlurm/bin:$PATH  
+cd snakemake-tutorial/
+cat Snakefile
+snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p short"
+
+If you have multiple Slurm account:
+snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 100 --mem 1G"
+
+```
+
+
+# Use ssbatch in Cromwell pipeline
+
+``` bash
+# Download 
+git clone https://github.com/ld32/smartSlurm.git  
+
+# Setup path
+export PATH=$PWD/smartSlurm/bin:$PATH  
+
+# Create some text files for testing
+createBigTextFiles.sh
+
+# Use ssbatch to replace regular sbatch, set up a fuction. 
+# This way, whenever you run sbatch, ssbatch is called. 
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
+
+# Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
+for i in {1..3}; do
+    sbatch --mem 2G -t 2:0:0 --commen="S=useMemTimeNoInput" \
+        --wrap="useMemTimeNoInput.sh $i"
+done
+
+# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
+# and run-time so that 90% jobs can finish successfully
+# Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
+sbatch --mem 2G -t 2:0:0 --mem 2G --commen="S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
+
+# Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
+for i in {1..3}; do
+    sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput I=bigText$i.txt" \
+        --wrap="useMemTimeWithInput.sh bigText$i.txt"
+done
+
+# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
+# Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
+sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput \
+    I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
+
+# The second way to tell the input file name: 
+sbatch -t 2:0:0 --mem 2G job.sh
+
+cat job.sh
+#!/bin/bash
+#SBATCH --commen="S=useMemTimeWithInput I=bigText1.txt,bigText2.txt"
+useMemTimeWithInput.sh bigText1.txt bigText$2.txt
+
+# After you finish using ssbatch, run these command to disable ssbatch:    
+unset sbatch
+
+```
+
+# Use ssbatch in Nextflow pipeline
+
+``` bash
+# Download 
+git clone https://github.com/ld32/smartSlurm.git  
+
+# Setup path
+export PATH=$PWD/smartSlurm/bin:$PATH  
+
+# Create some text files for testing
+createBigTextFiles.sh
+
+# Use ssbatch to replace regular sbatch, set up a fuction. 
+# This way, whenever you run sbatch, ssbatch is called. 
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
+
+# Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
+for i in {1..3}; do
+    sbatch --mem 2G -t 2:0:0 --commen="S=useMemTimeNoInput" \
+        --wrap="useMemTimeNoInput.sh $i"
+done
+
+# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
+# and run-time so that 90% jobs can finish successfully
+# Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
+sbatch --mem 2G -t 2:0:0 --mem 2G --commen="S=useMemTimeNoInput" --wrap="useMemTimeNoInput.sh 1"
+
+# Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
+for i in {1..3}; do
+    sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput I=bigText$i.txt" \
+        --wrap="useMemTimeWithInput.sh bigText$i.txt"
+done
+
+# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
+# Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
+sbatch -t 2:0:0 --mem 2G --commen="S=useMemTimeWithInput \
+    I=bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
+
+# The second way to tell the input file name: 
+sbatch -t 2:0:0 --mem 2G job.sh
+
+cat job.sh
+#!/bin/bash
+#SBATCH --commen="S=useMemTimeWithInput I=bigText1.txt,bigText2.txt"
+useMemTimeWithInput.sh bigText1.txt bigText$2.txt
+
+# After you finish using ssbatch, run these command to disable ssbatch:    
+unset sbatch
+
+```
 # Run bash script as smart pipeline using smart sbatch
 Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
