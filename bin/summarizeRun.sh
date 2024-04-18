@@ -3,10 +3,7 @@ Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go th
 
 #set -x
 
-echo Running: $0 $@»
-echo pwd: `pwd`
-#logDir=`dirname $1`
-#flag=`basename $1`
+echo Running: $0 $@
 
 cd $1 #logDir
 
