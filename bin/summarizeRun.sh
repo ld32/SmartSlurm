@@ -7,7 +7,12 @@ echo Running: $0 $@
 
 cd $1 #logDir
 
-[ -f allJobs.txt ] || { echo allJobs.txt not found.; exit 1; }
+if [ -f allJobs.txt ]; then 
+    lines=`tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+else 
+    lines="$SLURMJOB_ID $2" # tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+fi 
+ 
 
 echo pwd: `pwd`
 
@@ -15,7 +20,7 @@ IFS=$'\n'
 
 out=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 
-lines=`tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+
 
 current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
 toSend="Summery for jobs in allJobs.txt:"
