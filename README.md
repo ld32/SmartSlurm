@@ -38,9 +38,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 ##As the figure shown above, Smart Slurm run the first 5 jobs, it use default time, then based on the first five jobs, it estimates time future jobs. The wasted time is dramatially decreased for the future jobs.
 
 ## ssbatch features:
-<p align="right">[Go to top](#SmartSlurm) </p> 
-
-<link class="xyz" href="#SmartSlurm" >My Right Aligned Link</link>
+[Go to top](#SmartSlurm)
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
