@@ -4,7 +4,7 @@
 - [Smart sbatch](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does ssbatch work](#how-does-ssbatch-work) [Go to top](#go-to-top)
+    - [How does ssbatch work](#how-does-ssbatch-work) 
       
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
@@ -84,7 +84,7 @@ useMemTimeWithInput.sh bigText1.txt bigText$2.txt
 
 ```
 
-## How does ssbatch work
+## How does ssbatch work [Go to top](#go-to-top)
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
