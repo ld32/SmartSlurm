@@ -768,7 +768,7 @@ echoerr Building new sbatch command ...
 
 # when submit jobs from interactive job, need this. Otherwise get error:
 # echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
-echo -e "unset SLURM_CPU_BIND" >> $job
+
 
 #echo -e "unset SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU SLURM_MEM_PER_NODE SLURM_CPU_BIND" >> $job
 
@@ -778,6 +778,7 @@ echo -e "unset SLURM_CPU_BIND" >> $job
 
 if [ -z "$slurmScript" ]; then
     echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+    echo -e "unset SLURM_CPU_BIND" >> $job
 
     #echo "touch $startFlag" >> $job
     [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
@@ -835,7 +836,7 @@ else
     echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $software ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
 
     #echo "touch $startFlag" >> $job
-
+    echo -e "unset SLURM_CPU_BIND" >> $job
     if [[ "$software" == *.Checkpoint ]]; then
         echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobs.sh $smartSlurmLogDir; \"" >> $job
     else
@@ -844,7 +845,6 @@ else
             echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job  
         else 
             echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag" >> $job
-
         fi     
     fi
 fi
