@@ -40,6 +40,8 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 ## ssbatch features:
 <p align="right">[Go to top](#SmartSlurm) </p> 
 
+<link class="xyz" href="#SmartSlurm" >My Right Aligned Link</link>
+
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
