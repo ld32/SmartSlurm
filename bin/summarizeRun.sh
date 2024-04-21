@@ -59,7 +59,7 @@ s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$t
 
 
 
-[ -f allJobs.txt ] && echo -e "$s\n$toSend" > summary
+[ -f allJobs.txt ] && echo -e "$s\n$toSend" > summary.$SLURMJOB_ID
 
 
 # if [ $((running + pending)) -le 5 ]; then

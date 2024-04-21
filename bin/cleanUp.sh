@@ -46,8 +46,6 @@ echo Running $0 $@
 
 #cd ${1%log}
 
-
-
 # if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
 #     if [ -f ~/.smartSlurm/config/config.txt ]; then
 #         source ~/.smartSlurm/config/config.txt
@@ -714,7 +712,7 @@ fi
 summarizeRun.sh $smartSlurmLogDir $flag 
 
 
-[ -f $smartSlurmLogDir/summary ] && toSend="`cat $smartSlurmLogDir/summary`\n$toSend" && s="${toSend%% *} $s"
+[ -f $smartSlurmLogDir/summary.$SLURMJOB_ID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURMJOB_ID`\n$toSend" && s="${toSend%% *} $s"
 
 #echo -e "tosend:\n$toSend"
 #echo -e "$toSend" >> ${err%.err}.email
