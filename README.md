@@ -21,7 +21,7 @@
 
 
 # Smart sbatch
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and ssbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
 
@@ -38,7 +38,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 ##As the figure shown above, Smart Slurm run the first 5 jobs, it use default time, then based on the first five jobs, it estimates time future jobs. The wasted time is dramatially decreased for the future jobs.
 
 ## ssbatch features:
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
@@ -47,7 +47,7 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 5) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
 
 ## How to use ssbatch
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ``` bash
 # Download 
@@ -91,7 +91,7 @@ useMemTimeWithInput.sh bigText1.txt bigText$2.txt
 ```
 
 ## How does ssbatch work    
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
@@ -161,7 +161,7 @@ adjustPartition() {
 
 
 # Use ssbatch in Snakemake pipeline
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ``` bash
 # Download smartSlurm if it is not done yet 
@@ -190,7 +190,7 @@ snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 10
 
 
 # Use ssbatch in Cromwell pipeline
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ``` bash
 # Download 
@@ -242,7 +242,7 @@ unset sbatch
 ```
 
 # Use ssbatch in Nextflow pipeline
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ``` bash
 # Download smartSlurm if it is not done yet 
@@ -267,7 +267,7 @@ nextflow run nextflow.nf -profile slurm
 
 ```
 # Run bash script as smart pipeline using smart sbatch
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
@@ -277,7 +277,7 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMemSaved.png)
 
 ## smart pipeline features:
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 1) Submit each step as a cluster job using ssbatch, which auto adjusts memory and run-time according to statistics from earlier jobs, and re-run OOM/OOT jobs with doubled memory/run-time
 2) Automatically arrange dependencies among jobs
@@ -290,7 +290,7 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
 
 ## How to use smart pipeline
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ``` bash
 # Download
@@ -351,7 +351,7 @@ cat $smartSlurmJobRecordDir/scripts/bashScriptV2.sh
 ```
 
 ## Notice that there are a few things added to the script here:
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 Before the for loop start, there is #loopStart:i, which means all the steps inside the loop use $i as part of unique job identifier.
 
@@ -370,7 +370,7 @@ Here are two more examples:
 #@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
 
 # Test run the modified bash script as a pipeline
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
@@ -560,7 +560,7 @@ Thus far in the example, we have not actually submitted any jobs to the schedule
 runAsPipeline ~/smartSbatch/scripts/bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 # Below is the output
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 
 Wed Dec 21 16:02:47 EST 2022
@@ -1593,7 +1593,7 @@ In case you wonder how it works, here is a simple example to explain.
 
 
 ## How does smart pipeline work
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
@@ -1667,7 +1667,7 @@ adjustPartition() {
 
 # sbatchAndTop
 ## How to use sbatchAndTop
-[Go to top](#SmartSlurm)
+[Back to top](#SmartSlurm)
 
 ```
 cd ~    
