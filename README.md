@@ -83,8 +83,9 @@ cat job.sh
 useMemTimeWithInput.sh bigText1.txt bigText$2.txt
 
 ```
+[Go to top](#SmartSlurm)
 
-## How does ssbatch work [Go to top](#SmartSlurm)
+## How does ssbatch work    
 
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 
