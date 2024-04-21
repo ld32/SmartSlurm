@@ -170,7 +170,8 @@ git clone https://github.com/ld32/smartSlurm.git
 # Download snakemake tutorial (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 wget https://bitbucket.org/snakemake/snakemake-tutorial/get/v3.9.0-1.tar.bz2
 tar -xf v3.9.0-1.tar.bz2 --strip 1
-cp $PWD/smartSlurm/Snakefile snakemake-tutorial/
+cp $PWD/smartSlurm/bin/Snakefile .
+cp $PWD/smartSlurm/bin/config.yaml .
 
 # Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 module load miniconda3
@@ -179,8 +180,7 @@ mamba env create --name snakemakeEnv --file $PWD/smartSlurm/config/snakemakeEnv.
 # Review Snakefile, activate the snakemake env and run test
 module load miniconda3
 source activate snakemakeEnv
-export PATH=$PWD/smartSlurm/bin:$PATH  
-cd snakemake-tutorial/
+export PATH=$PWD/smartSlurm/bin:$PATH
 cat Snakefile
 snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p short"
 
