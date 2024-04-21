@@ -174,10 +174,11 @@ cp $PWD/smartSlurm/Snakefile snakemake-tutorial/
 
 # Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 module load miniconda3
-mamba env create --name snakemake-tutorial --file $PWD/smartSlurm/config/snakemakeEnv.yaml
+mamba env create --name snakemakeEnv --file $PWD/smartSlurm/config/snakemakeEnv.yaml
 
 # Review Snakefile, activate the snakemake env and run test
 module load miniconda3
+source activate snakemakeEnv
 export PATH=$PWD/smartSlurm/bin:$PATH  
 cd snakemake-tutorial/
 cat Snakefile
@@ -187,7 +188,6 @@ If you have multiple Slurm account:
 snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 100 --mem 1G"
 
 ```
-
 
 # Use ssbatch in Cromwell pipeline
 [Back to top](#SmartSlurm)
