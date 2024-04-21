@@ -4,7 +4,7 @@
 - [Smart sbatch](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does ssbatch work](#how-does-ssbatch-work)
+    - [How does ssbatch work](#how-does-ssbatch-work) [Go to top](#go-to-top)
       
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
