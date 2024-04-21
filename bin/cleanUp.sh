@@ -46,6 +46,8 @@ echo Running $0 $@
 
 #cd ${1%log}
 
+
+
 # if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
 #     if [ -f ~/.smartSlurm/config/config.txt ]; then
 #         source ~/.smartSlurm/config/config.txt
@@ -62,6 +64,8 @@ echo Running $0 $@
 #else
     out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 #fi
+
+[ -f .exitcode ] && touch $succFile
 
 # if [ -f $succFile ]; then
 
@@ -153,7 +157,7 @@ node=`echo $jobStat | cut -d" " -f7`
 #    jobStatus=OOM
 #elif [ -f $smartSlurmLogDir/$flag/checkpointDoneTime ]; then
 #    jobStatus=OOT
-if [ -f $succFile ]; then
+if [ -f $succFile ] ; then # or nextflow successful job
     jobStatus=COMPLETED
 elif [[ "$sacct" == *TIMEOUT* ]]; then
     jobStatus=OOT
@@ -293,6 +297,8 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
 fi
 echo Final mem: $srunM M, time: $min mins
 
+# for nextflow log
+cat .command.log >> $out #2>/dev/null 
 
 # for testing
 #rm $succFile; jobStatus=OOM
@@ -705,7 +711,7 @@ fi
 
 #cp /tmp/job_$SLURM_JOBID.mem.txt $smartSlurmLogDir/
 
-summarizeRun.sh $smartSlurmLogDir
+summarizeRun.sh $smartSlurmLogDir $flag 
 
 toSend="`cat $smartSlurmLogDir/summary`\n$toSend"
 
@@ -717,14 +723,14 @@ s="${toSend%% *} $s"
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try1. || echo Email still not sent!!; }
 elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try2. || echo Email still not sent!!; }
 
 else
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png $USER && echo email sent || \
-    { echo Email not sent.; echo -e "$s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try. || echo Email still not sent!!; }
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
 
 fi
 
