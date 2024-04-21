@@ -250,14 +250,14 @@ git clone https://github.com/ld32/smartSlurm.git
 
 # Create Nextflow conda env
 module load miniconda3
-mamba create -n  nextflowEnv -c bioconda nextflow
+mamba create -n  nextflowEnv -c bioconda -y nextflow
 
 # Review nextflow file, activate the nextflow env and run test
 module load miniconda3
 export PATH=$PWD/smartSlurm/bin:$PATH  
 source activate nextflowEnv
-cp $PWD/smartSlurm/nextflow.nf .
-cp $PWD/smartSlurm/nextflow.config .
+cp $PWD/smartSlurm/bin/nextflow.nf .
+cp $PWD/smartSlurm/config/nextflow.config .
 
 # If you have multiple Slurm account, modify the config file:
 nano nextflow.config
