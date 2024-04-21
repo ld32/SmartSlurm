@@ -977,8 +977,9 @@ fi
 #    out=${out/\%j/$jobID};
 #    ln -s $job ${out/.out/}.sh
 #else
-printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs >> $smartSlurmLogDir/allJobs.txt;
-#fi
+if [[ "$parentCmd" != */bin/snakemake* ]]; then
+    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" $jobID $depsO $flag $software $ref $inputs >> $smartSlurmLogDir/allJobs.txt;
+fi
 
 #echoerr New slurmScirpt is ready. The content is:
 #cat $job >&2
