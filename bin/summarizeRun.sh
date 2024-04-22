@@ -57,7 +57,9 @@ current=$((succ + fail + requeue))
 total=$((succ + fail + running + pending + +requeue + unknown))
 s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
 
-echo -e "$s\n$toSend" > summary
+
+
+[ -f allJobs.txt ] && echo -e "$s\n$toSend" > summary.$SLURMJOB_ID
 
 
 # if [ $((running + pending)) -le 5 ]; then
@@ -120,7 +122,6 @@ if [ "$rowTotal" -gt 50 ]; then
 else 
     ln -s job_$SLURM_JOBID.memCPU.txt job_$SLURM_JOBID.memCPU1.txt
 fi 
-
 
 
 # time vs. memory for current job

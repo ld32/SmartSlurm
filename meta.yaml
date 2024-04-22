@@ -1,0 +1,31 @@
+package:
+  name: smartslurm
+  version: 1.2
+
+
+build:
+  script: 
+    - mkdir -p $PREFIX/bin
+    - mkdir -p $PREFIX/config
+    - mkdir -p $PREFIX/stats
+    - mkdir -p $PREFIX/scripts
+    - cp -r bin/* $PREFIX/bin
+    - cp -r config/* $PREFIX/config
+    - cp -r scripts/* $PREFIX/scripts
+    - cp -r stats/* $PREFIX/stats
+    
+
+source:
+  git_url: https://github.com/ld32/smartSlurm.git
+  git_rev: main
+
+requirements:
+  build:
+    - bash
+  run:
+    - bash
+
+about:
+  home: https://github.com/ld32/smartSlurm
+  license: MIT
+  summary: Making Slurm works smarter

@@ -2,7 +2,7 @@
 
 #set -x
 
-for i in {1..200}; do sleep 1; echo cleanup $i; done & 
+#for i in {1..200}; do sleep 1; echo cleanup $i; done & 
 
 # to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
@@ -45,8 +45,6 @@ echo Running $0 $@
 [ -f $smartSlurmLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
 
 #cd ${1%log}
-
-
 
 # if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
 #     if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -298,7 +296,7 @@ fi
 echo Final mem: $srunM M, time: $min mins
 
 # for nextflow log
-cat .command.log >> $out #2>/dev/null 
+cat .command.log >> $out 2>/dev/null 
 
 # for testing
 #rm $succFile; jobStatus=OOM
@@ -713,9 +711,8 @@ fi
 
 summarizeRun.sh $smartSlurmLogDir $flag 
 
-toSend="`cat $smartSlurmLogDir/summary`\n$toSend"
 
-s="${toSend%% *} $s"
+[ -f $smartSlurmLogDir/summary.$SLURMJOB_ID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURMJOB_ID`\n$toSend" && s="${toSend%% *} $s"
 
 #echo -e "tosend:\n$toSend"
 #echo -e "$toSend" >> ${err%.err}.email
