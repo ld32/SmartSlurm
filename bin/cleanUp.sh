@@ -493,7 +493,7 @@ if [ ! -f $succFile ]; then
                     min=60
                     newFactor=3
                 elif [ $min -lt 120 ]; then
-                    min
+                    min=120
                     newFactor=2
                 elif [ $min -lt 480 ]; then
                     min=480
