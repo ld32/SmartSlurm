@@ -6,7 +6,8 @@
 # Job record folder can be shared with a group of users.
 # Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
 # User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
-export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+# export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+export smartSlurmJobRecordDir=$HOME/.smartSlurm 
 
 export smartSlurmLogDir=log
 
