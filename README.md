@@ -60,33 +60,26 @@ export PATH=$PWD/smartSlurm/bin:$PATH
 createBigTextFiles.sh
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeNoInput
+# useMemTimeNoInput is just a random name. You can use anything you like.
 for i in {1..3}; do
-    ssbatch --mem 2G -t 2:0:0 -S useMemTimeNoInput --wrap="useMemTimeNoInput.sh $i"
+    ssbatch --mem 2G -t 2:0:0 -S useMemTimeNoInput -F useMemTimeNoInput$i --wrap="useMemTimeNoInput.sh $i"
 done
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
 # and run-time so that 90% jobs can finish successfully
 # Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-ssbatch --mem 2G -t 2:0:0 --mem 2G -S useMemTimeNoInput --wrap="useMemTimeNoInput.sh 1"
+ssbatch --mem 2G -t 2:0:0 --mem 2G -S useMemTimeNoInput -F useMemTimeNoInput4 --wrap="useMemTimeNoInput.sh 1"
 
 # Run 3 jobs to get memory and run-time statistics for useMemTimeWithInput
 for i in {1..3}; do
-    ssbatch -t 2:0:0 --mem 2G -S useMemTimeWithInput -I bigText$i.txt \
+    ssbatch -t 2:0:0 --mem 2G -S useMemTimeWithInput -I bigText$i.txt -F useMemTimeWithInput$i \
         --wrap="useMemTimeWithInput.sh bigText$i.txt"
 done
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
 ssbatch -t 2:0:0 --mem 2G -S useMemTimeWithInput \
-    -I "bigText1.txt,bigText2.txt" --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
-
-# The second way to tell the input file name: 
-sbatch -t 2:0:0 --mem 2G job.sh
-
-cat job.sh
-#!/bin/bash
-#SBATCH --commen="S=useMemTimeWithInput I=bigText1.txt,bigText2.txt"
-useMemTimeWithInput.sh bigText1.txt bigText$2.txt
+    -I "bigText1.txt,bigText2.txt" -F useMemTimeWithInput4 --wrap="useMemTimeWithInput.sh bigText1.txt bigText2.txt"
 
 ```
 
