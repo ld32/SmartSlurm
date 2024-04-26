@@ -1,11 +1,13 @@
 #!/bin/sh
 
-usage() { echo -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
+usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
+
+echolog() { echo "$@" | tee -a .smartSlurm.log; }
 
 #set -x
 #set -u
 
-[ -f ${1%% *} ] || { echo bash script file not exist: ${1%% *} Exiting...; usage; }
+[ -f ${1%% *} ] || { echolog bash script file not exist: ${1%% *} Exiting...; usage; }
 
 [[ "$2" != sbatch* ]] && usage
 
@@ -24,15 +26,16 @@ else
     checkpoint=""
 fi
 
-date
+[ -f .smartSlurm.log ] && mv .smartSlurm.log .smartSlurm.log.$(stat -c '%.19z' .smartSlurm.log | tr " " . | tr ":" "-")
 
-echo Running: $0 $@
+#[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-")
+
+current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
+echolog runAsPipeline run date: $current_date
+
+echolog Running: $0 "$@"
 
 module list
-
-[ -f out.log ] && mv out.log out.log.$(stat -c '%.19z' out.log | tr " " . | tr ":" "-")
-
-[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-")
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
     source ~/.smartSlurm/config/config.txt
@@ -59,13 +62,13 @@ if [ -f "$run" ]; then
     thisCmd="#cmd: $0 $@"
     lastCmd=`tail -n 1 $run`
     if [[ "$thisCmd" == "$lastCmd" ]]; then
-        echo This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run
-        eval /bin/bash $run ${1#* }
+        echolog This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run
+        /bin/bash $run ${1#* } 2>&1 | tee -a .smartSlurm.log 
         exit
     fi
 fi
 
-echo converting $1 to $run
+echolog Converting $1 to $run
 
 echo "#!/bin/sh" > $run
 
@@ -111,13 +114,13 @@ elif [[ "$2" == *\ --account=* ]]; then
     slurmAccount="-A ${slurmAccount%% *}"
 fi
 
-[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echo Missing slurm account: $2; exit 1; }
+[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $2; exit 1; }
 
 IFS=$'\n'; firstRowBelowLoopStart=""; findLoopStart=""
 for t in `cat ${1%% *}`; do
     [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
-    #echo original row: .$t.
+    #echolog original row: .$t.
 
     # get space and the real command
     space=""
@@ -136,9 +139,9 @@ for t in `cat ${1%% *}`; do
     [ -z "$cmd" ] && oldspace="$space"
 
     if [[ "$i" == \#@* ]]; then
-        echo
-        echo find job marker:
-        echo $i
+        echolog
+        echolog find job marker:
+        echolog $i
 
         findjob="yes"
         x=${i#*\#@}
@@ -156,16 +159,16 @@ for t in `cat ${1%% *}`; do
         inputs=${arrIN[4]}
         xsuba=${arrIN[5]}  # sbatch options
 
-        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echo Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit
+        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echolog Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit
 
         # if it is old format bash job annotation without inputs
-        [[ "$name$ref$inputs" == *sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
+        [[ "$name$ref$inputs" == *sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
-        [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echo Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
+        [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
-        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echo sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
+        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echolog sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
 
-        # echo run content:
+        # echolog run content:
         # tail $run
         # exit
 
@@ -181,12 +184,12 @@ for t in `cat ${1%% *}`; do
 
     elif [ ! -z $findjob ]; then
         [[ "$i" == \#* ]] && { findjob=""; echo "$t" >> $run; continue; }
-        echo
-        echo find job:
-        echo $i
+        echolog
+        echolog find job:
+        echolog $i
 
 
-        cmd="$cmd ${i%\\}"
+        [ -z "$cmd" ] && cmd="${i%\\}" || cmd="$cmd ${i%\\}" 
         # command maybe multiple lines
         if [[ "$i" == *\\ ]]; then  # command have multiple lines, at end of the line is a \
           #cmd="$cmd ${i%\\}"
@@ -195,7 +198,7 @@ for t in `cat ${1%% *}`; do
 
         #cmd="${cmd%% #*}" # remove comments
 
-        echo before parsing cmd: $cmd
+        echolog $cmd --before parsing
         #set -x
 
         # check to see if we need escape bash variables
@@ -216,12 +219,13 @@ for t in `cat ${1%% *}`; do
         #set +x
 
         cmd="$tmp"
+        echolog $cmd --after parseing
         space="$oldspace"
         #
 
         #echo after remove space: ."$cmd".
         findjob=""
-        [ ! -z ${find[$step]} ] && { echo job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
+        [ ! -z ${find[$step]} ] && { echolog job step id should be unique: $step exiting...; exit 1; } ||  find[$step]=yes
 
         # don't need this anymore, because we are uing single quotation in srun command
         cmd=${cmd//\"/\\\"} # escape double quotes
@@ -232,7 +236,7 @@ for t in `cat ${1%% *}`; do
 
         cmd=${cmd//\`/\\\`} # escape `
 
-        #echo cmd: ".$cmd."
+        #echolog cmd: ".$cmd."
 
         [ -z "$name" ] && name=${cmd%% *}
 
@@ -253,7 +257,7 @@ for t in `cat ${1%% *}`; do
                 fi
             done
         else
-            #echo $step:${cloper[$step]}:$de:${cloper[$de]}:
+            #echolog $step:${cloper[$step]}:$de:${cloper[$de]}:
             l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
             ll=$(expr length ${cloper[$de]} 2>/dev/null) || ll=0
             [ $l -ge $ll ] && multipleJobs=""
@@ -293,9 +297,9 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -d \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run) 2>&1" >> $run  || echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
-        #echo "${space}echo -e \"get output from ssbatch: \n\$id\"" >> $run
+        echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
 
@@ -345,18 +349,19 @@ for t in `cat ${1%% *}`; do
         #    space=${space%    }
         #    loper=${loper%.\$*}
         if [[ "$i" == \#loopStart:* ]]; then
-            echo; echo find loop start: $i
+            echolog; echolog find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#\#loopStart:}; a=${a%% *}
             loper="$loper.\$$a"
             #loper="$loper.for"
             findLoopStart=yes
         elif [[ "$i" == done* ]]; then
-            echo find loop end: $i
+            echolog
+            echolog find loop end: $i
             #space=${space%    }
             loper=${loper%.\$*}
         elif [[ "$i" == for* ]]; then
-            echo; echo find for loop start: $i
+            echolog; echolog find for loop start: $i
             [ ! -z "$firstRowBelowLoopStart" ] && firstRowBelowLoopStart="" && continue
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#* }; a=${a%% *}
@@ -390,6 +395,8 @@ echo "echo ---------------------------------------------------------" >> $run
 
 echo "#cmd: $0 $@" >> $run
 
-echo $run ${1#* } is ready to run. Starting to run ...
+echolog $run ${1#* } is ready to run. Starting to run ...
 
-eval "/bin/bash $run ${1#* }"
+/bin/bash $run ${1#* } 2>&1 | tee -a .smartSlurm.log 
+
+echolog Please check .smartSlurm.log for detail logs.

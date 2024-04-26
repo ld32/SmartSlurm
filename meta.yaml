@@ -13,6 +13,7 @@ build:
     - cp -r config/* $PREFIX/config
     - cp -r scripts/* $PREFIX/scripts
     - cp -r stats/* $PREFIX/stats
+    - cp * $PREFIX
     
 
 source:
