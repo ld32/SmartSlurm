@@ -187,7 +187,7 @@ for t in `cat ${1%% *}`; do
         echolog
         echolog find job:
         echolog $i
-
+        [[ "$i" == ssbatch* ]] && echolog Error! Please remove ssbatch command from $1. && exit 1
 
         [ -z "$cmd" ] && cmd="${i%\\}" || cmd="$cmd ${i%\\}" 
         # command maybe multiple lines
