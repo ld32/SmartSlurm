@@ -674,7 +674,7 @@ if [ ! -f $succFile ]; then
 
 fi
 
-echo "Sending email..."
+
 
 minimumsize=9000
 
@@ -705,17 +705,16 @@ if [ -f "$err" ]; then
     fi
 fi
 
-
-
 #cp /tmp/job_$SLURM_JOBID.mem.txt $smartSlurmLogDir/
 
 summarizeRun.sh $smartSlurmLogDir $flag 
-
 
 [ -f $smartSlurmLogDir/summary.$SLURMJOB_ID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURMJOB_ID`\n$toSend" && s="${toSend%% *} $s"
 
 #echo -e "tosend:\n$toSend"
 #echo -e "$toSend" >> ${err%.err}.email
+
+echo "Sending email..."
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
@@ -728,7 +727,6 @@ elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
 else
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
-
 fi
 
 if [[ $USER != ld32 ]]; then
