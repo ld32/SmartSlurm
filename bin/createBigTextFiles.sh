@@ -2,10 +2,11 @@
 
 echo "Begin..."
 rm bigText1.txt 2>/dev/null
-for index in $(seq 5); do
-    value=$(seq -w -s '\n' $index $(($index + 50000)))
-    echo -e "$value" >> bigText1.txt
+for index in $(seq 50000); do
+    value="$value John Mike Smith David\n"
+    
 done
+echo -e "$value" >> bigText1.txt
 
 for count in {2..5}; do
     rm bigText$count.txt 2>/dev/null
