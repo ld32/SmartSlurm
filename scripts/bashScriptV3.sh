@@ -1,17 +1,17 @@
 #!/bin/sh
 
-studentName=$1
+number=$1
 
-[ -z "$studentName" ] && echo -e "Error: student name is missing.\nUsage: bashScript <student name>" && exit 1
+[ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit 1
 
 for i in {1..3}; do
     
-    input=university$i.txt
+    input=numbers$i.txt
     
-    #@1,0,findStudent,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
-    findStudent.sh John $input > $studentName.$i.txt
+    #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
+    findNumber.sh 1234 $input > $number.$i.txt
   
 done
 
-#@2,1,mergeStudent,,,sbatch -p short -c 1 --mem 2G -t 50:0 
-cat $studentName.*.txt > all$studentName.txt
+#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0 
+cat $number.*.txt > all$number.txt
