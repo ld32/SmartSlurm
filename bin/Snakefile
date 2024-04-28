@@ -6,63 +6,28 @@ rule all:
     input:
         "report.html"
 
-rule bwa_map:
+rule find_1234:
     input:
-        "data/genome.fa",
-        "data/samples/{sample}.fastq"
+        "numbers1.txt"
     output:
-        "mapped_reads/{sample}.bam"
-    threads: 2
+        "1234.1.txt"
     shell:
-        "bwa mem -t {threads} {input} | samtools view -Sb - > {output}"
+        "findNUmber.sh 1234 {input} > {output}"
 
-rule samtools_sort:
+rule find_5678:
     input:
-        "mapped_reads/{sample}.bam"
+        "numbers1.txt"
     output:
-        "sorted_reads/{sample}.bam"
+        "5678.1.txt"
+    threads: 1
     shell:
-        "samtools sort -T sorted_reads/{wildcards.sample} "
-        "-O bam {input} > {output}"
-rule samtools_index:
+        "findNUmber.sh 5678 {input} > {output}"
+
+rule merge:
     input:
-        "sorted_reads/{sample}.bam"
+        "1234.1.txt", 
+        '5678.1.txt'
     output:
-        "sorted_reads/{sample}.bam.bai"
+        "all.txt"
     shell:
-        "samtools index {input}"
-rule bcftools_call:
-    input:
-        fa="data/genome.fa",
-        bam=expand("sorted_reads/{sample}.bam", sample=SAMPLES),
-        bai=expand("sorted_reads/{sample}.bam.bai", sample=SAMPLES)
-    output:
-        "calls/all.vcf"
-    shell:
-        "samtools mpileup -g -f {input.fa} {input.bam} | "
-        "bcftools call -mv - > {output}"
-
-rule report:
-    input:
-        "calls/all.vcf"
-    output:
-        "report.html"
-    run:
-        from snakemake.utils import report
-        with open(input[0]) as vcf:
-            n_calls = sum(1 for l in vcf if not l.startswith("#"))
-
-        report("""
-        An example variant calling workflow
-        ===================================
-
-        Reads were mapped to the Yeast
-        reference genome and variants were called jointly with
-        SAMtools/BCFtools.
-
-        This resulted in {n_calls} variants (see Table T1_).
-        """, output[0], T1=input[0])
-
-
-
-
+        "cat {input} > {output}"

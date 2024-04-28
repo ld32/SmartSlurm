@@ -376,7 +376,10 @@ Here are two more examples:
 # Test run the modified bash script as a pipeline
 [Back to top](#SmartSlurm)
 
+```
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+
+```
 
 This command will generate new bash script of the form slurmPipeLine.checksum.sh in log folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated. If it is not changed, we don not re-create the pipeline script.
 
@@ -390,8 +393,11 @@ Sample output from the test run
 Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-
 # here is the outputs:
+
+```
+runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+
 
 runAsPipeline run date: 2024-04-28_16-03-36_4432
 Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
@@ -451,6 +457,7 @@ step: 2, depends on: 1, job name: mergeNumber, flag: 2.1.mergeNumber
 Got output from ssbatch: Submitted batch job 69313
 
 All submitted jobs:
+
 job_id       depend_on              job_flag     software    reference  inputs
 69308       null                  1.0.findNumber.1 findNumber none       ,numbers1.txt
 69309       null                  1.0.findNumber.2 findNumber none       ,numbers2.txt
@@ -470,6 +477,7 @@ This command list all the logs created by the pipeline runner. *.sh files are th
 You can use the command to cancel running and pending jobs:
 cancelAllJobs 
 
+```
 
 In case you wonder how it works, here is a simple example to explain.
 
