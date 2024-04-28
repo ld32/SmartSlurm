@@ -1,14 +1,15 @@
 #!/bin/sh
 
-for i in {1..1}; do
-    input=bigText$i.txt
-    output=1234.$i.txt
-    useMemTimeWithInput.sh $input; grep 1234 $input > $output
+number=$1
 
-    output=5678.$i.txt
-    useMemTimeWithInput.sh $input; grep 5678 $input > $output
+[ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit 1
+
+for i in {1..5}; do
+    
+    input=numbers$i.txt
+    
+    findNumber.sh 1234 $input > $number.$i.txt
+  
 done
 
-input=bigText1.txt
-output=all.txt
-useMemTimeWithInput.sh $input; cat 1234.*.txt 5678.*.txt > $output
+cat $number.*.txt > all$number.txt

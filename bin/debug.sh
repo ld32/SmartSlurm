@@ -8,7 +8,6 @@ usage() {
     exit 1; 
 }
 
-
 if [ -z "$1" ]; then 
 
     if [ -f ~/.smartSlurm/config/config.txt ]; then
