@@ -6,7 +6,15 @@ usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least colum
 
 #set -x 
 
-smartSlurmLogDir=`dirname $1`
+if [ -f ~/.smartSlurm/config/config.txt ]; then
+    source ~/.smartSlurm/config/config.txt
+else
+    source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
+fi
+
+[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+
+#smartSlurmLogDir=`dirname $1`
 
 IFS=$'\n'
 
