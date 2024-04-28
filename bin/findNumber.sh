@@ -2,7 +2,7 @@
 
 #set -x 
 
-[ -z "$1" ] && echo -e "Error: number is missing.\nUsage: findNumber.sh <numbert> <numbers1.txt> [numbers2.txt] [numbers3.txt]" && exit 1
+[ -z "$2" ] && echo -e "Error: number is missing.\nUsage: findNumber.sh <numbert> <numbers1.txt> [numbers2.txt] [numbers3.txt]" && exit 1
 
 totalSize=0
 
