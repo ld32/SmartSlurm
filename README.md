@@ -393,61 +393,85 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 # here is the outputs:
 
-Wed Dec 21 15:50:43 EST 2022
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh sbatch -p short -t 10:0 -c 1 noTmp
+runAsPipeline run date: 2024-04-28_16-03-36_4432
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
 
 Currently Loaded Modules:
-  1) gcc/6.2.0
+  1) miniconda3/23.1.0 (E)   2) gcc/6.2.0
+
+  Where:
+   E:  Experimental
 
 
-converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to $smartSlurmLogDir/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh
 
-find loop start: for i in {1..1}; do
+Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
 
-find job marker:
-#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
-
-find job:
-findNumber.sh $input; grep 1234 $input > $output
+find for loop start: for i in {1..5}; do
 
 find job marker:
-#@2,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 2:0:0
+#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
 
 find job:
-findNumber.sh $input; grep 5678 $input > $output
+findNumber.sh 1234 $input > $number.$i.txt
+findNumber.sh 1234 $input > $number.$i.txt --before parsing
+findNumber.sh 1234 $input > $number.$i.txt --after parseing
+
 find loop end: done
 
 find job marker:
-#@3,1.2,findNumber,,input
+#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
 
 find job:
-findNumber.sh $input; cat 1234.*.txt 5678.*.txt > $output
-smartSlurmLog/slurmPipeLine.6f93dc8953b9c1d1f96b4fabd657446a.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
+cat $number.*.txt > all$number.txt
+cat $number.*.txt > all$number.txt --before parsing
+cat $number.*.txt > all$number.txt --after parseing
+/home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
+Running /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh
 
+---------------------------------------------------------
 
-....
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.1
+Got output from ssbatch: Submitted batch job 69308
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.2
+Got output from ssbatch: Submitted batch job 69309
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.3
+Got output from ssbatch: Submitted batch job 69310
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.4
+Got output from ssbatch: Submitted batch job 69311
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.5
+Got output from ssbatch: Submitted batch job 69312
+
+step: 2, depends on: 1, job name: mergeNumber, flag: 2.1.mergeNumber
+Got output from ssbatch: Submitted batch job 69313
+
+All submitted jobs:
+job_id       depend_on              job_flag     software    reference  inputs
+69308       null                  1.0.findNumber.1 findNumber none       ,numbers1.txt
+69309       null                  1.0.findNumber.2 findNumber none       ,numbers2.txt
+69310       null                  1.0.findNumber.3 findNumber none       ,numbers3.txt
+69311       null                  1.0.findNumber.4 findNumber none       ,numbers4.txt
+69312       null                  1.0.findNumber.5 findNumber none       ,numbers5.txt
+69313       .69308.69309.69310.69311.69312  2.1.mergeNumber mergeNumber none       none
+---------------------------------------------------------
+Please check .smartSlurm.log for detail logs.
+
 
 You can use the command:
 ls -l log
 
 This command list all the logs created by the pipeline runner. *.sh files are the slurm scripts for each step, *.out files are output files for each step, *.success files means job successfully finished for each step and *.failed means job failed for each steps.
 
-You also get two emails for each step, one at the start of the step, one at the end of the step.
-Cancel all jobs
-
 You can use the command to cancel running and pending jobs:
-cancelAllJobs $smartSlurmLogDir/alljobs.jid
-What happens if there is some error? 
+cancelAllJobs 
 
-You can re-run this command in the same folder. We will delete an input file to see what happens.
-# We are intentionally removing an input file to see a "failed job" email message
-rm universityB.txt
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp run
 
 In case you wonder how it works, here is a simple example to explain.
-
 
 ## How does smart pipeline work
 [Back to top](#SmartSlurm)
