@@ -63,29 +63,29 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers3.txt -F numberFile3 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers3.txt -F numberFile3 \
     --wrap="findNumber.sh 1234 numbers3.txt"
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers4.txt -F numberFile4 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers4.txt -F numberFile4 \
     --wrap="findNumber.sh 1234 numbers4.txt"
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers5.txt -F numberFile5 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers5.txt -F numberFile5 \
     --wrap="findNumber.sh 1234 numbers5.txt"
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F numberFile1 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I "numbers1.txt numbers2.txt" 
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I "numbers1.txt numbers2.txt" 
     -F numberFile12 --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
 
 # If input file is not given for option -I. ssbatch will choose the memory 
 # and run-time threshold so that 90% jobs can finish successfully
-ssbatch --mem 2G -t 2:0:0 -S findNumber -F numberFile2 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -F numberFile2 \
     --wrap="findNumber.sh 1234 numbers2.txt"
 
 # check job status: 
@@ -97,7 +97,7 @@ cancelAllJobs
 # rerun jobs: 
 # when re-run a job with the same flag (option -F), if the previous run was successful, 
 # ssbatch will ask to confirm you do want to re-run
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F numberFile1 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 ```
@@ -405,13 +405,14 @@ Note that only step 2 used -t 2:0:0, and all other steps used the default -t 1
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 # here is the outputs:
+[Back to top](#SmartSlurm)
 
 ```
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
 
 
 runAsPipeline run date: 2024-04-28_16-03-36_4432
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh 
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh 1234
     sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
 
 Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to 
@@ -471,7 +472,7 @@ job_id       depend_on              job_flag     software    reference  inputs
 69310       null                  1.0.findNumber.3 findNumber none       ,numbers3.txt
 69311       null                  1.0.findNumber.4 findNumber none       ,numbers4.txt
 69312       null                  1.0.findNumber.5 findNumber none       ,numbers5.txt
-69313       .69308.69309.69310.69311.69312  2.1.mergeNumber mergeNumber none       none
+69313       69308:69309:69310:69311:69312  2.1.mergeNumber mergeNumber none       none
 ---------------------------------------------------------
 Please check .smartSlurm.log for detail logs.
 

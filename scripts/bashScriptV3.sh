@@ -9,7 +9,7 @@ for i in {1..3}; do
     input=numbers$i.txt
     
     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0 
-    findNumber.sh 1234 $input > $number.$i.txt
+    findNumber.sh $number $input > $number.$i.txt
   
 done
 

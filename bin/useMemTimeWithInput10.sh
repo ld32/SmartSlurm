@@ -16,7 +16,7 @@ for input in "$@"; do
 
     fileSize=$((fileSize * 10))
 
-    totalSize=$(( fileSize + totalSize ))
+    totalSize=$(( fileSize + totalSize ))    
 
 done 
 
@@ -26,7 +26,7 @@ delay=$((start + totalSize * 30 - SECONDS))  # 60 seconds per
 
 echo "...end allocating memory. Begin sleeping for $delay seconds..."
 
-sleep $delay
+sleep $delay    
 
 echo "Done"
 

@@ -123,7 +123,6 @@ else
     ln -s job_$SLURM_JOBID.memCPU.txt job_$SLURM_JOBID.memCPU1.txt
 fi 
 
-
 # time vs. memory for current job
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output 'job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot 'job_$SLURM_JOBID.memCPU1.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
 

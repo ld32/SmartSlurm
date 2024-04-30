@@ -167,7 +167,7 @@ elif [[ "$sacct" == *CANCEL* ]]; then
     jobStatus=Canceled
 else
     tLog=`tail -n 22 $out | grep ^srun`
-    if [[ "$tLog" == *"task 0: Out Of Memory"* ]]; then
+    if [[ "$tLog" == *"task 0: Out Of Memory"* ]] || [[ "$tLog" == *"Cannot allocate memory"* ]]; then
         jobStatus="OOM"
         echo The job is actually out-of-memory by according to the log:
         echo $tLog
@@ -390,11 +390,11 @@ if [ ! -f $succFile ]; then
 
                         if [[ $deps == null ]]; then
                             deps=""
-                        elif [[ $deps == ${deps/\./} ]]; then
+                        elif [[ $deps == ${deps/:/} ]]; then
                             deps="Dependency=afterok:$newJobID"
                         else
                             tmp=""; IFS=$' '
-                            for t in ${deps//\./ }; do
+                            for t in ${deps//:/ }; do
                                  [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
                             done
                             [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
@@ -535,11 +535,11 @@ if [ ! -f $succFile ]; then
 
                         if [[ $deps == null ]]; then
                             deps=""
-                        elif [[ $deps == ${deps/\./} ]]; then
+                        elif [[ $deps == ${deps/:/} ]]; then
                             deps="Dependency=afterok:$newJobID"
                         else
                             tmp=""; IFS=$' '
-                            for t in ${deps//\./ }; do
+                            for t in ${deps//:/ }; do
                                  [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
                             done
                             [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"

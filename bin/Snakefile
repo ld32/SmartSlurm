@@ -1,27 +1,20 @@
 configfile: "config.yaml"
 
-SAMPLES = ["A", "B"]
+NUMBERS = ["1"]
+NUMBER = ['1234', '5678']
 
 rule all:
     input:
-        "report.html"
+        "all.txt"
 
-rule find_1234:
+rule find_number:
     input:
-        "numbers1.txt"
+        "{NUMBER}",
+        "numbers{NUMBERS}.txt"
     output:
-        "1234.1.txt"
+        "{NUMBER}.{MUMBERS}.txt"
     shell:
-        "findNUmber.sh 1234 {input} > {output}"
-
-rule find_5678:
-    input:
-        "numbers1.txt"
-    output:
-        "5678.1.txt"
-    threads: 1
-    shell:
-        "findNUmber.sh 5678 {input} > {output}"
+        "findNUmber.sh {input} > {output}"
 
 rule merge:
     input:

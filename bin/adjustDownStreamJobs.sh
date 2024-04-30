@@ -5,7 +5,7 @@
 Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through job id list file, find the downstream jobs, and return them as a string of job flags. "
 
 echo
-for i in {1..200}; do sleep 1; echo adjusting $i; done & 
+#for i in {1..200}; do sleep 1; echo adjusting $i; done & 
 
 echo Running: $0  $@
 
@@ -61,7 +61,7 @@ for i in $output; do
 
     allDone=""
     IFS=$' ';
-    for j in ${deps//\./ }; do
+    for j in ${deps//:/ }; do
         echo 2working on $j
         [[ "$j" == "$SLURM_JOBID" ]] && continue; # ignore current job
          echo look for the job flag for $j

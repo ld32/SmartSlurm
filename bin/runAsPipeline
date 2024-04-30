@@ -7,7 +7,7 @@ echolog() { echo "$@" | tee -a .smartSlurm.log; }
 #set -x
 #set -u
 
-[ -f ${1%% *} ] || { echolog bash script file not exist: ${1%% *} Exiting...; usage; }
+[ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
 
 [[ "$2" != sbatch* ]] && usage
 
@@ -147,7 +147,7 @@ for t in `cat ${1%% *}`; do
         x=${i#*\#@}
         # #@1,0,find1,ref,input1.input2,sbatch -p short -c 1 -t 50:0
 
-        # ssbatch -L ./ -S bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
+        # ssbatch -L ./ -P bowtie2-4core -R dm3 -F bowtie.group1 -I group1/tumor1 -c 4 -t 12:0:0 --mem 20G  job1BowtieGroup1.sh run
         IFS=',' read -a arrIN <<< "$x"
         IFS=''
 
@@ -287,7 +287,7 @@ for t in `cat ${1%% *}`; do
         #cmd=${cmd//\"/\\\\\"}
 
         # replace space with ., if the job depends on something
-        echo "${space}[ -z \"\${deps// /}\" ] && deps=null || deps=\${deps// /.}" >> $run
+        echo "${space}[ -z \"\${deps// /}\" ] || deps=\"-d afterok\$deps\"" >> $run
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
@@ -297,7 +297,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -S $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} -D \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
 
         echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 
@@ -331,7 +331,7 @@ for t in `cat ${1%% *}`; do
 
         echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run
         echo "${space}    jobID[$step]=\$id"  >> $run
-        echo "${space}    jobIDs[$step]=\${jobIDs[$step]}.\$id"  >> $run
+        echo "${space}    jobIDs[$step]=\${jobIDs[$step]}:\$id"  >> $run
 
         echo "${space}else" >> $run
         echo "${space}    echo  job \$flag is not submitted"  >> $run
@@ -395,8 +395,10 @@ echo "echo ---------------------------------------------------------" >> $run
 
 echo "#cmd: $0 $@" >> $run
 
-echolog $run ${1#* } is ready to run. Starting to run ...
+[[ "$1" = *" "* ]] && para="${1#* }" || para=""
 
-/bin/bash $run ${1#* } 2>&1 | tee -a .smartSlurm.log 
+echolog $run $para is ready to run. Starting to run ...
+
+/bin/bash $run $para 2>&1 | tee -a .smartSlurm.log 
 
 echolog Please check .smartSlurm.log for detail logs.
