@@ -63,21 +63,30 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers3.txt -F numberFile3 --wrap="findNumber.sh 1234 numbers3.txt"
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers3.txt -F numberFile3 \
+    --wrap="findNumber.sh 1234 numbers3.txt"
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers4.txt -F numberFile4 --wrap="findNumber.sh 1234 numbers4.txt"
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers4.txt -F numberFile4 \
+    --wrap="findNumber.sh 1234 numbers4.txt"
 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers5.txt -F numberFile5 --wrap="findNumber.sh 1234 numbers5.txt"
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers5.txt -F numberFile5 \
+    --wrap="findNumber.sh 1234 numbers5.txt"
 
-# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
-# Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 --wrap="findNumber.sh 1234 numbers1.txt"
+# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts 
+# memory and run-time according input file size
+# Notice: this command submits the job to short partition, and reserves 21M memory 
+# and 13 minute run-time 
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 \
+    --wrap="findNumber.sh 1234 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I "numbers1.txt numbers2.txt" -F numberFile12 --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I "numbers1.txt numbers2.txt" 
+    -F numberFile12 --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
 
-# If input file is not given for option -I. ssbatch will choose the memory and run-time threshold so that 90% jobs can finish successfully
-ssbatch --mem 2G -t 2:0:0 -S findNumber -F numberFile2 --wrap="findNumber.sh 1234 numbers2.txt"
+# If input file is not given for option -I. ssbatch will choose the memory 
+# and run-time threshold so that 90% jobs can finish successfully
+ssbatch --mem 2G -t 2:0:0 -S findNumber -F numberFile2 \
+    --wrap="findNumber.sh 1234 numbers2.txt"
 
 # check job status: 
 checkRun
@@ -86,8 +95,10 @@ checkRun
 cancelAllJobs 
 
 # rerun jobs: 
-# when re-run a job with the same flag (option -F), if the previous run was successful, ssbatch will ask to confirm you do want to re-run
-ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 --wrap="findNumber.sh 1234 numbers1.txt"
+# when re-run a job with the same flag (option -F), if the previous run was successful, 
+# ssbatch will ask to confirm you do want to re-run
+ssbatch --mem 2G -t 2:0:0 -S findNumber -I numbers1.txt -F numberFile1 \
+    --wrap="findNumber.sh 1234 numbers1.txt"
 
 ```
 
@@ -313,21 +324,21 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 cat $HOME/smartSlurm/scripts/bashScriptV1.sh
 
 # Below is the content of a regular bashScriptV1.sh 
-  1 #!/bin/sh
-  2
-  3 number=$1
-  4
-  5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit     1
-  6
-  7 for i in {1..5}; do
-  8
-  9     input=numbers$i.txt
- 10
- 11     findNumber.sh 1234 $input > $number.$i.txt
- 12
- 13 done
- 14
- 15 cat $number.*.txt > all$number.txt
+ 1 #!/bin/sh
+ 2
+ 3 number=$1
+ 4
+ 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit 1
+ 6
+ 7 for i in {1..5}; do
+ 8
+ 9     input=numbers$i.txt
+10
+11     findNumber.sh 1234 $input > $number.$i.txt
+12
+13 done
+14
+15 cat $number.*.txt > all$number.txt
 
 
 # Notes about bashScriptV1.sh: 
@@ -338,23 +349,23 @@ cat $HOME/smartSlurm/scripts/bashScriptV1.sh
 cat $HOME/smartSlurm/scripts/bashScriptV2.sh
 
 # below is the content of bashScriptV2.sh
-  1 #!/bin/sh
-  2
-  3 number=$1
-  4
-  5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit     1
-  6
-  7 for i in {1..5}; do
-  8
-  9     input=numbers$i.txt
- 10
- 11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
- 12     findNumber.sh 1234 $input > $number.$i.txt
- 13
- 14 done
- 15
- 16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0
- 17 cat $number.*.txt > all$number.txt
+ 1 #!/bin/sh
+ 2
+ 3 number=$1
+ 4
+ 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit     1
+ 6
+ 7 for i in {1..5}; do
+ 8
+ 9     input=numbers$i.txt
+10
+11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+12     findNumber.sh 1234 $input > $number.$i.txt
+13
+14 done
+15
+16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0
+17 cat $number.*.txt > all$number.txt
    
 ```
 
@@ -400,17 +411,11 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 
 runAsPipeline run date: 2024-04-28_16-03-36_4432
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
+Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh 
+    sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
 
-Currently Loaded Modules:
-  1) miniconda3/23.1.0 (E)   2) gcc/6.2.0
-
-  Where:
-   E:  Experimental
-
-
-
-Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
+Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to 
+    /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
 
 find for loop start: for i in {1..5}; do
 
@@ -433,8 +438,10 @@ find job:
 cat $number.*.txt > all$number.txt
 cat $number.*.txt > all$number.txt --before parsing
 cat $number.*.txt > all$number.txt --after parseing
-/home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
-Running /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh
+/home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.
+    7ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
+Running /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.7ae574.run.sh 
+    /home/ld32/smartSlurm/scripts/bashScriptV2.sh
 
 ---------------------------------------------------------
 
@@ -468,11 +475,13 @@ job_id       depend_on              job_flag     software    reference  inputs
 ---------------------------------------------------------
 Please check .smartSlurm.log for detail logs.
 
-
 You can use the command:
 ls -l log
 
-This command list all the logs created by the pipeline runner. *.sh files are the slurm scripts for each step, *.out files are output files for each step, *.success files means job successfully finished for each step and *.failed means job failed for each steps.
+This command list all the logs created by the pipeline runner. *.sh 
+    files are the slurm scripts for each step, *.out files are output files 
+    for each step, *.success files means job successfully finished for each 
+    step and *.failed means job failed for each steps.
 
 You can use the command to cancel running and pending jobs:
 cancelAllJobs 
@@ -484,73 +493,8 @@ In case you wonder how it works, here is a simple example to explain.
 ## How does smart pipeline work
 [Back to top](#SmartSlurm)
 
-1) Auto adjust memory and run-time according to statistics from earlier jobs
-
-$smartSlurmJobRecordDir/jobRecord.txt contains job memory and run-time records. There are three important columns: 
-   
-   2rd colume is input size,
-   
-   7th column is final memory usage
-   
-   8th column is final time usage
-   
-The data from the three columns are plotted and statistics  
-__________________________________________________________________________________________________________________   
-1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference,14output,15script,16error,17cpu,18node,19date,20command
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,findNumber,none,slurm-%j.out slurm-YRTrRAYA.sh slurm-%j.err,1,compute-x,slurm-46531.err,Tue Dec 6 15:29:20 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap findNumber.sh bigText1.txt run"
-
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,findNumber,none,slurm-%j.out slurm-oT42tyEE.sh slurm-%j.err,1,compute-x,slurm-46535.err,Tue Dec 6 15:30:46 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap findNumber.sh bigText2.txt run"
-
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,findNumber,none,slurm-%j.out slurm-TQyBOQ5f.sh slurm-%j.err,1,compute-x,slurm-46534.err,Tue Dec 6 15:32:40 EST 2022,"ssbatch -p short -t 2:0:0 --mem=4G --wrap findNumber.sh bigText3.txt run"
-
-\#Here is the input size vs memory plot for findNumber: 
-
-![](https://github.com/ld32/smartSlurm/blob/main/stats/findNumber.none.mem.png)
-
-\#Here is the input size vs run-time plot for findNumber: 
-
-![](https://github.com/ld32/smartSlurm/blob/main/stats/findNumber.none.time.png)
-
-\#Here is the run-time vs memory plot for findNumber: 
-
-![](https://github.com/ld32/smartSlurm/blob/main/stats/findNumber.none.stat.noInput.png)
-
-2) Auto choose partition according to run-time request
-
-smartSlrm/config/config.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
-
-\# Genernal partions, ordered by maximum allowed run-time in hours 
-
-partition1Name=short   
-partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
-partition2Name=medium  
-partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
-partition3Name=long        
-partition3TimeLimit=720 # run-time > 5 days and <= 30 days
-partition4Name=      
-partition4TimeLimit=  
-partition5Name=     
-partition5TimeLimit=    
-
-\# Special pertitions with special restrictions
-
-...   
-
-\#function 
-
-adjustPartition() {         
-    ... # please open the file to see the content         
-} ; export -f adjustPartition 
-
-3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
-    
-    At end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checkes memory and time usage, save the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If job fails, ssbatch re-submit with double memory or double time, clear up the statistic fomular, so that later jobs will re-caculate statistics, 
-
-6) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
-
-    $smartSlurmJobRecordDir/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
-
-
+runAsPipeline goes through the bash script, read the for loop and job decorators, 
+    set up slurm script for each step and job dependencies, and submit the jobs.  
 
 =======
 
