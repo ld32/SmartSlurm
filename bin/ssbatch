@@ -757,9 +757,9 @@ fi
 echo -e "$resAjust\n" > $outFlag
 
 # testtime
-#min=10
+#min=10   # min
 # testmem
-#mem=2000
+# mem=20   # M
 
 adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -917,20 +917,18 @@ else
     # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
     # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
-    # testing
-    #mem=2000M
 
     #if [ -z "$smartSlurmLogDir/" ]; then
     #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
     #else
     [ -z "$err" ] && errFlag=$outFlag
-    [ -z "deps" ] || deps="-H $deps" # if depends on other jobs, hold the job
+    [ -z "$deps" ] || deps="-H $deps" # if depends on other jobs, hold the job
     
         # if [ -z "$deps" ]; then #errFlag=$smartSlurmLogDir/$flag.err
         #     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $name $slurmAcc"
         #     echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $name $deps $slurmAcc" >> $job
         # else
-            cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $myPartition -c $core --mem $myMem -t $myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc"
+            cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc"
             echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc" >> $job
         #fi
 

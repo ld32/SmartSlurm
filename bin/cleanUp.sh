@@ -379,6 +379,9 @@ if [ ! -f $succFile ]; then
                 requeueCmd=${requeueCmd//\$myPartition/$myPartition}
                 requeueCmd=${requeueCmd//\$myTime/$myTime}
                 requeueCmd=${requeueCmd//\$myMem/$myMem}
+
+                requeueCmd=${requeueCmd/ -H/}
+
                 newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
@@ -524,6 +527,7 @@ if [ ! -f $succFile ]; then
                 requeueCmd=${requeueCmd//\$myPartition/$myPartition}
                 requeueCmd=${requeueCmd//\$myTime/$myTime}
                 requeueCmd=${requeueCmd//\$myMem/$myMem}
+                requeueCmd=${requeueCmd/ -H/}
                 newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then

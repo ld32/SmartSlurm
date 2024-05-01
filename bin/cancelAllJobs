@@ -1,8 +1,8 @@
 #!/bin/sh
 
-usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; } 
+#usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; } 
 
-[[ -z "$1" ]] && usage
+#[[ -z "$1" ]] && usage
 
 #set -x 
 
@@ -24,7 +24,7 @@ out=`squeue -u $USER -o "%.18i"`
 
 declare -A nmap
 
-lines=`tail -n +2  $1 | awk '{print $1, $3}'`
+lines=`tail -n +2  $smartSlurmLogDir/allJobs.txt | awk '{print $1, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
