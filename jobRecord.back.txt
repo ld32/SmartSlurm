@@ -1,6 +1,0 @@
-49790,1465,2048,50,9,6,8,1,COMPLETED,ld32,3.50,findNumber.sh,none,1.0.findNumber.sh.1,1,Wed Apr 5 09:55:10 EDT 2023
-49791,2930,2048,50,12,8,10,2,COMPLETED,ld32,6.36,findNumber.sh,none,1.0.findNumber.sh.2,1,Wed Apr 5 09:56:11 EDT 2023
-49792,4395,2048,50,15,9,13,4,COMPLETED,ld32,9.22,findNumber.sh,none,1.0.findNumber.sh.3,1,Wed Apr 5 09:58:11 EDT 2023
-49793,5860,2048,50,18,11,16,5,COMPLETED,ld32,12.08,findNumber.sh,none,1.0.findNumber.sh.4,1,Wed Apr 5 09:59:14 EDT 2023
-49794,7325,2048,50,20,12,19,7,COMPLETED,ld32,14.95,findNumber.sh,none,1.0.findNumber.sh.5,1,Wed Apr 5 10:01:14 EDT 2023
-49795,7325,2048,10,24,12,19,7,COMPLETED,ld32,14.95,findNumber.sh,none,3.1.2.findNumber.sh,1,Wed Apr 5 10:08:54 EDT 2023
