@@ -100,6 +100,12 @@ cancelAllJobs
 ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F numberFile1 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
+# If you would like to use ssbatch to replace regular sbatch:
+sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch
+
+# After you finish using ssbatch as sbatch, run these command to disable it:    
+unset sbatch
+
 ```
 
 ## How does ssbatch work    
