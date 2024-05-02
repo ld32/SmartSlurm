@@ -287,9 +287,29 @@ for t in `cat ${1%% *}`; do
         # escape double quota. bsub does not need this? not sure
         #cmd=${cmd//\"/\\\\\"}
 
-        # replace space with ., if the job depends on something
-        echo "${space}[ -z \"\$deps\" ] || deps=\"-d afterok\$deps\"" >> $run
-
+    
+       
+        echo "set -x" >> $run 
+        echo "${space}needUnHoldOtherJobs=\"\"" >> $run
+        # for jobs with no dep, check if there is formula yet, if yes, directly submit.
+        # otherwise, only allow the first 10 jobs to run even they doen's depend on other jobs 
+        echo "${space}if [ -z \"\$deps\" ]; then" >> $run
+        echo "${space}    [ -z \"$inputs\" ] && [ -f \"$smartSlurmJobRecordDir/stats/\$name.\$ref.mem.stat.noInput\" ] && hasFomular=y || hasFormula=\"\"" >> $run
+        echo "${space}    [ ! -z \"$inputs\" ] && [ -f \"\$smartSlurmJobRecordDir/stats/\$name.\$ref.mem.stat\" ] && hasFomular=y || hasFormula=\"\"" >> $run
+        echo "${space}    if [ -z \"\$hasFormula\" ]; then" >> $run         
+        echo "${space}        nJobsInSameStep=\${jobIDs[$step]}" >> $run
+        echo "${space}        if [[ \"\$nJobsInSameStep\" -gt 10 ]]; then" >> $run 
+        echo "${space}            deps=\"-H -d afterok\$deps\"" >> $run            
+        echo "${space}        elif [[ \$nJobsInSameStep -gt 5 ]]; then" >> $run
+        echo "${space}            needUnHoldOtherJobs=needUnHoldOtherJobs" >> $run
+        echo "${space}        fi" >> $run
+        echo "${space}    fi" >> $run  
+        echo "${space}else" >> $run
+        echo "${space}    deps=\"-H -d afterok\$deps\"" >> $run
+        echo "${space}fi" >> $run 
+        
+        echo "set +x" >> $run 
+        
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
@@ -298,7 +318,7 @@ for t in `cat ${1%% *}`; do
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\")" >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run \$needUnHoldOtherJobs)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" \$needUnHoldOtherJobs) " >> $run
 
         echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 

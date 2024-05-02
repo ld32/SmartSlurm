@@ -43,7 +43,7 @@ echoerr1() { echo "$@" >&2; }
 
 #echoerr parent: $parentCmd 
 
-usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -D dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
 [ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
 
@@ -100,6 +100,9 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
   	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
+        "-H"            )   onhold=yes;;
+        "-D"            )   chdir="${array[$i+1]}" && array[$i+1]="";;
+        --chdir=*       )   chdir="${array[$i]}" && chdir="${chdir/--chdir=/}";;
         --comment=*     )   comment="${array[$i]}" && arr=(${comment/--comment=/}) && for c in "${arr[@]}"; do eval $c; done;;
   		"-P" 			)   program="${array[$i+1]}" && array[$i+1]="";;
   		--program=* 	)   program="${array[$i]}" && program="${program/--program=/}";;
@@ -109,7 +112,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}";;
         "-I" 			)   inputs="${array[$i+1]}" && array[$i+1]="";;
   		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}";;
-        "-D"            )   deps="${array[$i+1]}" && array[$i+1]="";;
+        "-d"            )   deps="${array[$i+1]}" && array[$i+1]="";;
         "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}";;
         "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true;;
   	    "-p"            )   partition="${array[$i+1]}" && array[$i+1]="";; # will set partition later
@@ -150,9 +153,6 @@ done
 echoerr Parsing result from sbatch commandline:
 echoerr program: $program ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
 echoerr partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err additionalPara: $additionalPara
-
-
-
 
 if [ -z "$slurmScript" ]; then
     echoerr wrapCMD: $wrapCMD
@@ -331,6 +331,7 @@ else
     depsID=${deps#afterok:}; 
     deps="-d $deps"
 fi
+[ -z "$chdir" ] || chdir="-D $chdir"
 
 if [ -z "$mem" ]; then
     if [ -z "$mem1" ]; then
@@ -922,14 +923,14 @@ else
     #    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time --open-mode=append $slurmAcc"
     #else
     [ -z "$err" ] && errFlag=$outFlag
-    [ -z "$deps" ] || deps="-H $deps" # if depends on other jobs, hold the job
+    #[ -z "$deps" ] || deps="-H $deps" # if depends on other jobs, hold the job
     
         # if [ -z "$deps" ]; then #errFlag=$smartSlurmLogDir/$flag.err
         #     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $outFlag -J $name $slurmAcc"
         #     echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $outFlag -J $name $deps $slurmAcc" >> $job
         # else
-            cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc"
-            echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $slurmAcc" >> $job
+            cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $slurmAcc"
+            echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $slurmAcc" >> $job
         #fi
 
         #rm $startFile $failFile $flag.failed $flag.killed # 2>/dev/null  || :
