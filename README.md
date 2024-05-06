@@ -1,10 +1,18 @@
 =============================
+# Introduction
+SmartSlurm has two major parts:
+1 ssbatch a sbatch wrapper. It has function to estimate memory and time based on program type, input size and previous job records, submit jobs to slurm, record job history, send email and so on.
+ 
+2 runAsPipeline parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency. 
+
 # SmartSlurm
 
 - [Smart sbatch](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
+    - [Smart sbatch FAQ](#smart-sbatch-faq) 
+        - some question
       
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
@@ -16,6 +24,8 @@
     - [Smart pipeline features](#smart-pipeline-features)
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work](#how-does-smart-pipeline-work)
+    - [runAsPipeline FAQ](#runaspipeline-faq) 
+        - some question
 
 - [sbatchAndTop](#sbatchAndTop)
 
