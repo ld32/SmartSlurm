@@ -73,7 +73,10 @@ echolog Converting $1 to $run
 
 echo "#!/bin/sh" > $run
 
-#echo "set -x" >> $run
+echo "#from cmd: $0 $@" >> $run
+echo "#run from: `pwd`" >> $run
+
+echo "#set -x" >> $run
 
 echo "echo Running \$0 \$@"  >> $run
 
@@ -81,23 +84,23 @@ echo module list >> $run
 
 echo "xsubd=\"$2\"" >> $run
 
-echo "rm $smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
-echo "if [ -f $smartSlurmLogDir/allJobs.txt ]; then" >> $run
+echo "rm \$smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
+echo "if [ -f \$smartSlurmLogDir/allJobs.txt ]; then" >> $run
 echo "    cancelAllJobsReRun.sh" >> $run
 echo "    [ \$? == 1 ] && exit 0;" >> $run
 echo "fi" >> $run
 
 echo "cwd=\`realpath ./\`" >> $run
 
-#echo "rm $smartSlurmLogDir/*.failed $smartSlurmLogDir/*.killed 2>/dev/null" >> $run
+#echo "rm \$smartSlurmLogDir/*.failed \$smartSlurmLogDir/*.killed 2>/dev/null" >> $run
 
-#echo "[ -f $smartSlurmLogDir/allJobs.txt ] && [ ! -f $smartSlurmLogDir/keepRunningJobs.txt ] && mv $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.txt.old"  >> $run
+#echo "[ -f \$smartSlurmLogDir/allJobs.txt ] && [ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && mv \$smartSlurmLogDir/allJobs.txt \$smartSlurmLogDir/allJobs.txt.old"  >> $run
 
-echo "[ -f $smartSlurmLogDir/allJobs.txt ] && cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.txt.old"  >> $run
+echo "[ -f \$smartSlurmLogDir/allJobs.txt ] && cp \$smartSlurmLogDir/allJobs.txt \$smartSlurmLogDir/allJobs.txt.old"  >> $run
 
-echo "rm -r $smartSlurmLogDir/downsteamjob.adjusting $smartSlurmLogDir/job.adjusting.lock $smartSlurmLogDir/requeue.start $smartSlurmLogDir/skipAllSuccessJobs*.txt $smartSlurmLogDir/reRunAllSuccessJobs*.txt $smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
+echo "rm -r \$smartSlurmLogDir/downsteamjob.adjusting \$smartSlurmLogDir/job.adjusting.lock \$smartSlurmLogDir/requeue.start \$smartSlurmLogDir/skipAllSuccessJobs*.txt \$smartSlurmLogDir/reRunAllSuccessJobs*.txt \$smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
 
-echo "[ ! -f $smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s\n\" job_id depend_on job_flag program reference inputs > $smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> $smartSlurmLogDir/allJobs.txt">> $run
+echo "[ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n\" job_id depend_on job_flag program reference inputs comment > \$smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> \$smartSlurmLogDir/allJobs.txt">> $run
 echo "echo ---------------------------------------------------------" >> $run
 
 [ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
@@ -287,38 +290,42 @@ for t in `cat ${1%% *}`; do
         # escape double quota. bsub does not need this? not sure
         #cmd=${cmd//\"/\\\\\"}
 
-    
-       
-        echo "set -x" >> $run 
-        echo "${space}needUnHoldOtherJobs=\"\"" >> $run
+        [ -z "$inputs" ] && inputs=none
+        [ -z "$ref" ] && ref=none
+
+        # move to ssbatch? 
+        #echo "set -x" >> $run 
+        #echo "${space}comment=\"\"" >> $run
         # for jobs with no dep, check if there is formula yet, if yes, directly submit.
-        # otherwise, only allow the first 10 jobs to run even they doen's depend on other jobs 
+        # otherwise, only allow the first 10 jobs to run
         echo "${space}if [ -z \"\$deps\" ]; then" >> $run
-        echo "${space}    [ -z \"$inputs\" ] && [ -f \"$smartSlurmJobRecordDir/stats/\$name.\$ref.mem.stat.noInput\" ] && hasFomular=y || hasFormula=\"\"" >> $run
-        echo "${space}    [ ! -z \"$inputs\" ] && [ -f \"\$smartSlurmJobRecordDir/stats/\$name.\$ref.mem.stat\" ] && hasFomular=y || hasFormula=\"\"" >> $run
-        echo "${space}    if [ -z \"\$hasFormula\" ]; then" >> $run         
-        echo "${space}        nJobsInSameStep=\${jobIDs[$step]}" >> $run
-        echo "${space}        if [[ \"\$nJobsInSameStep\" -gt 10 ]]; then" >> $run 
-        echo "${space}            deps=\"-H -d afterok\$deps\"" >> $run            
-        echo "${space}        elif [[ \$nJobsInSameStep -gt 5 ]]; then" >> $run
-        echo "${space}            needUnHoldOtherJobs=needUnHoldOtherJobs" >> $run
-        echo "${space}        fi" >> $run
+        echo "${space}    [[ \"\$inputs\" == none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.memTime.stat.noInput\" ] && hasFormula=y || hasFormula=\"\"" >> $run
+        echo "${space}    [[ \"\$inputs\" != none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.mem.stat\" ] && hasFormula=y || hasFormula=\"\"" >> $run
+        echo "${space}    if [ -z \"\$hasFormula\" ]; then" >> $run 
+        ### # echo "${space}[ -z \"\$deps\" ] && [[ \$(echo \"\$deps\" | tr -cd ':' | wc -c) -gt 10 ]] && deps=\"-H -d afterok\$deps\"" >> $run
+
+        echo "${space}        nJobsInSameStep=\$(echo \"\${jobIDs[$step]}\" | tr -cd ':' | wc -c)" >> $run
+        echo "${space}        if [[ \"\$nJobsInSameStep\" -ge 4 ]]; then" >> $run 
+        echo "${space}            deps=\"-H\"" >> $run
+        #echo "${space}            comment=\"--comment=needUnHoldByOtherJobs\"" >> $run            
+        #echo "${space}        elif [[ \$nJobsInSameStep -ge 4 ]]; then" >> $run
+        #echo "${space}            comment=\"--comment=needUnHoldOtherJobs\"" >> $run
+         echo "${space}        fi" >> $run
         echo "${space}    fi" >> $run  
         echo "${space}else" >> $run
         echo "${space}    deps=\"-H -d afterok\$deps\"" >> $run
         echo "${space}fi" >> $run 
         
-        echo "set +x" >> $run 
+        #echo "set +x" >> $run 
         
-        [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
+        [[ "$3" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
         #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
 
-        [ -z "$inputs" ] && inputs=none
-        [ -z "$ref" ] && ref=none
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run \$needUnHoldOtherJobs)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" \$needUnHoldOtherJobs) " >> $run
+
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
 
         echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 
@@ -410,12 +417,10 @@ done
 #echo "cd \$cwd/.." >> $run
 #exit
 echo "echo; echo All submitted jobs: " >> $run
-#echo "cat \$cwd/$smartSlurmLogDir/allJobs.txt" >> $run
-echo "awk '{print substr(\$0, 1, 155)}' $smartSlurmLogDir/allJobs.txt" >> $run
+#echo "cat \$cwd/\$smartSlurmLogDir/allJobs.txt" >> $run
+echo "awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
-
-echo "#cmd: $0 $@" >> $run
 
 [[ "$1" = *" "* ]] && para=${1#* } || para=""
 
