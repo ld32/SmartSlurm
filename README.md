@@ -210,52 +210,7 @@ snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 10
 [Back to top](#SmartSlurm)
 
 ``` bash
-# Download (only need download once)
-cd $HOME
-git clone https://github.com/ld32/smartSlurm.git  
-
-# Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
-
-# Create some text files for testing
-createNumberFiles.sh
-
-# Use ssbatch to replace regular sbatch, set up a fuction. 
-# This way, whenever you run sbatch, ssbatch is called. 
-sbatch() { $HOME/smartSlurm/bin/ssbatch "$@"; }; export -f sbatch                                 
-
-# Run 3 jobs to get memory and run-time statistics for findNumber
-for i in {1..3}; do
-    sbatch --mem 2G -t 2:0:0 --commen="S=findNumber" \
-        --wrap="findNumber.sh $i"
-done
-
-# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts memory 
-# and run-time so that 90% jobs can finish successfully
-# Notice: this command submits this job to short partition, and reserves 19M memory and 7 minute run-time 
-sbatch --mem 2G -t 2:0:0 --mem 2G --commen="S=findNumber" --wrap="findNumber.sh 1"
-
-# Run 3 jobs to get memory and run-time statistics for findNumber
-for i in {1..3}; do
-    sbatch -t 2:0:0 --mem 2G --commen="S=findNumber I=bigText$i.txt" \
-        --wrap="findNumber.sh bigText$i.txt"
-done
-
-# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts memory and run-time according input file size
-# Notice: this command submits the job to short partition, and reserves 21M memory and 13 minute run-time 
-sbatch -t 2:0:0 --mem 2G --commen="S=findNumber \
-    I=bigText1.txt,bigText2.txt" --wrap="findNumber.sh bigText1.txt bigText2.txt"
-
-# The second way to tell the input file name: 
-sbatch -t 2:0:0 --mem 2G job.sh
-
-cat job.sh
-#!/bin/bash
-#SBATCH --commen="S=findNumber I=bigText1.txt,bigText2.txt"
-findNumber.sh bigText1.txt bigText$2.txt
-
-# After you finish using ssbatch, run these command to disable ssbatch:    
-unset sbatch
+Comming soon
 
 ```
 
