@@ -1,6 +1,7 @@
 =============================
 # Introduction
 SmartSlurm has two major parts:
+
 1 ssbatch a sbatch wrapper. It has function to estimate memory and time based on program type, input size and previous job records, submit jobs to slurm, record job history, send email and so on.
  
 2 runAsPipeline parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency. 
