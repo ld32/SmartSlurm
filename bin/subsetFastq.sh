@@ -19,10 +19,10 @@ folder=fastq.${million}m.subset
 
 mkdir -p $folder
 for i in $@; do 
-    if [ -f $i ] && [[ "$j" == *fastq.gz ]]; then 
+    if [ -f $i ] && [[ "$i" == *fastq.gz ]]; then 
         file=$folder/subset.${million}m.${i##*/}
         [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
-        echo Working on $j ...  && zcat $j  | head -n $rowCount | gzip > $file;    
+        echo Working on $i ...  && zcat $i  | head -n $rowCount | gzip > $file;    
     elif [ -d $i ]; then 
         for j in $i/*.fastq.gz; do 
             file=$folder/subset.${million}m.${j##*/}
@@ -31,10 +31,10 @@ for i in $@; do
         done
     fi  
 
-    if [ -f $i ] && [[ "$j" == *fastq.bz2 ]]; then 
+    if [ -f $i ] && [[ "$i" == *fastq.bz2 ]]; then 
         file=$folder/subset.${million}m.${i##*/}
         [ -f "$file" ] && echo Current working folder already has file $file Skipping it... && continue 
-        echo Working on $j ...  && bzcat $j  | head -n $rowCount | bzip2 > $file;    
+        echo Working on $j ...  && bzcat $i  | head -n $rowCount | bzip2 > $file;    
     elif [ -d $i ]; then 
         for j in $i/*.fastq.bz2; do 
             file=$folder/subset.${million}m.${j##*/}

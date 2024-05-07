@@ -276,8 +276,8 @@ do
     mkdir -p $outDir/bedGraphs
 
     #@9,8,bedGraphs9,,bowtieOut,sbatch -c 1 -p short -t 12:0:0 --mem 140G
-    perl $scriptsPath/AdelmanLab/NIH_scripts/bowtie2stdbedgraph/bowtie2stdBedGraph.pl -x -a -o b -b 10 -D -l $scriptsPath/chromSizes/$genomeRef.chrom.sizes $outDir/mapping/${refPrefix}_3pr.sam $outDir/bedGraphs/${refPrefix}_3pr; \
-    perl $scriptsPath/AdelmanLab/NIH_scripts/bowtie2stdbedgraph/bowtie2stdBedGraph.pl -a -o b -b 10 -D -l $scriptsPath/chromSizes/$genomeRef.chrom.sizes $outDir/mapping/${refPrefix}_5pr.sam $outDir/bedGraphs/${refPrefix}_5pr
+    [[ "$genomeRef" == "dm6" ]] && sizeName=dm6_fb || sizeName=$genomeRef; perl $scriptsPath/AdelmanLab/NIH_scripts/bowtie2stdbedgraph/bowtie2stdBedGraph.pl -x -a -o b -b 10 -D -l $scriptsPath/chromSizes/$sizeName.chrom.sizes $outDir/mapping/${refPrefix}_3pr.sam $outDir/bedGraphs/${refPrefix}_3pr; \
+    perl $scriptsPath/AdelmanLab/NIH_scripts/bowtie2stdbedgraph/bowtie2stdBedGraph.pl -a -o b -b 10 -D -l $scriptsPath/chromSizes/$sizeName.chrom.sizes $outDir/mapping/${refPrefix}_5pr.sam $outDir/bedGraphs/${refPrefix}_5pr
 
     # matrix
     mkdir -p $outDir/matrix
