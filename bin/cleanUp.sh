@@ -387,6 +387,7 @@ if [ ! -f $succFile ]; then
                 requeueCmd=${requeueCmd//\$myMem/$myMem}
 
                 requeueCmd=${requeueCmd/ -H/}
+		requeueCmd=${requeueCmd/-d afterok:* /} #-d afterok:38023271
 
                 newJobID=`$requeueCmd`
 
@@ -534,7 +535,8 @@ if [ ! -f $succFile ]; then
                 requeueCmd=${requeueCmd//\$myTime/$myTime}
                 requeueCmd=${requeueCmd//\$myMem/$myMem}
                 requeueCmd=${requeueCmd/ -H/}
-                newJobID=`$requeueCmd`
+                requeueCmd=${requeueCmd/-d afterok:* /} #-d afterok:38023271
+		newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
                     echo "# mem=$myMem time=$myTime " >> $script
