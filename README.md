@@ -34,7 +34,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 # Smart sbatch
 [Back to top](#SmartSlurm)
 
-Smart Sbatch (ssbath) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
+Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.time.png)
 
