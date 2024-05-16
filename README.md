@@ -1,10 +1,10 @@
 =============================
 # Introduction
-SmartSlurm has two major parts:
+SmartSlurm is an automated computational tool designed to estimate and optmize resouces for Slurm jobs. There are two major parts:
 
-1 ssbatch: It is a sbatch wrapper. It has function to estimate memory and time based on program type, input size and previous job records, submit jobs to slurm, record job history, send email and so on.
+1. ssbatch: An sbatch wrapper with a custom function to estimate memory RAM and time based on several factors (i.e., program type, input size,previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and sending an optional email notification.
  
-2 runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency. 
+2. runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency. 
 
 # SmartSlurm
 
@@ -34,19 +34,19 @@ SmartSlurm has two major parts:
 # Smart sbatch
 [Back to top](#SmartSlurm)
 
-ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pipeline, so that users don't have to modify the original workflow and ssbatch can automatially modify the partitions according user's local cluster partition settings. The script was later improved to have more features.
+Smart Sbatch (ssbath) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.time.png)
 
-##As the figure shown above, the memory usage is roughly co-related to the input size. We can use input size to allocate memory when submit new jobs.
+Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMem.png)
 
-##As the figure shown above, Ssbatch runs the first 5 jobs, it use default memory, then based on the first five jobs, it estimates memory for future jobs. The wasted memory is dramatially decreased for the future jobs.
+Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartTime.png)
 
-##As the figure shown above, Ssbatch runs the first 5 jobs, it use default time, then based on the first five jobs, it estimates time future jobs. The wasted time is dramatially decreased for the future jobs.
+Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
 
 ## ssbatch features:
 [Back to top](#SmartSlurm)
@@ -54,8 +54,8 @@ ssbath was originally designed to run https://github.com/ENCODE-DCC/atac-seq-pip
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
-4) (Optional) Generate checkpoint before job runs out of time or memory, and use the checkpoint to re-run jobs.
-5) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
+4) (Optional) Generate a checkpoint before the job runs out of time or memory, and use the checkpoint to re-run jobs.
+5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
 
 ## How to use ssbatch
 [Back to top](#SmartSlurm)
@@ -126,13 +126,13 @@ unset sbatch
 
 $smartSlurmJobRecordDir/jobRecord.txt contains job memory and run-time records. There are three important columns: 
    
-   1st colume is job ID
+   1st column is the job ID
    
-   2rd colume is input size
+   2rd column is the input size
    
-   7th column is actual memory usage
+   7th column is the actual memory usage
    
-   8th column is actual time usage
+   8th column is the actual time usage
    
 The data from the three columns are plotted and statistics  
 __________________________________________________________________________________________________________________   
@@ -158,9 +158,9 @@ ________________________________________________________________________________
 
 2) Auto choose partition according to run-time request
 
-smartSlrm/config/config.txt contains partion time limit and bash function adjustPartition to adjust partion for sbatch jobs: 
+smartSlrm/config/config.txt contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs: 
 
-\# Genernal partions, ordered by maximum allowed run-time in hours 
+\# General partitions, ordered by maximum allowed run-time in hours 
 
 partition1Name=short; partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
 
@@ -176,17 +176,17 @@ adjustPartition() {
     ... # please open the file to see the content         
 } ; export -f adjustPartition 
 
-3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
+3) Auto re-run failed jobs with Out Of Memory (OOM) and Out Of run-Time (OOT) states
     
-    At end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checkes memory and time usage, save the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If job fails, ssbatch re-submit with double memory or double time, clear up the statistic fomular, so that later jobs will re-caculate statistics, 
+    At the end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checks memory and time usage, saves the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If the job fails, ssbatch re-submit with double memory or double time, clear up the statistic formula, so that later jobs will re-caculate statistics, 
 
 4) Checkpoint
     
-    If checkpoint is enabled, before the job run out of memory or time, ssbatch generate checkpoint and resubmit the job.
+    If the checkpoint feature is enabled, before the job run out of memory or time, ssbatch generate a checkpoint and resubmit the job.
 
-5) Get good emails: by default Slurm emails only have a subject. ssbatch attaches the content of the sbatch script, the output and error log to email
+5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
 
-    $smartSlurmJobRecordDir/bin/cleanUp.sh also sends a email to user. The email contains the content of the Slurm script, the sbatch command used, and also the content of the output and error log files.
+    $smartSlurmJobRecordDir/bin/cleanUp.sh also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
 
 
 # Use ssbatch in Snakemake pipeline
@@ -221,7 +221,7 @@ snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 10
 [Back to top](#SmartSlurm)
 
 ``` bash
-Comming soon
+Coming soon
 
 ```
 
@@ -237,7 +237,7 @@ git clone https://github.com/ld32/smartSlurm.git
 module load miniconda3
 mamba create -n  nextflowEnv -c bioconda -y nextflow
 
-# Review nextflow file, activate the nextflow env and run test
+# Review nextflow file, activate the nextflow env, and run test
 module load miniconda3
 export PATH=$HOME/smartSlurm/bin:$PATH  
 source activate nextflowEnv
@@ -261,9 +261,9 @@ nextflow run nextflow.nf -profile slurm
 # Run bash script as smart pipeline using smart sbatch
 [Back to top](#SmartSlurm)
 
-Smart pipeline was originally designed to run bash script as pipelie on Slurm cluster. We added dynamic memory/run-time feature to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
+Smart pipeline was originally designed to run bash scripts as a pipeline in a Slurm cluster. We added dynamic memory and run-time features to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
 
-\#Here is the memeory usage by the optimzed workflow: The orignal pipeline has 11 steps. Most of the steps only need less than 10G memory to run. But one of the step needs 140G. Because the original pipeline is submitted as a single huge job, 140G is reserved for all the steps. (Each compute node in the cluster has 256 GB RAM.) By submitting each step as a separate job, most steps only need to reserve 10G, which decreases the memory usage dramatically. (The pink part of the graph below shows these savings.) Another optimization is to dynamically allocate memory based on the reference genome size and input sequencing data size. (This in shown in the yellow part of the graph.)
+\#Here is the memory usage by the optimized workflow: The original pipeline has 11 steps. Most of the steps only need less than 10G memory to run. But one of the steps need 140G. Because the original pipeline is submitted as a single huge job, 140G is reserved for all the steps. (Each compute node in the cluster has 256 GB RAM.) By submitting each step as a separate job, most steps only need to reserve 10G, which decreases memory usage dramatically. (The pink part of the graph below shows these savings.) Another optimization is to dynamically allocate memory based on the reference genome size and input sequencing data size. (This in shown in the yellow part of the graph.)
 Because of the decreased resource demand, the jobs can start earlier, and in turn increase the overall throughput.
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMemSaved.png)
@@ -271,15 +271,15 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 ## smart pipeline features:
 [Back to top](#SmartSlurm)
 
-1) Submit each step as a cluster job using ssbatch, which auto adjusts memory and run-time according to statistics from earlier jobs, and re-run OOM/OOT jobs with doubled memory/run-time
+1) Submit each step as a cluster job using ssbatch, which auto-adjusts memory and run-time according to statistics from earlier jobs, and re-run OOM/OOT jobs with doubled memory/run-time
 2) Automatically arrange dependencies among jobs
 3) Email notifications are sent when each job fails or succeeds
 4) If a job fails, all its downstream jobs automatically are killed
 5) When re-running the pipeline on the same data folder, if there are any unfinished jobs, the user is asked to kill them or not
 6) When re-running the pipeline on the same data folder, the user is asked to confirm to re-run or not if a job or a step was done successfully earlier
-7) For re-run, if the script is not changed, runAsPipeline does not re-process the bash script and directly use old one
+7) For re-run, if the script is not changed, runAsPipeline does not re-process the bash script and directly uses old one
 8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
-9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as smart slurm pipeline
+9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as Smart Slurm pipeline
 
 ## How to use smart pipeline
 [Back to top](#SmartSlurm)
@@ -292,7 +292,7 @@ git clone https://github.com/ld32/smartSlurm.git
 # Setup path
 export PATH=$HOME/smartSlurm/bin:$PATH  
 
-# Take a look at a regular exmaple bash script
+# Take a look at a regular example bash script
 cat $HOME/smartSlurm/scripts/bashScriptV1.sh
 
 # Below is the content of a regular bashScriptV1.sh 
@@ -314,13 +314,13 @@ cat $HOME/smartSlurm/scripts/bashScriptV1.sh
 
 
 # Notes about bashScriptV1.sh: 
-#The script first finds a certain nubmer given from commandline in file numbers1.txt until numbers5.txt in row 11, then merges the results into all.txt in orow 15 
+#The script first finds a certain number given from commandline in file numbers1.txt until numbers5.txt in row 11, then merges the results into all.txt in row 15 
 
-# In order tell smart pipeline which step/command we want to submit as Slurm jobs, 
+# In order to tell the Smart Pipeline which step/command we want to submit as Slurm jobs, 
 # we add comments above the commands also some helping commands:  
 cat $HOME/smartSlurm/scripts/bashScriptV2.sh
 
-# below is the content of bashScriptV2.sh
+# Below is the content of bashScriptV2.sh
  1 #!/bin/sh
  2
  3 number=$1
@@ -366,17 +366,17 @@ runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
 This command will generate new bash script of the form slurmPipeLine.checksum.sh in log folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated. If it is not changed, we don not re-create the pipeline script.
 
-This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job ids like 1234 for each step. If you were to append run at the end of the command, the pipeline would actually be submitted to the Slurm scheduler.
+This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job id like 1234 for each step. If you were to append run at the end of the command, the pipeline would be submitted to the Slurm scheduler.
 
 Ideally, with useTmp, the software should run faster using local /tmp disk space for database/reference than the network storage. For this small query, the difference is small, or even slower if you use local /tmp. If you don't need /tmp, you can use noTmp.
 
-With useTmp, the pipeline runner copy related data to /tmp and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
+With useTmp, the pipeline runner copy related data to /tmp, and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
 Sample output from the test run
 
 Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
 runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
 
-# here is the outputs:
+# here are the outputs:
 [Back to top](#SmartSlurm)
 
 ```
@@ -489,4 +489,4 @@ sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2"
 sbatchAndTop job.sh 
 
 ## sbatchAndTop features:
-1) Submit slurm job using ssbatch (scrool up to see ssbatch features) and run scontrol top on the job
+1) Submit slurm job using ssbatch (scroll up to see ssbatch features) and run scontrol top on the job
