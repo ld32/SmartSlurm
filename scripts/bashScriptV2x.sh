@@ -4,7 +4,7 @@ number=$1
 
 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScriptV1.sh <numbert>" && exit 1
 
-for i in {2..5}; do
+for i in {2..2}; do
     
     input=numbers$i.txt
     

@@ -343,51 +343,52 @@ if [ ! -f $succFile ]; then
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
         (
         #set -x;
+        if [ $totalM -lt 200 ]; then
+            totalM=200
+            newFactor=5
+        elif [ $totalM -lt 512 ]; then
+            totalM=512
+            newFactor=4
+        elif [ $totalM -lt 1024 ]; then
+            totalM=1024
+            newFactor=3
+        elif [ $totalM -lt 10240 ]; then
+            newFactor=2
+        elif [ $totalM -lt 51200 ]; then
+            newFactor=1.5
+        else
+            newFactor=1.2
+        fi
+
+        #newFactor=2
+        mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
+        echo trying to requeue $try with $mem M
+        echo $mem $totalT $maxExtra > ${out%.out}.adjust
+
+        #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
+        #set -x
+        #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
+        #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > $smartSlurmLogDir/$flag.requeueCMD
+
+        hours=$((($totalT + 59) / 60))
+        adjustPartition $hours $partition
+
+        export  myPartition=$partition
+        export myTime=$totalT
+        export myMem=${mem}M
+        requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
+        requeueCmd=${requeueCmd#*submit the job: }
+        requeueCmd=${requeueCmd//\$myPartition/$myPartition}
+        requeueCmd=${requeueCmd//\$myTime/$myTime}
+        requeueCmd=${requeueCmd//\$myMem/$myMem}
+
+        requeueCmd=${requeueCmd/ -H/}
+		requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
         for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 #sleep 2
                 touch $failFile.requeued.$try.mem
-                if [ $totalM -lt 200 ]; then
-                    totalM=200
-                    newFactor=5
-                elif [ $totalM -lt 512 ]; then
-                    totalM=512
-                    newFactor=4
-                elif [ $totalM -lt 1024 ]; then
-                    totalM=1024
-                    newFactor=3
-                elif [ $totalM -lt 10240 ]; then
-                    newFactor=2
-                elif [ $totalM -lt 51200 ]; then
-                    newFactor=1.5
-                else
-                    newFactor=1.2
-                fi
-
-                #newFactor=2
-                mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
-                echo trying to requeue $try with $mem M
-                echo $mem $totalT $maxExtra > ${out%.out}.adjust
-
-                #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
-                #set -x
-                #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
-                #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > $smartSlurmLogDir/$flag.requeueCMD
-
-                hours=$((($totalT + 59) / 60))
-                adjustPartition $hours $partition
-
-                export  myPartition=$partition
-                export myTime=$totalT
-                export myMem=${mem}M
-                requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
-                requeueCmd=${requeueCmd#*submit the job: }
-                requeueCmd=${requeueCmd//\$myPartition/$myPartition}
-                requeueCmd=${requeueCmd//\$myTime/$myTime}
-                requeueCmd=${requeueCmd//\$myMem/$myMem}
-
-                requeueCmd=${requeueCmd/ -H/}
-		requeueCmd=${requeueCmd/-d afterok:* /} #-d afterok:38023271
+                
 
                 newJobID=`$requeueCmd`
 
@@ -465,7 +466,7 @@ if [ ! -f $succFile ]; then
                 set +x
             fi
         done;
-        #set +x;
+        set +x;
         ) &
 
         # delete stats and redo them
@@ -490,53 +491,55 @@ if [ ! -f $succFile ]; then
         fi
     elif [[ "$jobStatus" == "OOT" ]]; then
 #set -x
+        if [ $min -lt 20 ]; then
+            min=20
+            newFactor=2
+        elif [ $min -lt 30 ]; then
+            min=30
+            newFactor=4
+        elif [ $min -lt 60 ]; then
+            min=60
+            newFactor=3
+        elif [ $min -lt 120 ]; then
+            min=120
+            newFactor=2
+        elif [ $min -lt 480 ]; then
+            min=480
+            newFactor=1.5
+        else
+            newFactor=1.2
+        fi
+
+        #newFactor=2
+        min=`echo "($min*$newFactor)/1" | bc`
+        echo trying to requeue $try with $min minutes
+        echo $totalM $min $maxExtra > ${out%.out}.adjust
+
+
+        hours=$((($min + 59) / 60))
+        adjustPartition $hours $partition
+
+        seconds=$(($min * 60))
+
+        # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
+
+        time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
+        export  myPartition=$partition
+        export myTime=$time
+        export myMem=${totalM}M
+        requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
+        requeueCmd=${requeueCmd#*submit the job: }
+        requeueCmd=${requeueCmd//\$myPartition/$myPartition}
+        requeueCmd=${requeueCmd//\$myTime/$myTime}
+        requeueCmd=${requeueCmd//\$myMem/$myMem}
+        requeueCmd=${requeueCmd/ -H/}
+        requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
+
         for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.time ]; then
                 touch $failFile.requeued.$try.time
-                if [ $min -lt 20 ]; then
-                    min=20
-                    newFactor=2
-                elif [ $min -lt 30 ]; then
-                    min=30
-                    newFactor=4
-                elif [ $min -lt 60 ]; then
-                    min=60
-                    newFactor=3
-                elif [ $min -lt 120 ]; then
-                    min=120
-                    newFactor=2
-                elif [ $min -lt 480 ]; then
-                    min=480
-                    newFactor=1.5
-                else
-                    newFactor=1.2
-                fi
-
-                #newFactor=2
-                min=`echo "($min*$newFactor)/1" | bc`
-                echo trying to requeue $try with $min minutes
-                echo $totalM $min $maxExtra > ${out%.out}.adjust
-
-
-                hours=$((($min + 59) / 60))
-                adjustPartition $hours $partition
-
-                seconds=$(($min * 60))
-
-                # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
-
-                time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-                export  myPartition=$partition
-                export myTime=$time
-                export myMem=${totalM}M
-                requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
-                requeueCmd=${requeueCmd#*submit the job: }
-                requeueCmd=${requeueCmd//\$myPartition/$myPartition}
-                requeueCmd=${requeueCmd//\$myTime/$myTime}
-                requeueCmd=${requeueCmd//\$myMem/$myMem}
-                requeueCmd=${requeueCmd/ -H/}
-                requeueCmd=${requeueCmd/-d afterok:* /} #-d afterok:38023271
-		newJobID=`$requeueCmd`
+                
+		        newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
                     echo "# mem=$myMem time=$myTime " >> $script
@@ -603,57 +606,10 @@ if [ ! -f $succFile ]; then
                 else 
                     echo re-submit failed;
                 fi    
-        
-                
-                    
-                
-                # sleep 1
-                # echo trying to requeue $try
-                # touch $failFile.requeued.$try.time
-
-                # # 80G memory
-                # #[ "${mem%M}" -gt 81920 ] && [ "$try" -gt 2 ] && break
-
-                # scontrol requeue $SLURM_JOBID && echo job re-submitted || echo job not re-submitted.
-
-                # # time=${10}
-                # # [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
-
-                # # [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
-
-                # # echo $day $day,  $hour hour,  $min min,  $sec sec
-
-                # factor=2 #$((1 + 1/e(0.1 * $try)))
-
-                # # # how many hours for sbatch command if we double the time
-                # # hours=$(($day * 2 * 24 + $hour * 2 + ($min * 2 + 59 + ($sec * 2 + 59) / 60 ) / 60))
-
-                # #min=${10} # the orignal estimated time
-
-                # #[ "$min" -lt 20 ] && min=20 # at least 20 minutes
-
-                # hours=$((($min * $factor + 59) / 60))
-
-                # adjustPartition $hours $partition
-
-                
-                # if [[ "$partition" != "${partition}" ]]; then
-                #     scontrol update jobid=$SLURM_JOBID Partition=$partition TimeLimit=$time
-                # else
-                #     scontrol update jobid=$SLURM_JOBID TimeLimit=$time
-                #     #scontrol update jobstep=123456.2 TimeLimit=02:00:00
-                # fi
-
-                # echo $totalM $(( min * factor )) $extraMemC > ${out%.out}.adjust
-                # echo job resubmitted: $SLURM_JOBID with time: $time partition: $partition, mem is not changed
-
-                # [ -f $failFile ] && rm $failFile
-
-                # echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt
-
-                # break
             fi
         done
+        set +x 
+
          # delete stats and redo them
         if [[ "$inputs" == "none" ]]; then
             mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
