@@ -8,6 +8,7 @@ usage() {
     exit 1; 
 }
 
+submttingLog=.smartSlurm.log
 
 if [ -z "$1" ]; then 
 
@@ -21,9 +22,10 @@ elif [[ $1 == "-h" ||  $i == "--help" ]]; then
     usage; 
 else 
     smartSlurmLogDir=$1
+    submttingLog=$smartSlurmLogDir/../$submttingLog
 fi
 
-logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20* 2>/dev/null`
+logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* 2>/dev/null`
 
 [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
@@ -36,12 +38,11 @@ GREEN='\033[0;32m'
 
 #echo -e "I ${RED}love${NC} Stack Overflow"
 
-
 while true; do
-    echo Availale logFolders:
+    echo Availale logFolders or file:
     count=1
     for i in $logFolders; do
-        echo -e "${GREEN}$count${NC} $i"
+        [ -f "$i" ] && echo -e "${GREEN}$count${NC} file:   $i" || echo -e "${GREEN}$count${NC} folder: $i"
         count=$((count + 1))
     done
     if [ $count -eq 2 ] && [ -z "$x" ]; then
@@ -58,6 +59,8 @@ while true; do
     fi
     
     logFolder=`echo $logFolders | cut -d' ' -f$x`
+
+    [ -f "$logFolder" ] && less $logFolder && continue
 
     lines=`tail -n +2 $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
