@@ -101,8 +101,7 @@ while true; do
       
         if [ $count -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
-            xx=1 
-            #xx=1
+            xx=1
         else
             [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
 Or ${RED}r${NC} to run the job command. 
@@ -133,8 +132,6 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
             [[ "$xx" == q ]] && break
             
             [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
-
-            # n=${xx:1:1}; xx=${xx:0:1}; [ -z "$n" ] && n=o  # if x=1a, x=a and n=a 
             [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count";  continue; }
         fi
         

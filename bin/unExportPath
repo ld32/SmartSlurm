@@ -1,0 +1,7 @@
+function unExportPath() {
+    path=$1
+    [ -z "$path" ] && echo "Usage: unExport <pathToRemoveFromPATH>"
+    [[ $PATH == *$path:* ]] && eval "export PATH="${PATH//$path:/}""
+    [[ $PATH == *:$path* ]] && eval "export PATH="${PATH//:$path/}""
+}
+export unExportPath
