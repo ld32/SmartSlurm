@@ -195,7 +195,7 @@ adjustPartition() {
 
     Yes. If -P is not gaven, slurm script name or wrap command will be used as program name
 
-### Is -I optonal? 
+### Is -I optional? 
 
     Yes. But If -I is not gaven, resource estimation will be base on program name only. 
 
