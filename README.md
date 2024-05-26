@@ -13,9 +13,10 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
     - [Smart sbatch FAQ](#smart-sbatch-faq) 
-        - [Is -P optional?](#is-\-p-optional) 
-        - [Is -I optional?](#is-\-i-optional)
-        - [Can I have -c x]($can-i-have-\-c-x)
+        - [Is -P optional?](#is--p-optional) 
+        - [Is -I optional?](#is--i-optional)
+        - [Can I have -c x](#can-i-have--c-x)
+        - [How about multiple inputs](#how-about-multiple-inputs)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
@@ -201,6 +202,10 @@ adjustPartition() {
 ### Can I have -c x? 
 
     Yes. All regular sbatch options are OK to have.
+
+### How about multiple inputs? 
+
+    Yes. You can have -I "input1.txt input2.txt".
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
