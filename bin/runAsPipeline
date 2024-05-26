@@ -4,7 +4,7 @@ usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [paramet
 
 echolog() { echo "$@" | tee -a .smartSlurm.log; }
 
-#set -x
+set -x
 #set -u
 
 [ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
@@ -116,6 +116,13 @@ elif [[ "$2" == *\ --account\ * ]]; then
 elif [[ "$2" == *\ --account=* ]]; then
     slurmAccount=${2#*--account\=}
     slurmAccount="-A ${slurmAccount%% *}"
+fi
+
+if [[ "$2" == *\ --mail-user=* ]]; then
+    userEmail=${2#*--mail-user=}
+    export userEmail="${userEmail%% *}"
+else 
+    unset userEmail
 fi
 
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $2; exit 1; }

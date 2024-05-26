@@ -721,19 +721,6 @@ fi
 
 echo "Sending email..."
 
-#echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try1. || echo Email still not sent!!; }
-elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
-        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try2. || echo Email still not sent!!; }
-
-else
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png $USER && echo email sent || \
-    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
-fi
-
 if [[ $USER != ld32 ]]; then
     if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
@@ -744,6 +731,21 @@ if [[ $USER != ld32 ]]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png ld32
     fi
 fi
+
+[ -z "$userEmail" ] || USER=$userEmail
+
+#echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent || \
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try1. || echo Email still not sent!!; }
+elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
+        { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try2. || echo Email still not sent!!; }
+else
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png $USER && echo email sent || \
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
+fi
+
 
 echo
 

@@ -55,6 +55,8 @@ if [ -z "$smartSlurmJobRecordDir" ]; then
     fi
 fi
 
+[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+
 mkdir -p $smartSlurmJobRecordDir/stats
 
 [ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt

@@ -1,0 +1,36 @@
+#Original mem 2048 M, Original time: 10 mins
+#This job does not have input.
+#There are less than 3 job records. Use default mem and time.
+
+Sat May 25 11:35:50 EDT 2024
+Running: /home/ld32/smartSlurm/bin/memCpuMonitor.sh module-v 2048 10 2048 1
+
+Modules based on Lua: Version 7.5.17  2017-07-20 12:50 -05:00
+    by Robert McLay mclay@tacc.utexas.edu
+
+Running /home/ld32/smartSlurm/bin/cleanUp.sh module-v module none 0 1 2048 10 2048 10 short rccg none 10 5
+
+Job summary:
+JobID                     Submit               Start                 End     MaxRSS      State                       NodeList  Partition                        ReqTRES   TotalCPU        Elapsed      Timelimit ExitCode 
+------------ ------------------- ------------------- ------------------- ---------- ---------- ------------------------------ ---------- ------------------------------ ---------- -------------- -------------- -------- 
+39072434     2024-05-25T11:35:31 2024-05-25T11:35:48             Unknown               RUNNING               compute-a-16-161      short billing=1,cpu=1,mem=2048M,nod+  00:00.073       00:00:08       00:10:00      0:0 
+39072434.ba+ 2024-05-25T11:35:48 2024-05-25T11:35:48             Unknown               RUNNING               compute-a-16-161                                             00:00:00       00:00:08                     0:0 
+39072434.ex+ 2024-05-25T11:35:48 2024-05-25T11:35:48             Unknown               RUNNING               compute-a-16-161                                             00:00:00       00:00:08                     0:0 
+39072434.0   2024-05-25T11:35:50 2024-05-25T11:35:50 2024-05-25T11:35:51          0  COMPLETED               compute-a-16-161                                            00:00.073       00:00:01                     0:0 
+start: 1716651352 fisnish: 1716651356
+jobStatus: COMPLETED
+start: 1716651352 finish: 1716651356 mem: 0 min: 1
+jobStatus: COMPLETED cgroupMaxMem: 14
+dataToPlot,39072434,0,2048,10,2048,10,14,1,COMPLETED,ld32,0,module,none,module-v,1,10,5,,,Sat May 25 11:35:56 EDT 2024
+Added this line to /home/ld32/.smartSlurm/jobRecord.txt:
+39072434,0,2048,10,2048,10,14,1,COMPLETED,ld32,0,module,none,module-v,1,10,5,,,Sat May 25 11:35:56 EDT 2024
+Final mem: 14 M, time: 1 mins
+To see the plot:
+display log/barchartMem.png
+To see the plot:
+display log/barchartTime.png
+Sending email...
+log/job_39072434.mem.png: No such file or directory
+Email not sent.
+Email sent by second try3.
+

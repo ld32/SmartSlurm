@@ -1,0 +1,18 @@
+ssbatch run date: 2024-05-25_11-35-30_7981
+Running: /home/ld32/smartSlurm/bin/sbatch -p short -t 10 -A rccg --wrap module -v
+pwd: /home/ld32/smartSlurm
+ssbatch -p short -t 10 -A rccg --wrap "module -v"
+
+Parsing result from sbatch commandline:
+program: ref: jobFlag: inputs: deps:
+partition: short time: 10 mem: mem-per-cpu: task: core: node: out: err: additionalPara:
+wrapCMD: module -v
+
+Check if there input file list and this job does not depend on other jobs
+No inputs
+
+Building new sbatch command ...
+New sbatch command to submit job:
+/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p short -c 1 --mem 2048 -t 0-00:10:00 --open-mode=append -o log/module-v.out -e log/module-v.out -J module-v -A rccg log/module-v.sh
+Start submtting job...
+Submitted batch job 39072434
