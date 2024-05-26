@@ -13,8 +13,10 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
     - [Smart sbatch FAQ](#smart-sbatch-faq) 
-        - some question
-      
+        - [Is -P optional?](#is--p-optional) 
+        - [Is -I optional?](#is--i-optional)
+        - [Can I have -c x]($can-i-have--c-x)
+        
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
 - [Use ssbatch in Cromwell pipeline](#Use-ssbatch-in-Cromwell-pipeline])
@@ -185,6 +187,15 @@ adjustPartition() {
 
     $smartSlurmJobRecordDir/bin/cleanUp.sh also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
 
+## ssbatch FAQ
+### Is -P optional? 
+    Yes. If -P is not gaven, slurm script name or wrap command will be used as program name
+
+### Is -I optonal? 
+    Yes. But If -I is not gaven, resource estimation will be base on program name only. 
+
+### Can I have -c x? 
+    Yes. All regular sbatch options are OK to have.
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
