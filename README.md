@@ -8,7 +8,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
 # SmartSlurm
 
-- [Smart sbatch1](#smart-sbatch)
+- [Smart sbatch](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
@@ -191,15 +191,15 @@ adjustPartition() {
 [Back to top](#SmartSlurm)
 
 ### Is -P optional? 
-[Back to top](#SmartSlurm)
+
     Yes. If -P is not gaven, slurm script name or wrap command will be used as program name
 
 ### Is -I optonal? 
-[Back to top](#SmartSlurm)
+
     Yes. But If -I is not gaven, resource estimation will be base on program name only. 
 
 ### Can I have -c x? 
-[Back to top](#SmartSlurm)
+
     Yes. All regular sbatch options are OK to have.
 
 # Use ssbatch in Snakemake pipeline
