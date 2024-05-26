@@ -8,7 +8,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
 # SmartSlurm
 
-- [Smart sbatch](#smart-sbatch)
+- [Smart sbatch1](#smart-sbatch)
     - [ssbatch features](#ssbatch-features)
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
