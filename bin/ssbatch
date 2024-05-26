@@ -271,18 +271,10 @@ fi
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
 
-
-
-
-
-
-
-[ -z "$flag" ] && [ ! -z "$program" ] && [ ! -z "$inputs" ] && flag=$program.${inputs##*/}  
-
 if [ -z "$flag" ]; then   
     tm=`mktemp XXXXXXXX --dry-run`
     if [ ! -z "$program" ]; then 
-        [ ! -z "$inputs" ] && flag=$program.${inputs##*/}.$tm || flag=$program.$tm  
+        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm  
     elif [ ! -z "$name" ]; then 
         flag=$name.$tm
     else 
@@ -296,18 +288,17 @@ if [ -z "$flag" ]; then
                 program="${arr[0]}"
             fi
             program=${program##*/}
-            flag=${wrapCMD// /}; flag=${flag%;}
+            flag=${wrapCMD// /.}; flag=${flag%;}.$tm
         else
             program=${slurmScript##*/}
-            flag=$program.${slurmScriptParas// /}
-            flag=${flag%.}
+            flag=$program.${slurmScriptParas// /.}
+            flag=${flag%.}.$tm
         fi
     fi
-else
-    hasFlag=y  
 fi
 
 flag=${flag//\//-}
+flag=${flag//../.}
 
 [ -z "$name" ] && name=$flag
 
@@ -374,7 +365,7 @@ resAjust="#Depend on: $depsID\n"
 resAjust="#Original mem $mem M, Original time: $min mins\n"
 
 # check job done before or not
-if [[ "$testRun" == "run" ]] && [ ! -z "$hasFlag" ]; then
+if [[ "$testRun" == "run" ]]; then
     
     #echoerr ps command output 
     
@@ -1046,6 +1037,6 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 echo Submitted batch job $jobID
 echoerr -e "Submitted batch job $jobID" 
 
-[ -z "$runningSingleJob" ] || echo -e "With mem: $mem and time: $time\nLog is appended .smartSlurm.log.\nPlease search $current_date to find it.\n" >&2
+[ -z "$runningSingleJob" ] || echo -e "With mem: $mem and time: $time\nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
 
 
