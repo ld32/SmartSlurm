@@ -188,13 +188,18 @@ adjustPartition() {
     $smartSlurmJobRecordDir/bin/cleanUp.sh also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
 
 ## ssbatch FAQ
+[Back to top](#SmartSlurm)
+
 ### Is -P optional? 
+[Back to top](#SmartSlurm)
     Yes. If -P is not gaven, slurm script name or wrap command will be used as program name
 
 ### Is -I optonal? 
+[Back to top](#SmartSlurm)
     Yes. But If -I is not gaven, resource estimation will be base on program name only. 
 
 ### Can I have -c x? 
+[Back to top](#SmartSlurm)
     Yes. All regular sbatch options are OK to have.
 
 # Use ssbatch in Snakemake pipeline
