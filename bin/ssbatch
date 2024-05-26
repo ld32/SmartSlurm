@@ -43,7 +43,7 @@ echoerr1() { echo "$@" >&2; }
 
 #echoerr parent: $parentCmd 
 
-usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-L logDir, optional. Such as: ./], [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
 [ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
 
@@ -277,18 +277,16 @@ fi
 
 
 
+[ -z "$flag" ] && [ ! -z "$program" ] && [ ! -z "$inputs" ] && flag=$program.${inputs##*/}  
+
 if [ -z "$flag" ]; then   
-    #[ -z "$program" ] && program=regularSbatch
     tm=`mktemp XXXXXXXX --dry-run`
-    if [ ! -z "$name" ]; then 
-        [ -z "$inputs" ] && flag=$name.${inputs##*/}.$tm || flag=$name.$tm  
-    elif [ ! -z "$program" ]; then
-        flag=$program.$tm
+    if [ ! -z "$program" ]; then 
+        [ ! -z "$inputs" ] && flag=$program.${inputs##*/}.$tm || flag=$program.$tm  
+    elif [ ! -z "$name" ]; then 
+        flag=$name.$tm
     else 
-        
         # todo: figure out how to find program name and input automatically
-        #echoerr Need program name to work
-        #usage  # need program name to work
         if [ ! -z "$wrapCMD" ]; then
             arr=($wrapCMD)
             # need remove the parameters, to get unique name for job types
@@ -301,15 +299,14 @@ if [ -z "$flag" ]; then
             flag=${wrapCMD// /}; flag=${flag%;}
         else
             program=${slurmScript##*/}
-            #[ -z "$flag" ] &&
             flag=$program.${slurmScriptParas// /}
             flag=${flag%.}
         fi
     fi
 else
-    #[ -d "$smartSlurmLogDir/" ] || { echoerr Directory not exist: $smartSlurmLogDir/; usage; }
     hasFlag=y  
 fi
+
 flag=${flag//\//-}
 
 [ -z "$name" ] && name=$flag
