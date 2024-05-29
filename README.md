@@ -152,10 +152,6 @@ ________________________________________________________________________________
 
 ![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.time.png)
 
-\#Here is the run-time vs memory plot for findNumber: 
-
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.stat.noInput.png)
-
 2) Auto choose partition according to run-time request
 
 smartSlrm/config/config.txt contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs: 
