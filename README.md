@@ -14,11 +14,13 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How does ssbatch work](#how-does-ssbatch-work) 
     - [Smart sbatch FAQ](#smart-sbatch-faq) 
         - [Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
+        - [Is -F optional?](#is--f-optional) 
         - [Is -P optional?](#is--p-optional) 
         - [Is -I optional?](#is--i-optional)
         - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
+        - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time?)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
@@ -82,29 +84,29 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers3.txt \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers3.txt -F find3 \
     --wrap="findNumber.sh 1234 numbers3.txt"
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers4.txt \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers4.txt -F find4 \
     --wrap="findNumber.sh 1234 numbers4.txt"
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers5.txt \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers5.txt -F find5 \
     --wrap="findNumber.sh 1234 numbers5.txt"
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F find1 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I "numbers1.txt numbers2.txt" 
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I "numbers1.txt numbers2.txt" -F find12 
     --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
 
 # If input file is not given for option -I. ssbatch will choose the memory 
 # and run-time threshold so that 90% jobs can finish successfully
-ssbatch --mem 2G -t 2:0:0 -P findNumber \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -F find21 \
     --wrap="findNumber.sh 1234 numbers2.txt"
 
 # check job status: 
@@ -116,10 +118,10 @@ cancelAllJobs
 # rerun jobs: 
 # when re-run a job with the same program and same input(s), if the previous run was successful, 
 # ssbatch will ask to confirm you do want to re-run
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt \
+ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F find11 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
-# To remove ssbatch from path: 
+# To remove ssbatch from PATH: 
 source `which unExportPath`; unExportPath $HOME/smartSlurm/bin
 
 ```
@@ -192,13 +194,17 @@ adjustPartition() {
 ## ssbatch FAQ
 [Back to top](#SmartSlurm)
 
-### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
+### Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource? 
 
     Yes for ssbatch. ssbatch directly submits the job without pending. 
     
     No for runAsPipeline. If you would like to submit more than 5 jobs, let the first 
     5 directly run, but put other jobs on pending until the first 5 finish, 
     then release the others with estimated resounce, please use runAsPipeline.
+
+### Is -F optional? 
+
+    Yes. If -F is not given, program + input will become the unique flag for the job.
 
 ### Is -P optional? 
 
@@ -218,6 +224,32 @@ adjustPartition() {
 ### How about multiple inputs? 
 
     Yes. You can have -I "input1.txt input2.txt".
+
+### What is the logic to estimate memory and time?
+
+    1 Check if job is done before
+      If yes, ask user wheather to re-run the job
+        If yes, check if there is input for this job? 
+
+          If yes: check if there are formulas to estimate memory/time
+    
+            If yes: check if the input size is larger than all previous jobs and formular is older than 20 minutes
+                
+              If yes: re-calculate formula. 
+                    
+                If successful, estimate memory/time and submit job 
+                    
+                  Otherwise, use default memory/time and submit job
+
+                Otherwise: estimate memory/time and submit job
+
+              Otherwise: stimate memory/time and submit job
+
+            Otherwise: order previous jobs according memory/time, use top 10 value for new job's memory/time
+        
+          Otherwise:  calculate formula, estimate memory/time and submit job
+        
+        Otherwise, don't re-run this job
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
