@@ -13,8 +13,10 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
     - [Smart sbatch FAQ](#smart-sbatch-faq) 
+        - [Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
         - [Is -P optional?](#is--p-optional) 
         - [Is -I optional?](#is--i-optional)
+        - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
         
@@ -187,13 +189,22 @@ adjustPartition() {
 ## ssbatch FAQ
 [Back to top](#SmartSlurm)
 
+### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
+
+    Yes for ssbatch. ssbatch directly submits the job without pending. 
+    
+    No for runAsPipeline. If you would like to submit more than 5 jobs, let the first 5 directly run, but put other jobs on pending until the first 5 finish, then release the others with estimated resounce, please use runAsPipeline.
+
 ### Is -P optional? 
 
-    Yes. If -P is not gaven, slurm script name or wrap command will be used as program name
+    Yes. If -P is not given, slurm script name or wrap command will be used as program name
 
 ### Is -I optional? 
 
-    Yes. But If -I is not gaven, resource estimation will be base on program name only. 
+    Yes. But If -I is not given, resource estimation will be base on program name only. 
+
+### Can -I directly take file size or job size? 
+    Not right now. I think it is good suggetion. We can add the function to next release.    
 
 ### Can I have -c x? 
 
