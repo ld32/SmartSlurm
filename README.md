@@ -31,7 +31,10 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How to use smart pipeline](#how-to-use-smart-pipeline)
     - [How does smart pipeline work](#how-does-smart-pipeline-work)
     - [runAsPipeline FAQ](#runaspipeline-faq) 
-        - some question
+        - [Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
+        - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
+        - [Can I have -c x](#can-i-have--c-x)
+        - [How about multiple inputs](#how-about-multiple-inputs)
 
 - [sbatchAndTop](#sbatchAndTop)
 
@@ -193,7 +196,9 @@ adjustPartition() {
 
     Yes for ssbatch. ssbatch directly submits the job without pending. 
     
-    No for runAsPipeline. If you would like to submit more than 5 jobs, let the first 5 directly run, but put other jobs on pending until the first 5 finish, then release the others with estimated resounce, please use runAsPipeline.
+    No for runAsPipeline. If you would like to submit more than 5 jobs, let the first 
+    5 directly run, but put other jobs on pending until the first 5 finish, 
+    then release the others with estimated resounce, please use runAsPipeline.
 
 ### Is -P optional? 
 
@@ -494,7 +499,25 @@ In case you wonder how it works, here is a simple example to explain.
 runAsPipeline goes through the bash script, read the for loop and job decorators, 
     set up slurm script for each step and job dependencies, and submit the jobs.  
 
+## runAsPipeline FAQ 
+
+### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
+
+    No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the othe jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
+
+### Can -I directly take file size or job size? 
+    Not right now. I think it is good suggetion. We can add the function to next release.    
+
+### Can I have -c x? 
+
+    Yes. All regular sbatch options are OK to have.
+
+### How about multiple inputs? 
+
+    Yes. You can have input="input1.txt input2.txt" or #@2,1,find,,input1.input2,sbstch ...
+
 =======
+
 
 # sbatchAndTop
 ## How to use sbatchAndTop
