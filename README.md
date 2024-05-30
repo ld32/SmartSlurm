@@ -251,7 +251,8 @@ adjustPartition() {
 
           If yes: check if there are formulas to estimate memory/time..
     
-            If yes: check if the input size is larger than all previous jobs and formular is older than 20 minutes.
+            If yes: check if the input size is larger than all previous jobs and 
+              formular is older than 20 minutes.
                 
               If yes: re-calculate formula. 
                     
@@ -263,7 +264,8 @@ adjustPartition() {
 
               Otherwise: stimate memory/time and submit job.
 
-            Otherwise: order previous jobs according memory/time, use top 10 value for new job's memory/time.
+            Otherwise: order previous jobs according memory/time, use top 10 value 
+             new job's memory/time.
         
           Otherwise:  calculate formula, estimate memory/time and submit job.
         
