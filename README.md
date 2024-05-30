@@ -245,31 +245,27 @@ adjustPartition() {
          
 ### What is the logic to estimate memory and time?
 
-    1 Check if job is done before.
-      If yes, ask user wheather to re-run the job.
-        If yes, check if there is input for this job? 
+    If yes, check if there is input for this job? 
 
-          If yes: check if there are formulas to estimate memory/time..
-    
-            If yes: check if the input size is larger than all previous jobs and 
-              formular is older than 20 minutes.
+      If yes: check if there are formulas to estimate memory/time..
+
+        If yes: check if the input size is larger than all previous jobs and 
+          formular is older than 20 minutes.
+            
+          If yes: re-calculate formula. 
                 
-              If yes: re-calculate formula. 
-                    
-                If successful, estimate memory/time and submit job.
-                    
-                  Otherwise, use default memory/time and submit job.
+            If successful, estimate memory/time and submit job.
+                
+              Otherwise, use default memory/time and submit job.
 
-                Otherwise: estimate memory/time and submit job.
+            Otherwise: estimate memory/time and submit job.
 
-              Otherwise: stimate memory/time and submit job.
+          Otherwise: stimate memory/time and submit job.
 
-            Otherwise: order previous jobs according memory/time, use top 10 value 
-             new job's memory/time.
-        
-          Otherwise:  calculate formula, estimate memory/time and submit job.
-        
-        Otherwise, don't re-run this job.
+        Otherwise: order previous jobs according memory/time, use top 10 value 
+         new job's memory/time.
+    
+      Otherwise:  calculate formula, estimate memory/time and submit job.
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
