@@ -245,7 +245,7 @@ adjustPartition() {
          
 ### What is the logic to estimate memory and time?
 
-    If yes, check if there is input for this job? 
+    Check if there is input for this job? 
 
       If yes: check if there are formulas to estimate memory/time..
 
