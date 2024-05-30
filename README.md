@@ -20,6 +20,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
+        - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag?)
         - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time?)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
@@ -225,6 +226,28 @@ adjustPartition() {
 
     Yes. You can have -I "input1.txt input2.txt".
 
+### What is the logic to get unique job flag?
+    Has -F jobUniqueFlag?
+
+      If yes, use jobUniqueFlag as job flag
+      
+      Otherwise, check if there is -P program? 
+        
+        If yes, check if there is -I inputFile?
+          
+          If yes, use program+inputFile as job unique flag
+          
+          Otherwise, create a unique job flag, such as program+randomSring
+        
+        Otherwise, check if there is --wrap? 
+          
+          If yes, use command in --wrap as program name and program+randomString as job flag
+          
+          Otherwise, check if there is slurmScript
+            
+            If yes, use slurmScript as program name and program+randomString as job flag
+
+         
 ### What is the logic to estimate memory and time?
 
     1 Check if job is done before
