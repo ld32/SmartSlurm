@@ -209,11 +209,11 @@ adjustPartition() {
 
 ### Is -P optional? 
 
-    Yes. If -P is not given, slurm script name or wrap command will be used as program name
+    Yes. If -P is not given, slurm script name or wrap command will be used as program name.
 
 ### Is -I optional? 
 
-    Yes. But If -I is not given, resource estimation will be base on program name only. 
+    Yes. But If -I is not given, resource estimation will be based on program name only. 
 
 ### Can -I directly take file size or job size? 
     Not right now. I think it is good suggetion. We can add the function to next release.    
@@ -229,45 +229,45 @@ adjustPartition() {
 ### What is the logic to get unique job flag?
     Has -F jobUniqueFlag?
 
-      If yes, use jobUniqueFlag as job flag
+      If yes, use jobUniqueFlag as job flag.
       
       Otherwise, check if there is -P xyz? 
         
-        If yes, use xyz as program name
+        If yes, use xyz as program name.
         
-        Othewise, use the command in --wrap or slurm script as program name
+        Othewise, use the command in --wrap or slurm script as program name.
         
         Check if there is -I inputFile?
           
-          If yes, use program+inputFile as job unique flag
+          If yes, use program+inputFile as job unique flag.
           
-          Otherwise, create a unique job flag, such as program+randomSring
+          Otherwise, create a unique job flag, such as program+randomSring.
          
 ### What is the logic to estimate memory and time?
 
-    1 Check if job is done before
-      If yes, ask user wheather to re-run the job
+    1 Check if job is done before.
+      If yes, ask user wheather to re-run the job.
         If yes, check if there is input for this job? 
 
-          If yes: check if there are formulas to estimate memory/time
+          If yes: check if there are formulas to estimate memory/time..
     
-            If yes: check if the input size is larger than all previous jobs and formular is older than 20 minutes
+            If yes: check if the input size is larger than all previous jobs and formular is older than 20 minutes.
                 
               If yes: re-calculate formula. 
                     
-                If successful, estimate memory/time and submit job 
+                If successful, estimate memory/time and submit job.
                     
-                  Otherwise, use default memory/time and submit job
+                  Otherwise, use default memory/time and submit job.
 
-                Otherwise: estimate memory/time and submit job
+                Otherwise: estimate memory/time and submit job.
 
-              Otherwise: stimate memory/time and submit job
+              Otherwise: stimate memory/time and submit job.
 
-            Otherwise: order previous jobs according memory/time, use top 10 value for new job's memory/time
+            Otherwise: order previous jobs according memory/time, use top 10 value for new job's memory/time.
         
-          Otherwise:  calculate formula, estimate memory/time and submit job
+          Otherwise:  calculate formula, estimate memory/time and submit job.
         
-        Otherwise, don't re-run this job
+        Otherwise, don't re-run this job.
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
