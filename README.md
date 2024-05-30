@@ -18,10 +18,10 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Is -P optional?](#is--p-optional) 
         - [Is -I optional?](#is--i-optional)
         - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
-        - [Can I have -c x](#can-i-have--c-x)
-        - [How about multiple inputs](#how-about-multiple-inputs)
-        - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag?)
-        - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time?)
+        - [Can I have -c x?](#can-i-have--c-x)
+        - [How about multiple inputs?](#how-about-multiple-inputs)
+        - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
+        - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
