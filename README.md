@@ -231,22 +231,17 @@ adjustPartition() {
 
       If yes, use jobUniqueFlag as job flag
       
-      Otherwise, check if there is -P program? 
+      Otherwise, check if there is -P xyz? 
         
-        If yes, check if there is -I inputFile?
+        If yes, use xyz as program name
+        
+        Othewise, use the command in --wrap or slurm script as program name
+        
+        Check if there is -I inputFile?
           
           If yes, use program+inputFile as job unique flag
           
           Otherwise, create a unique job flag, such as program+randomSring
-        
-        Otherwise, check if there is --wrap? 
-          
-          If yes, use command in --wrap as program name and program+randomString as job flag
-          
-          Otherwise, check if there is slurmScript
-            
-            If yes, use slurmScript as program name and program+randomString as job flag
-
          
 ### What is the logic to estimate memory and time?
 
