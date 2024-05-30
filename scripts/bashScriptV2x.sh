@@ -15,5 +15,5 @@ for i in {2..2}; do
     #findNumber.sh $number $input >> $number.$i.txt
 done
 
-##@3,1.2,findNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0 
-##cat $number.*.txt > all$number.txt
+#@3,1.2,findNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0 
+cat $number.*.txt > all$number.txt

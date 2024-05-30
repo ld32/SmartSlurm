@@ -4,7 +4,7 @@ usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [paramet
 
 echolog() { echo "$@" | tee -a .smartSlurm.log; }
 
-set -x
+#set -x
 #set -u
 
 [ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
