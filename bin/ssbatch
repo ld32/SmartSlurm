@@ -288,12 +288,14 @@ if [ -z "$flag" ]; then
                 program="${arr[0]}"
             fi
             program=${program##*/}
-            flag=${wrapCMD// /.}; flag=${flag%;}.$tm
+            #flag=${wrapCMD// /.}; flag=${flag%;}.$tm
         else
             program=${slurmScript##*/}
-            flag=$program.${slurmScriptParas// /.}
-            flag=${flag%.}.$tm
+            #flag=$program.${slurmScriptParas// /.}
+            #flag=${flag%.}.$tm
         fi
+        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm 
+
     fi
 fi
 
