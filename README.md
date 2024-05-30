@@ -13,7 +13,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
     - [How to use ssbatch](#how-to-use-ssbatch)
     - [How does ssbatch work](#how-does-ssbatch-work) 
     - [Smart sbatch FAQ](#smart-sbatch-faq) 
-        - [Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
+        - [Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-3-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
         - [Is -F optional?](#is--f-optional) 
         - [Is -P optional?](#is--p-optional) 
         - [Is -I optional?](#is--i-optional)
