@@ -298,11 +298,10 @@ for line in $lines; do
                     # didn't get estimate, but already have 3 successful jobs, release one job anyway
                     # because jobRecord need to be unique by programName + reference + inputSize + memory
                     # If the first 5 jobs have same unique value, there is only one record in jobRecords.txt
-                    elif [[ "$succ" -gt 2 ]]; then 
+                    elif [ "$succ" -gt 2 ]; then 
                         unholdCounter=0; 
                         echo Fail to estimate new resource. But alreay have 3 success jobs, directly release one job anyway. 
                         scontrol release $id 
-                        continue
                     fi 
                 fi
             fi            
