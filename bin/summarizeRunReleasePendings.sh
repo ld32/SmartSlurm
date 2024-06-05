@@ -265,7 +265,7 @@ for line in $lines; do
                         echo -e "$resAjust\n" >> $smartSlurmLogDir/$name.out
 
                         
-                        [ -z "$mem" ] && echo Fail to estimate new resource. Directly release job. && scontrol release $id && continue
+                        
 
                         #[ "$mem" -lt 20 ] && mem=20 # at least 20M
 
@@ -294,7 +294,15 @@ for line in $lines; do
                         #scontrol show job $id
 
                         scontrol release $id
-
+                    
+                    # didn't get estimate, but already have 3 successful jobs, release one job anyway
+                    # because jobRecord need to be unique by programName + reference + inputSize + memory
+                    # If the first 5 jobs have same unique value, there is only one record in jobRecords.txt
+                    elif [[ "$succ" -gt 2 ]]; then 
+                        unholdCounter=0; 
+                        echo Fail to estimate new resource. But alreay have 3 success jobs, directly release one job anyway. 
+                        scontrol release $id 
+                        continue
                     fi 
                 fi
             fi            
