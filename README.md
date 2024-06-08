@@ -85,29 +85,29 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers3.txt -F find3 \
+ssbatch -P findNumber -I numbers3.txt -F find3 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers3.txt"
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers4.txt -F find4 \
+ssbatch -P findNumber -I numbers4.txt -F find4 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers4.txt"
 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers5.txt -F find5 \
+ssbatch -P findNumber -I numbers5.txt -F find5 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers5.txt"
 
 # After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F find1 \
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I "numbers1.txt numbers2.txt" -F find12 
+ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 2G -t 2:0:0 \ 
     --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
 
-# If input file is not given for option -I. ssbatch will choose the memory 
+# If input file is not given using option -I. ssbatch will choose the memory 
 # and run-time threshold so that 90% jobs can finish successfully
-ssbatch --mem 2G -t 2:0:0 -P findNumber -F find21 \
+ssbatch -P findNumber -F find21 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers2.txt"
 
 # check job status: 
@@ -119,7 +119,7 @@ cancelAllJobs
 # rerun jobs: 
 # when re-run a job with the same program and same input(s), if the previous run was successful, 
 # ssbatch will ask to confirm you do want to re-run
-ssbatch --mem 2G -t 2:0:0 -P findNumber -I numbers1.txt -F find11 \
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # To remove ssbatch from PATH: 
