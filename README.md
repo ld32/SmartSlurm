@@ -21,6 +21,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Can I have -c or other sbatch options?](#can-i-have--c-or-other-sbatch-options)
         - [How about multiple inputs?](#how-about-multiple-inputs)
         - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
+        - [How does the memory and time formulas are calculated?](#how-does-the-memory-and-time-formulas-are-calculated)
         - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
@@ -244,10 +245,6 @@ adjustPartition() {
           Otherwise, create a unique job flag, such as program+randomSring.
 
 ### How does the memory and time formulas are calculated? 
-
-    Inside job at the end run summarizeJob and release jobs:  
-        If there is no formula, or formula is older than 20 minites and there are less than 200 records
-            Make new formula.  # some limitation, current job is not counted in the formula.
 
     If job successfully finished: 
 
