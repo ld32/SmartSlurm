@@ -18,7 +18,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Is -P optional?](#is--p-optional) 
         - [Is -I optional?](#is--i-optional)
         - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
-        - [Can I have -c x?](#can-i-have--c-x)
+        - [Can I have -c or other sbatch options?](#can-i-have--c-or-other-sbatch-options)
         - [How about multiple inputs?](#how-about-multiple-inputs)
         - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
         - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
@@ -74,10 +74,10 @@ Figure 3 - ssbatch runs the first five jobs using the default **time**. Subseque
 ``` bash
 # Download 
 cd $HOME
-git clone https://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git  
 
 # Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
+export PATH=$HOME/SmartSlurm/bin:$PATH  
 
 # Create 5 files with numbers for testing
 createNumberFiles.sh
@@ -123,7 +123,7 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # To remove ssbatch from PATH: 
-source `which unExportPath`; unExportPath $HOME/smartSlurm/bin
+source `which unExportPath`; unExportPath $HOME/SmartSlurm/bin
 
 ```
 
@@ -218,7 +218,7 @@ adjustPartition() {
 ### Can -I directly take file size or job size? 
     Not right now. I think it is good suggetion. We can add the function to next release.    
 
-### Can I have -c x? 
+### Can I have -c or other sbatch options? 
 
     Yes. All regular sbatch options are OK to have.
 
