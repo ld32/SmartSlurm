@@ -242,30 +242,44 @@ adjustPartition() {
           If yes, use program+inputFile as job unique flag.
           
           Otherwise, create a unique job flag, such as program+randomSring.
+
+### How does the memory and time formulas are calculated? 
+
+    Inside job at the end run summarizeJob and release jobs:  
+        If there is no formula, or formula is older than 20 minites and there are less than 200 records
+            Make new formula.  # some limitation, current job is not counted in the formula.
+
+    If job successfully finished: 
+
+        If there are less than 200 job records for this software and reference or current job input
+            is larger than max input size for all earlier jobs?  
+            
+            If yes, and job record is unique, put the current job record in jobRecord.txt 
+
          
+    
+    else if OOM or OOT:
+    
+        calcualte extraMem for future job estimations
+    
+        remove formula for this software and referencce 
+
 ### What is the logic to estimate memory and time?
 
     Check if there is input for this job? 
 
-      If yes: check if there are formulas to estimate memory/time..
+        If yes: check if there are formulas to estimate memory/time..
 
-        If yes: check if the input size is larger than all previous jobs and 
-          formular is older than 20 minutes.
+            If yes: check if the input size is smaller than max of previous jobs? Or input size
+                is less than the max, but there are at last 10 job records
             
-          If yes: re-calculate formula. 
+                If successful, estimate memory/time and submit job.
                 
-            If successful, estimate memory/time and submit job.
-                
-              Otherwise, use default memory/time and submit job.
+                Otherwise, use default memory/time and submit job.
 
-            Otherwise: estimate memory/time and submit job.
+            Otherwise, use default memory/time and submit job.
 
-          Otherwise: stimate memory/time and submit job.
-
-        Otherwise: order previous jobs according memory/time, use top 10 value 
-         new job's memory/time.
-    
-      Otherwise:  calculate formula, estimate memory/time and submit job.
+        Otherwise: use 90th percentile as estimated value and submit job
 
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
