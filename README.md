@@ -193,7 +193,7 @@ adjustPartition() {
 
     $smartSlurmJobRecordDir/bin/cleanUp.sh also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
 
-## ssbatch FAQ
+## Smart Sbatch FAQ
 [Back to top](#SmartSlurm)
 
 ### Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource? 
