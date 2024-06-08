@@ -256,8 +256,6 @@ adjustPartition() {
             
             If yes, and job record is unique, put the current job record in jobRecord.txt 
 
-         
-    
     else if OOM or OOT:
     
         calcualte extraMem for future job estimations
@@ -273,9 +271,13 @@ adjustPartition() {
             If yes: check if the input size is smaller than max of previous jobs? Or input size
                 is less than the max, but there are at last 10 job records
             
-                If successful, estimate memory/time and submit job.
+                Yes, estimate memory/time and submit job.
+
+                Otherwise, Make new formula.
                 
-                Otherwise, use default memory/time and submit job.
+                   If successful, estimate memory/time and submit job.
+                
+                   Otherwise, use default memory/time and submit job.
 
             Otherwise, use default memory/time and submit job.
 
