@@ -5,12 +5,12 @@ Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go th
 
 echo Running: $0 $@
 
-cd $1 #logDir
+cd $smartSlurmLogDir
 
 if [ -f allJobs.txt ]; then 
     lines=`tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 else 
-    lines="$SLURMJOB_ID $2" # tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+    lines="$SLURMJOB_ID $1" # tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 fi 
  
 
@@ -27,7 +27,6 @@ toSend="Summery for jobs in allJobs.txt:"
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *}; name=${line##* }
-
 
         if [ -f $name.success ]; then
             toSend="$toSend\n${line:0:40} Done"
@@ -56,7 +55,6 @@ current=$((succ + fail + requeue))
 
 total=$((succ + fail + running + pending + +requeue + unknown))
 s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
-
 
 
 [ -f allJobs.txt ] && echo -e "$s\n$toSend" > summary.$SLURMJOB_ID

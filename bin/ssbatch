@@ -863,7 +863,7 @@ else
             
             if [ ! -z "$runningSingleJob" ]; then
 
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && summarizeRun.sh $flag && touch $succFlag " >> $job
             else 
 
                 # !!! runAsPipeline jobs will land here !!!
