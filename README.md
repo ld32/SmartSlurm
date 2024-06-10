@@ -95,7 +95,7 @@ ssbatch -P findNumber -I numbers4.txt -F find4 --mem 2G -t 2:0:0 \
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers5.txt"
 
-# After the 5 jobs finish, when submitting more jobs, ssbatch auto adjusts 
+# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
