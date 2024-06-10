@@ -20,7 +20,7 @@ for input in "$2 $3 $4"; do
     sleep 10
 done          
 
-grep $1 university1.txt
+#grep $1 university1.txt
 
 delay=$((totalSize * 3 / 100))  
 
