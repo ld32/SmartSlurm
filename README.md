@@ -103,7 +103,7 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 2G -t 2:0:0 \ 
+ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 2G -t 2:0:0 \
     --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
 
 # If input file is not given using option -I. ssbatch will choose the memory 
