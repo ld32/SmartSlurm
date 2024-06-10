@@ -17,6 +17,8 @@ for input in "$2 $3 $4"; do
     
     totalSize=$(( fileSize + totalSize ))
 
+    grep $1 $input 
+
     sleep 10
 done          
 
