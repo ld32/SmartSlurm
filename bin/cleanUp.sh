@@ -44,33 +44,9 @@ echo Running $0 $@
 #ls -l execution
 [ -f $smartSlurmLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
 
-#cd ${1%log}
-
-# if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
-#     if [ -f ~/.smartSlurm/config/config.txt ]; then
-#         source ~/.smartSlurm/config/config.txt
-#     else
-#         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
-#     fi
-# fi
-
-#touch /tmp/job_$SLURM_JOB_ID.done
-#if [[ -z "$1" ]]; then
-
-   #out=$flag.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed;
-#    out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$flag.sh; succFile=$flag.success; failFile=$flag.failed;
-#else
-    out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
-#fi
+out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 
 [ -f .exitcode ] && touch $succFile
-
-# if [ -f $succFile ]; then
-
-#     adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
-#     #rm $failFile 2>/dev/null
-# fi 
-
 
 # wait for slurm database update
 sleep 5
@@ -100,7 +76,6 @@ START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt | cut -d' ' -f6`
 
 #FINISH=`date -d "$FINISH" +%s`
 
-#[ -z "$FINISH" ] &&
 FINISH=`date +%s`
 
 echo  start: $START fisnish: $FINISH
@@ -122,7 +97,6 @@ memSacct=`echo $jobStat | cut -d" " -f5`
 
 # node
 node=`echo $jobStat | cut -d" " -f7`
-
 
 # todo: might directly delete this part
 #case "$jobStat" in
@@ -325,15 +299,12 @@ if [ ! -f $succFile ]; then
             echo old extraMem:
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
-            #extraMemN=$(( ( totalM - srunM ) *2 ))
             extraMemN=$(( totalM - srunM + 1 ))
-            #[[ "$extraMemN" == 0 ]] && extraMemN=1
-            #[ ! -f "${out%.out}.likelyCheckpointOOM" ] &&
-            [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
-            #oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1`
             maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
             [ -z "$maxExtra" ] && maxExtra=5
+            [ $extraMemN -gt $maxExtra ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref && maxExtra=$extraMemN
+
             echo new extraMem:
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
         #else
@@ -360,7 +331,6 @@ if [ ! -f $succFile ]; then
             newFactor=1.2
         fi
 
-        #newFactor=2
         mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
         echo trying to requeue $try with $mem M
         echo $mem $totalT $maxExtra > ${out%.out}.adjust
@@ -373,7 +343,7 @@ if [ ! -f $succFile ]; then
         hours=$((($totalT + 59) / 60))
         adjustPartition $hours $partition
 
-        export  myPartition=$partition
+        export myPartition=$partition
         export myTime=$totalT
         export myMem=${mem}M
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
@@ -642,11 +612,7 @@ if [ ! -f $succFile ]; then
 
 fi
 
-
-
-
 # all job plots
-
 rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
 echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/dataMem.csv
 
@@ -675,6 +641,49 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 
 echo To see the plot:
 echo display $smartSlurmLogDir/barchartTime.png
+
+
+
+
+#[ ! -f $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt ] && echo Not found $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt && exit 
+
+
+# todo: should make the plot wider instead of shink it: 
+# https://stackoverflow.com/questions/13869439/gnuplot-how-to-increase-the-width-of-my-graph
+
+rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
+if [ "$rowTotal" -gt 50 ]; then 
+    maxMem=0; maxCpu=0; 
+    rate=`echo "scale=2;$rowTotal/50"|bc`
+    IFS=$'\n'; rowCount1=0; rowCount2=0
+    echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+    for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
+        mem=`echo $t | cut -d' ' -f2`
+        cpu=`echo $t | cut -d' ' -f5`
+        [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
+        [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
+        rowCount1=$((rowCount1 + 1))
+        rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
+        rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
+        if [ "$rowMax" -le "$rowCount1" ]; then 
+            rowCount2=$((rowCount2 + 1))
+            echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+            maxMem=0; maxCpu=0;
+        fi 
+    done
+else 
+    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+fi 
+
+
+# time vs. memory for current job
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
+
+# time vs. CPU usage for current job
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
+
+
+
 
 
 

@@ -5,8 +5,6 @@ Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go th
 
 echo Running: $0 $@
 
-#cd $1 #logDir
-
 if [ -f $smartSlurmLogDir/allJobs.txt ]; then 
     lines=`tail -n +2 $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
 else 
@@ -14,7 +12,6 @@ else
     #lines="$SLURMJOB_ID $2" # tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 fi 
  
-
 echo pwd: `pwd`
 
 IFS=$'\n'
@@ -36,16 +33,16 @@ for line in $lines; do
         inputs="${arrIN[5]}"
 
         if [ -f $smartSlurmLogDir/$name.success ]; then
-            toSend="$toSend\n${line:0:40} Done"
+            toSend="$toSend\n${line:0:60} Done"
             succ=$((succ + 1))
         elif [ -f $smartSlurmLogDir/$name.failed ]; then
-            toSend="$toSend\n${line:0:40} Failed"
+            toSend="$toSend\n${line:0:60} Failed"
             fail=$((fail + 1))
         elif [[ "$out" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-            toSend="$toSend\n${line:0:40} Running"
+            toSend="$toSend\n${line:0:60} Running"
             running=$((running + 1))
         elif [[ "$out" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-            toSend="$toSend\n${line:0:40} Pending"
+            toSend="$toSend\n${line:0:60} Pending"
             pending=$((pending + 1))
             if [ $unholdCounter -gt 0 ]; then 
                 if [[ "$deps" == null ]]; then 
@@ -255,17 +252,10 @@ for line in $lines; do
 
                     # wait for until get estimation
                     if [ ! -z "$min" ] && [ ! -z "$mem" ]; then
-                    #    echo did not get new min and mem. directly release job. 
-                    #    scontrol release $id 
-                    #else 
-
                         # this part was from adjust downsteamjobs
                         echo -e "$resAjust"
 
                         echo -e "$resAjust\n" >> $smartSlurmLogDir/$name.out
-
-                        
-                        
 
                         #[ "$mem" -lt 20 ] && mem=20 # at least 20M
 
@@ -305,8 +295,6 @@ for line in $lines; do
                     fi 
                 fi
             fi            
-            
-
         elif [ -f $smartSlurmLogDir/$name.failed.requeued.1.time ]; then 
             toSend="$toSend\n${line:0:40} Requeued"
             requeue=$((requeue + 1))    
@@ -327,47 +315,9 @@ s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$t
 
 [ -f $smartSlurmLogDir/allJobs.txt ] && echo -e "$s\n$toSend" > $smartSlurmLogDir/summary.$SLURMJOB_ID
 
-
 # if [ $((running + pending)) -le 5 ]; then
 #     echo -e "$toSend" | mail -s $s $USER
 #     [ "$USER" != ld32 ] && echo -e "$toSend" | mail -s $s ld32
 # fi
-
-[ ! -f $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt ] && echo Not found $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt && exit 
-
-
-# todo: should make the plot wider instead of shink it: 
-# https://stackoverflow.com/questions/13869439/gnuplot-how-to-increase-the-width-of-my-graph
-
-rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
-if [ "$rowTotal" -gt 50 ]; then 
-    maxMem=0; maxCpu=0; 
-    rate=`echo "scale=2;$rowTotal/50"|bc`
-    IFS=$'\n'; rowCount1=0; rowCount2=0
-    echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-    for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
-        mem=`echo $t | cut -d' ' -f2`
-        cpu=`echo $t | cut -d' ' -f5`
-        [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
-        [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
-        rowCount1=$((rowCount1 + 1))
-        rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
-        rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
-        if [ "$rowMax" -le "$rowCount1" ]; then 
-            rowCount2=$((rowCount2 + 1))
-            echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-            maxMem=0; maxCpu=0;
-        fi 
-    done
-else 
-    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-fi 
-
-# time vs. memory for current job
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
-
-# time vs. CPU usage for current job
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
-
 
 
