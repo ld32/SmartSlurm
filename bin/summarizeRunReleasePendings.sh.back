@@ -47,8 +47,10 @@ for line in $lines; do
             if [ $unholdCounter -gt 0 ]; then 
                 if [[ "$deps" == null ]]; then 
                     unholdCounter=$((unholdCounter - 1))
-
+                    set -x
                     echo Trying to release: $line 
+
+
 
                     # this copied from ssbatch
                     if [[ "$inputs" == "none" ]]; then
@@ -58,8 +60,8 @@ for line in $lines; do
 
                         rows=`( wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
                         #echo rows  $rows
-                        # empty or more than 60 minutes but less than 4 records
-                        if test `find $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput -mmin +20 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
+                        # empty or more than 5 minutes but less than 200 records
+                        if test `find $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
                             mkdir -p $smartSlurmJobRecordDir/stats/
                             #cat /home/*/smartSlurm/stats/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
                             #test `find $smartSlurmJobRecordDir/jobRecord.txt -mmin +20` && echo jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
@@ -78,10 +80,6 @@ for line in $lines; do
                                 # make plot and calculate statistics
                                 gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.stat.noInput
 
-                                # cd -
-                                # convert $OUT/timeMem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.pdf 2>/dev/null
-                                # pdftoppm $smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.pdf  -png > $smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png 2>/dev/null
-
                                 rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
 
                                 #rm -r $OUT 2>/dev/null
@@ -99,18 +97,17 @@ for line in $lines; do
                             min=`cat $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
                             min=$((${min/\.*/} + defaultExtraTime))
 
+
+
                             resAjust="$resAjust#Got estimation based on program.reference: $program.$ref.\n"
                             resAjust="$resAjust#Give ${extraMem} M extra memory and $defaultExtraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
 
+                            
+                           
                         else
                             resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
                         fi
                     else 
-
-                    #inputs1=(numbers3.txt numbers1.txt)
-
-# Store the output of the command in a variable
-#output=$(du --apparent-size -c -L "${inputs1[@]}")
                         IFS=','
                         read -ra input_array <<< "${inputs#,}"
                         inputSize=`{ du --apparent-size -c -L ${input_array[@]} 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
@@ -149,12 +146,8 @@ for line in $lines; do
 
                             fi
 
-                            if [[ "$output" == "outOfRange" ]] && test `find $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat -mmin +20` || [ ! -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+                            if [[ "$output" == "outOfRange" ]] && test `find $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat -mmin +2` || [ ! -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
                                 resAjust="$resAjust#Do not have a formula, or it is old and out of range. Let us build one...\n"
-
-                                #[ test `find $smartSlurmJobRecordDir/jobRecord.txt -mmin -20` ] && echo jobRecord.txt synced within 20 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
-
-                                #jobStatistics.sh $program ${ref//\//-} 4 1>&2
 
                                 #filter by program and reference
                                 # todo: maybe able to replace / in ref at begaining of the script?
@@ -174,11 +167,6 @@ for line in $lines; do
                                     resAjust="$resAjust#There are less than 3 records. No way to fit a curve.\n"
 
                                 else
-
-
-
-                           
-
                                     gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
 
                                     echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
@@ -194,30 +182,11 @@ for line in $lines; do
                                     sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
                                    
                                     echo There are more than 3 $program $ref jobs already run for this program, statics is ready for current job:
-                                    # echo Memeory statisics:
-                                    # echo "inputsize mem(M)"
-                                    # cat $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
-                                    # echo
-                                    # echo Time statistics:
-                                    # echo "inputsize time(minute)"
-                                    # cat $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
-
-                                    # mv $OUT/mem.txt $smartSlurmJobRecordDir/stats/$program.$ref.mem
-                                    # mv $OUT/time.txt $smartSlurmJobRecordDir/stats/$program.$ref.time
-
-                                    # convert $OUT/mem.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$program.$ref.mem.pdf
-                                    # convert $OUT/time.pdf -background White -flatten $smartSlurmJobRecordDir/stats/$program.$ref.time.pdf
-                                    # pdftoppm $smartSlurmJobRecordDir/stats/$program.$ref.mem.pdf  -png > $smartSlurmJobRecordDir/stats/$program.$ref.mem.png
-                                    # pdftoppm $smartSlurmJobRecordDir/stats/$program.$ref.time.pdf  -png > $smartSlurmJobRecordDir/stats/$program.$ref.time.png
 
                                     echo
                                     echo You can see the plot using commands:
                                     echo display $smartSlurmJobRecordDir/stats/$program.$ref.mem.png
                                     echo display $smartSlurmJobRecordDir/stats/$program.$ref.time.png
-
-                                    # cd -
-
-
 
                                     #echo got files in $smartSlurmJobRecordDir/stats:
                                     #ls -lrt $smartSlurmJobRecordDir/stats
@@ -252,8 +221,13 @@ for line in $lines; do
 
                     # wait for until get estimation
                     if [ ! -z "$min" ] && [ ! -z "$mem" ]; then
+                        
+                        echo $mem $min $extraMem >> $smartSlurmLogDir/$name.adjust
+
                         # this part was from adjust downsteamjobs
+                        
                         echo -e "$resAjust"
+                    
 
                         echo -e "$resAjust\n" >> $smartSlurmLogDir/$name.out
 
@@ -290,9 +264,10 @@ for line in $lines; do
                     # If the first 5 jobs have same unique value, there is only one record in jobRecords.txt
                     else
                         unholdCounter=0; 
-                        echo Fail to estimate new resource. But alreay have 3 success jobs, directly release one job anyway. 
+                        echo Fail to estimate new resource. Directly release one job anyway. 
                         scontrol release $id 
                     fi 
+                    set +x
                 fi
             fi            
         elif [ -f $smartSlurmLogDir/$name.failed.requeued.1.time ]; then 

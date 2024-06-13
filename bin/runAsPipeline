@@ -312,12 +312,9 @@ for t in `cat ${1%% *}`; do
         ### # echo "${space}[ -z \"\$deps\" ] && [[ \$(echo \"\$deps\" | tr -cd ':' | wc -c) -gt 10 ]] && deps=\"-H -d afterok\$deps\"" >> $run
 
         echo "${space}        nJobsInSameStep=\$(echo \"\${jobIDs[$step]}\" | tr -cd ':' | wc -c)" >> $run
-        echo "${space}        if [[ \"\$nJobsInSameStep\" -ge 4 ]]; then" >> $run 
+        echo "${space}        if [[ \"\$nJobsInSameStep\" -ge 0 ]]; then" >> $run # onholdLimit 
         echo "${space}            deps=\"-H\"" >> $run
-        #echo "${space}            comment=\"--comment=needUnHoldByOtherJobs\"" >> $run            
-        #echo "${space}        elif [[ \$nJobsInSameStep -ge 4 ]]; then" >> $run
-        #echo "${space}            comment=\"--comment=needUnHoldOtherJobs\"" >> $run
-         echo "${space}        fi" >> $run
+        echo "${space}        fi" >> $run
         echo "${space}    fi" >> $run  
         echo "${space}else" >> $run
         echo "${space}    deps=\"-H -d afterok\$deps\"" >> $run

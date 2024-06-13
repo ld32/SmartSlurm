@@ -87,29 +87,29 @@ createNumberFiles.sh
 # findNumber is just a random name. You can use anything you like.
 
 ssbatch -P findNumber -I numbers3.txt -F find3 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers3.txt"
+    --wrap="findNumber.sh 12345 numbers3.txt"
 
 ssbatch -P findNumber -I numbers4.txt -F find4 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers4.txt"
+    --wrap="findNumber.sh 12345 numbers4.txt"
 
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers5.txt"
+    --wrap="findNumber.sh 12345 numbers5.txt"
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
 ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers1.txt"
+    --wrap="findNumber.sh 12345 numbers1.txt"
 
 # You can have multiple inputs: 
 ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers1.txt numbers2.txt"
+    --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt"
 
 # If input file is not given using option -I. ssbatch will choose the memory 
 # and run-time threshold so that 90% jobs can finish successfully
 ssbatch -P findNumber -F find21 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers2.txt"
+    --wrap="findNumber.sh 12345 numbers2.txt"
 
 # check job status: 
 checkRun
@@ -121,7 +121,7 @@ cancelAllJobs
 # when re-run a job with the same program and same input(s), if the previous run was successful, 
 # ssbatch will ask to confirm you do want to re-run
 ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
-    --wrap="findNumber.sh 1234 numbers1.txt"
+    --wrap="findNumber.sh 12345 numbers1.txt"
 
 # To remove ssbatch from PATH: 
 source `which unExport`; unExport ssbatch
