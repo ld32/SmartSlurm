@@ -11,7 +11,7 @@ for i in {1..10}; do
     input=numbers$i.txt
     
     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0 
-    findNumber.sh $number $input > $number.$i.txt
+    findNumber.sh $number $input > $number.$i.txt; sleep 200;
 
     #@2,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0 
     findNumber.sh $number $input > $number.$i.txt
