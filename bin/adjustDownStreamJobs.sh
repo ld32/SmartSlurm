@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #set -x
 
@@ -57,14 +57,11 @@ for i in $output; do
             continue
         fi
 
+        IFS=' ' read -r inputSize mem min extraMem <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag 0 0 adjust`
 
-        output=`estimateResource.sh $program ${ref//\//-} $inputSize $flag 0 0 adjust
+        #inputSize=${output%% *}; mem=${output% *}; mem=${mem#* }; min=${output##* }
 
-        mem=${output% *}
-        
-        min=${output#* }
-
-        [ -z "$mem" ] && echo Fail to estimate new resource. Directly release job. && scontrol release $id && continue
+        [[ "$mem" == 0 ]] && echo Fail to estimate new resource. Directly release job. && scontrol release $id && continue
 
         #[ "$mem" -lt 20 ] && mem=20 # at least 20M
 
@@ -95,14 +92,6 @@ for i in $output; do
         scontrol release $id
 
         #scontrol show job $id
-
-        echo $mem $min $extraMem > $smartSlurmLogDir/$name.adjust
-
-        #echo -e "Adjusted mem: $mem time: $min (including exralMem: $extraMem)\n" >> $smartSlurmLogDir/$name.out
-
-        #echo $mem $min> $smartSlurmLogDir/$name.adjust
-        #touch $smartSlurmLogDir/$name.adjusted
-        #echo "scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}" >> $smartSlurmLogDir/$name.sh
 
         #set +x 
     else

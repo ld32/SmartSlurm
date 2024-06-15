@@ -24,7 +24,7 @@ done
 
 #grep $1 university1.txt
 
-delay=$((totalSize * 3 / 50))  
+delay=$((totalSize * 3 / 100))  # 100
 
 echo "...end allocating memory. Begin sleeping for $delay seconds..." >&2
 

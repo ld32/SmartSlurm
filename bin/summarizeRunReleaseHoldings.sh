@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/bin/bash
+
 Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go through job name list in allJobs.txt to see if the jobs finish successfully or not."
 
 #set -x
@@ -18,6 +19,8 @@ IFS=$'\n'
 
 out=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 
+#echo squeue out: $out
+
 current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0; unholdCounter=0; 
 toSend="Summery for jobs in allJobs.txt:"
 for line in $lines; do
@@ -25,7 +28,9 @@ for line in $lines; do
         #id=${line%% *}; name=${line##* }
         IFS=' ' read -a arrIN <<< "$line"
 
-        id=${arrIN[0]}
+        id=${arrIN[0]}; 
+        [[ $id == $SLURM_JOBID ]] && currentName=${arrIN[2]} && currentStep=$(echo "$currentName" | cut -d '.' -f 1-2)
+
         deps=${arrIN[1]}
         name=${arrIN[2]}
         program=${arrIN[3]}
@@ -41,29 +46,30 @@ for line in $lines; do
         elif [[ "$out" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
             toSend="$toSend\n${line:0:60} Running"
             running=$((running + 1))
-        elif [[ "$out" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
+        elif [[ "$out" == *$id-P* ]]; then 
             toSend="$toSend\n${line:0:60} Pending"
             pending=$((pending + 1))
             if [ $unholdCounter -gt 0 ]; then 
-                if [[ "$deps" == null ]]; then 
+                thisStep=$(echo "$name" | cut -d '.' -f 1-2)
+                if [[ $thisStep == $currentStep ]] && [[ "$deps" == null ]] && grep " \-H " $smartSlurmLogDir/$name.sh && [ ! -f $smartSlurmLogDir/$name.adjust ]; then 
                     unholdCounter=$((unholdCounter - 1))
-                    set -x
-                    echo Trying to release: $line 
-                   
-                    output=`estimateResource.sh $program ${ref//\//-} $inputSize $flag 0 0 adjust
+                    
+                    echo Trying to release: $name 
 
-                    mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
-                    min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime mins more time."
+                    echo Job is beging released by $SLURM_JOBID $currentName >> $smartSlurmLogDir/$name.out
 
-                    if [ "$min" -ne 0 ] && [ "$mem" -ne 0 ]; then
-                        
-                        hours=$((($min + 59) / 60))
+                    IFS=' ' read -r inputSize mem min extraMem <<< $(estimateResource.sh $program ${ref//\//-} $inputs $name 0 0 adjust)
+                    
+                    if [[ $mem != 0 ]] && [[ $min != 0 ]]; then
+                        #set -x
+
+                        hours=$((( min + 59 ) / 60 ))
 
                         echo looking partition for hour: $hours
 
                         adjustPartition $hours partition
 
-                        seconds=$(($min * 60))
+                        seconds=$(( min * 60 ))
 
                         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
@@ -79,16 +85,18 @@ for line in $lines; do
                         #scontrol show job $id
 
                         scontrol release $id
-                    
+                        echo -e "Job is beging released by $SLURM_JOBID $currentName with new mem and time\n" >> $smartSlurmLogDir/$name.out
+                        set +x
                     # didn't get estimate, but already have 3 successful jobs, release one job anyway
                     # because jobRecord need to be unique by programName + reference + inputSize + memory
                     # If the first 5 jobs have same unique value, there is only one record in jobRecords.txt
                     else
                         unholdCounter=0; 
                         echo Fail to estimate new resource. Directly release one job anyway. 
+                        echo -e "Job is beging direcly released by $SLURM_JOBID $currentName\n" >> $smartSlurmLogDir/$name.out
                         scontrol release $id 
                     fi 
-                    set +x
+                    
                 fi
             fi            
         elif [ -f $smartSlurmLogDir/$name.failed.requeued.1.time ]; then 

@@ -4,7 +4,7 @@ echoerr() { echo "$@" 1>&2; }
 
 usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
-set -x  
+#set -x  
 
 echoerr Running: $0 $@
 
@@ -21,45 +21,37 @@ mem=""; min=""
 
 [ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$(( $defaultExtraMem * 2 ))
 
-resAjust="#Original mem $defaultMem M, Original time: $defaultMin mins\n"
+[ -z "$adjust" ] && resAjust="#Original mem $defaultMem M, Original time: $defaultMin mins\n"
 
 if [ $inputs == none ]; then 
+    inputSize=0
     resAjust="$resAjust#This job does not have input.\n"
 
-    rows=`( wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
+    rows=`( wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
     #echoerr rows  $rows
     # empty or more than 60 minutes but less than 4 records
-    if test `find $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
+    if test `find $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSlurmJobRecordDir/stats/
 
-        # todo: could use single file here
-        grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput
+        grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7, $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput
 
-        grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput
+        # make plot and calculate statistics
+        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.stat.noInput
 
-        if [ -s $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput ] && [ -s $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput ]; then
-            paste $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput | column -s $'\t' -t | sed '$ d' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput
-
-            # make plot and calculate statistics
-            gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.stat.noInput
-
-            rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
-
-        fi
+        rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
     fi
 
     # at least 3 records
     if [ $rows -ge 3 ]; then
 
-        
+        cutoffRow=$(( ($row - 1)  / 10  + 1)) # 90th percentile
 
-        cutoffRow=$(( ($row - 1)  / 10  + 1)) # top 10
+        mem=`cut -d' ' -f1 $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
 
-        mem=`cat $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
         mem=$((${mem/\.*/} + extraMem))
-        # mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + extraMem))M
 
-        min=`cat $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+        min=`cut -d' ' -f2 $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+
         min=$((${min/\.*/} + defaultExtraTime))
 
         resAjust="$resAjust#Got estimation based on program.reference: $program.$ref.\n"
@@ -74,6 +66,7 @@ else
     inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
  
     if [[ "$inputSize" == "notExist" ]]; then
+        inputSize=missingInputFile
         resAjust="$resAjust#Some or all input files not exist: $inputs\n"
         echoerr Error! missingInputFile: ${inputs//,/ }
     else
@@ -154,7 +147,7 @@ else
                         output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
                     fi 
 
-                    resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
+                    #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
                     resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
                     if [[ "$output" == "outOfRange" ]]; then
                         resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
@@ -173,19 +166,19 @@ else
     fi
 fi 
 
-echoerr Got $mem $min
-
 if [ -z $mem ] || [ -z $min ]; then 
     mem=$defaultMem    
     min=$defaultMin
 else 
-    resAjust="$resAjust\n#Give ${extraMem} M extra memory. " 
-    resAjust="$resAjust\n#Give $defaultExtraTime mins more time."
-    if [ $adjust == "adjust" ]; then 
-        echo $mem $min $extraMem >> $smartSlurmLogDir/$name.adjust
+    
+    #[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+    #[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+
+    if [[ $adjust == "adjust" ]]; then 
+        echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
     fi  
 fi
 echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
-echo $mem $min
+echo $inputSize $mem $min $extraMem
 
-echoerr Got $mem $min
+echoerr Got $inputSize $mem $min $extraMem

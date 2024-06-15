@@ -2,31 +2,30 @@
 
 #set -x
 
-#for i in {1..200}; do sleep 1; echo cleanup $i; done & 
+for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
-# to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
-#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
+# to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13     14
+#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
 
-#Running /home/ld32/smartSlurm/bin/cleanUp.sh 16.15.cliper.sample1.treatment cliper none 0 12 10240 15 10240 15 short rccg none 5 5
+echo Running: $0 "$@"
 
-#smartSlurmLogDir=`dirname $1`
-flag=$1 #`basename $1`
+flag=$1 
 software=$2
 ref=$3
 inputSize=$4 # input might not exist when job was submitted.
 core=$5
-memO=$6
-timeO=$7
-#totalM=$8
+memDef=$6
+minDef=$7
+totalM=$8
 
-# if jobs has --mem
-totalM=$SLURM_MEM_PER_NODE
+# # if jobs has --mem
+# totalM=$SLURM_MEM_PER_NODE
 
-# if job has --mem-per-cpu and -c
-[ -z "$totalM" ] && totalM=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
+# # if job has --mem-per-cpu and -c
+# [ -z "$totalM" ] && totalM=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
 
-# if job has --mem-per-cpu and -n
-[ -z "$totalM" ] &&  totalM=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
+# # if job has --mem-per-cpu and -n
+# [ -z "$totalM" ] &&  totalM=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
 totalT=${9}
 partition=${10}
@@ -37,9 +36,6 @@ extraTime=${14}
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
 
-echo Running $0 $@
-#echo pwd: `pwd`
-
 # if not successful, delete cromwell error file, so that the job not labeled fail
 #ls -l execution
 [ -f $smartSlurmLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
@@ -49,7 +45,7 @@ out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smar
 [ -f .exitcode ] && touch $succFile
 
 # wait for slurm database update
-sleep 5
+sleep 1
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
@@ -140,18 +136,19 @@ fi
 # 3 job resournce was adjusted by upsteam jobs
 # 4 job checkpointed but OOT or OOM # this is special, because need to survive re-run from ssbatch
 if [ -f ${out%.out}.adjust ]; then
-   tText=`cat ${out%.out}.adjust`
+   #tText=`cat ${out%.out}.adjust`
    #totalM=`echo $tText | cut -d' ' -f1`
-   totalT=`echo $tText | cut -d' ' -f2`
-   extraMC=`echo $tText | cut -d' ' -f3`
-fi
+   #totalT=`echo $tText | cut -d' ' -f2`
+   #extraMC=`echo $tText | cut -d' ' -f3`
+   IFS=' ' read -r inputSize totalM totalT extraMemC  <<< `cat $smartSlurmLogDir/$flag.adjust`
+fi 
 
-[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
+#[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
 
 #set -x
 # totalM=200; totalT=200; srunM=1000; min=200;
 overReserved=""; overText=""; ratioM=""; ratioT=""
-if [ "$memO" -ne "$totalM" ] && [ "$totalT" -ne "$totalT" ]; then
+if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
   if [[ "$jobStatus" == COMPLETED ]]; then
     if [ "$totalM" -gt $((srunM * 2)) ] && [ $srunM -ge 1024 ]; then
         overReserved="O:"
@@ -160,13 +157,12 @@ if [ "$memO" -ne "$totalM" ] && [ "$totalT" -ne "$totalT" ]; then
         echo $overText
     fi
   fi
-  ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
-
 fi
+ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
 
 # todo: move this part to main job, so that when release job, this job record can be used for the statics 
                                 #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOB_ID,$inputSize,$memO,$totalT,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,$ratioM,$ratioT,`date`"  # 16 extraM
+record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`" 
 echo dataToPlot,$record
 
 if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
@@ -191,7 +187,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
         else
             echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
         fi
-        cat $smartSlurmJobRecordDir/jobRecord.txt
+        #cat $smartSlurmJobRecordDir/jobRecord.txt
 fi
 echo Final mem: $srunM M, time: $min mins
 
@@ -203,6 +199,7 @@ cat .command.log >> $out 2>/dev/null
 #rm $succFile
 #jobStatus=OOM
 if [ ! -f $succFile ]; then
+
     if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
         echo -e "This step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$flag" | mail -s "!!!!$SLURM_JOBID:$flag" $USER
     fi
@@ -234,7 +231,10 @@ if [ ! -f $succFile ]; then
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
         (
         #set -x;
-        if [ $totalM -lt 200 ]; then
+        if [ $totalM -lt 100 ]; then
+            totalM=100
+            newFactor=8
+        elif [ $totalM -lt 200 ]; then
             totalM=200
             newFactor=5
         elif [ $totalM -lt 512 ]; then
@@ -252,8 +252,12 @@ if [ ! -f $succFile ]; then
         fi
 
         mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
-        echo trying to requeue $try with $mem M
-        echo $mem $totalT $maxExtra > ${out%.out}.adjust
+        
+        # testing here
+        #mem=1000
+
+        echo Trying to requeue with $mem M
+        echo $inputSize $mem $totalT $maxExtra > ${out%.out}.adjust
 
         #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
         #set -x
@@ -268,17 +272,18 @@ if [ ! -f $succFile ]; then
         export myMem=${mem}M
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
         requeueCmd=${requeueCmd#*submit the job: }
+        requeueCmd=${requeueCmd/ -H/}
         requeueCmd=${requeueCmd//\$myPartition/$myPartition}
         requeueCmd=${requeueCmd//\$myTime/$myTime}
         requeueCmd=${requeueCmd//\$myMem/$myMem}
 
-        requeueCmd=${requeueCmd/ -H/}
 		requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
         for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 #sleep 2
                 touch $failFile.requeued.$try.mem
                 
+                echo cmd: $requeueCmd
 
                 newJobID=`$requeueCmd`
 
@@ -402,19 +407,17 @@ if [ ! -f $succFile ]; then
 
         #newFactor=2
         min=`echo "($min*$newFactor)/1" | bc`
-        echo trying to requeue $try with $min minutes
-        echo $totalM $min $maxExtra > ${out%.out}.adjust
-
+        echo Trying to requeue $try with $min minutes
+        echo $inputSize $totalM $min $maxExtra > ${out%.out}.adjust
 
         hours=$((($min + 59) / 60))
         adjustPartition $hours $partition
-
         seconds=$(($min * 60))
 
         # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
 
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-        export  myPartition=$partition
+        export myPartition=$partition
         export myTime=$time
         export myMem=${totalM}M
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
@@ -429,6 +432,8 @@ if [ ! -f $succFile ]; then
             if [ ! -f $failFile.requeued.$try.time ]; then
                 touch $failFile.requeued.$try.time
                 
+                echo cmd: $requeueCmd
+
 		        newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
@@ -526,11 +531,13 @@ if [ ! -f $succFile ]; then
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
-    if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
-        ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
-    fi
+    #if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
+    #    ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
+    #fi
 
 fi
+
+#if [[ x == y ]]; then 
 
 # all job plots
 tm=`mktemp XXXXXXXX --dry-run`
@@ -601,6 +608,7 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 # time vs. CPU usage for current job
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
 
+#fi
 
 minimumsize=9000
 
@@ -648,7 +656,6 @@ if [[ $USER != ld32 ]]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
     elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ld32
-
     else
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png ld32
     fi
@@ -663,17 +670,10 @@ if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
 elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try2. || echo Email still not sent!!; }
-else
+elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent || \
     { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
+else 
+    echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
 fi
-
-
-echo
-
-# create an empty file so that it is easier to match job name to job ID
-#touch $out.$SLURM_JOB_ID
-# move this to job sbumission time,
-
-# wait for email to be sent
-sleep 5

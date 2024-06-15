@@ -306,16 +306,15 @@ for t in `cat ${1%% *}`; do
         # for jobs with no dep, check if there is formula yet, if yes, directly submit.
         # otherwise, only allow the first 10 jobs to run
         echo "${space}if [ -z \"\$deps\" ]; then" >> $run
-        echo "${space}    [[ \"\$inputs\" == none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.memTime.stat.noInput\" ] && hasFormula=y || hasFormula=\"\"" >> $run
-        echo "${space}    [[ \"\$inputs\" != none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.mem.stat\" ] && hasFormula=y || hasFormula=\"\"" >> $run
-        echo "${space}    if [ -z \"\$hasFormula\" ]; then" >> $run 
-        ### # echo "${space}[ -z \"\$deps\" ] && [[ \$(echo \"\$deps\" | tr -cd ':' | wc -c) -gt 10 ]] && deps=\"-H -d afterok\$deps\"" >> $run
+        #echo "${space}    [[ \"\$inputs\" == none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.memTime.stat.noInput\" ] && hasFormula=y || hasFormula=\"\"" >> $run
+        #echo "${space}    [[ \"\$inputs\" != none ]] && [ -f \"\$smartSlurmJobRecordDir/stats/$name.$ref.mem.stat\" ] && hasFormula=y || hasFormula=\"\"" >> $run
+        #echo "${space}    if [ -z \"\$hasFormula\" ]; then" >> $run 
 
         echo "${space}        nJobsInSameStep=\$(echo \"\${jobIDs[$step]}\" | tr -cd ':' | wc -c)" >> $run
-        echo "${space}        if [[ \"\$nJobsInSameStep\" -ge 0 ]]; then" >> $run # onholdLimit 
+        echo "${space}        if [[ \"\$nJobsInSameStep\" -ge $((firstBatchCount-1)) ]]; then" >> $run
         echo "${space}            deps=\"-H\"" >> $run
         echo "${space}        fi" >> $run
-        echo "${space}    fi" >> $run  
+        #echo "${space}    fi" >> $run  
         echo "${space}else" >> $run
         echo "${space}    deps=\"-H -d afterok\$deps\"" >> $run
         echo "${space}fi" >> $run 
@@ -355,9 +354,10 @@ for t in `cat ${1%% *}`; do
         # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         if [[ "$de" == *\.* ]]; then
                for dep in ${de//\./ }; do
+                    [[ $dep == 0 ]] && continue 
                     [ -z "$multipleJobs" ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run
                done
-        else
+        elif [[ $de != 0 ]]; then
                [ -z "$multipleJobs" ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run
         fi
 
@@ -432,4 +432,8 @@ echolog $run $para is ready to run. Starting to run ...
 
 eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
 
-echolog Please check .smartSlurm.log for detail logs.
+echolog Thank you for using Smart Slurm. You can run:
+#echolog less .smartSlurm.log to see detail submission log.
+echolog checkRun to check run status and submission logs, and
+echolog cancellAllJobs to cancal all jobs surmitted from current directory. 
+echolog

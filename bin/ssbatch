@@ -26,7 +26,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-set -x
+#set -x
 #set -u
 
 parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
@@ -267,7 +267,12 @@ fi
 #todo: err is ignored. will work on it later
 
 if [ -z "$flag" ]; then   
-    tm=`mktemp XXXXXXXX --dry-run`
+    tm=`mktemp XXXXXXXX --dry-run` 
+    
+    # todo: should creat a link to slurm-40468559.out
+    #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
+    #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
+
     if [ ! -z "$program" ]; then 
         [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm  
     elif [ ! -z "$name" ]; then 
@@ -425,9 +430,9 @@ if [[ "$testRun" == "run" ]]; then
                 fi
             else
                 if [ -z "$deps" ]; then
-                    depsR="" #dependency=\"\""      
+                    depsR=""   
                 else
-                    epsR="dependency=$deps"
+                    depsR="dependency=$deps"
                 fi
 
                 scontrol requeue $id
@@ -456,39 +461,37 @@ echoerr Check if there input file list and this job does not depend on other job
 
 # has checkpoint ready to resume from
 if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
-    tText=`cat $smartSlurmLogDir/$flag.adjust`
-    mem=`echo $tText | cut -d' ' -f1`
-    min=`echo $tText | cut -d' ' -f2`
-    extraMem=`echo $tText | cut -d' ' -f3`
-    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: > $outFlag
-    echo $tText >> $outFlag
+    IFS=' ' read -r inputSize mem min extraMem  <<< `cat $smartSlurmLogDir/$flag.adjust`
+    #mem=`echo $tText | cut -d' ' -f1`
+    #min=`echo $tText | cut -d' ' -f2`
+    #extraMem=`echo $tText | cut -d' ' -f3`
+    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: >> $outFlag
+    #echo $tText >> $outFlag
 else
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
 
     if [ -f .command.sh ] && [ -f .command.run ]; then 
-        output=`estimateResource.sh $program ${ref//\//-} $inputSize $flag $mem $min 2>> ../../../.nextflow.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> ../../../.nextflow.log`
     else
-        output=`estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> .smartSlurm.log`
-    fi 
-    mem=${output% *}; min=${output#* }
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> .smartSlurm.log`
+    fi     
 fi
-
 
 [ -z "$min" ] && { echo did not find time limit; exit 1; }
 
 [ -z "$mem" ] && { echo did not find mem limit; exit 1; }
 
-[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+#[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
 
-[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+#[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
 
-echo -e "$resAjust\n" >> $outFlag
+echo -e "$resAjust" >> $outFlag
 
 # testtime
 #min=10   # min
 # testmem
 # mem=20   # M
-if [ "$memO" -ne "$mem" ] || [ "minO" -ne "$min" ]; then 
+if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then 
 
     adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
@@ -503,7 +506,7 @@ fi
 
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime\n    exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -603,13 +606,15 @@ else
     # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
     # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
-
- 
     [ -z "$err" ] && errFlag=$outFlag
 
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
-    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $slurmAcc" >> $job
+    # don't need to be hold because got resource estimation and does depend on any jobs
+    [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ] && [ -z "$deps" ] && onhold=""
 
+    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
+    
+    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
+         
     if [ -z "$slurmScript" ]; then
         cmd="$cmd $additionalPara $job"
         echo -e " $additionalPara $job" >> $job
@@ -617,7 +622,8 @@ else
         cmd="$cmd $additionalPara $job $slurmScriptParas"
         echo -e " $additionalPara $job $slurmScriptParas" >> $job
     fi
-fi 
+
+fi
 
 echoerr New sbatch command to submit job:
 echoerr $cmd
@@ -675,4 +681,4 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 echo Submitted batch job $jobID
 echoerr -e "Submitted batch job $jobID" 
 
-[ -z "$runningSingleJob" ] || echo -e "With mem: $mem and time: $time\nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+[ -z "$runningSingleJob" ] || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2

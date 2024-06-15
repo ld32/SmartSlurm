@@ -86,29 +86,29 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
-ssbatch -P findNumber -I numbers3.txt -F find3 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers3.txt"
 
-ssbatch -P findNumber -I numbers4.txt -F find4 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I numbers4.txt -F find4 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers4.txt"
 
-ssbatch -P findNumber -I numbers5.txt -F find5 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers5.txt"
 
 # After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts 
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt"
 
 # You can have multiple inputs: 
-ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt"
 
 # If input file is not given using option -I. ssbatch will choose the memory 
 # and run-time threshold so that 90% jobs can finish successfully
-ssbatch -P findNumber -F find21 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -F find21 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers2.txt"
 
 # check job status: 
@@ -120,7 +120,7 @@ cancelAllJobs
 # rerun jobs: 
 # when re-run a job with the same program and same input(s), if the previous run was successful, 
 # ssbatch will ask to confirm you do want to re-run
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 2G -t 2:0:0 \
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt"
 
 # To remove ssbatch from PATH: 
@@ -422,12 +422,12 @@ cat $HOME/smartSlurm/scripts/bashScriptV2.sh
  8
  9     input=numbers$i.txt
 10
-11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
 12     findNumber.sh 1234 $input > $number.$i.txt
 13
 14 done
 15
-16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0
+16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
 17 cat $number.*.txt > all$number.txt
    
 ```
@@ -435,7 +435,7 @@ cat $HOME/smartSlurm/scripts/bashScriptV2.sh
 ## Notice that there are a few things added to the script here:
 [Back to top](#SmartSlurm)
 
-Step 1 is denoted by #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 2:0:0 (line 11 above), which means this is step 1 that depends on no other step, run software findNumber, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+Step 1 is denoted by #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 2:0:0 (line 11 above), which means this is step 1 that depends on no other step, run software findNumber, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
 
 Step 2 is denoted by #@2,1,findNumber,,input (line 16), which means that this is step1 that depends on step1, and the step runs software mergeNumber with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
 
@@ -476,7 +476,7 @@ runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
 
 runAsPipeline run date: 2024-04-28_16-03-36_4432
 Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh 1234
-    sbatch -A rccg -p short -c 1 --mem 2G -t 50:0 noTmp run
+    sbatch -A rccg -p short -c 1 --mem 4G -t 50:0 noTmp run
 
 Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to 
     /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
@@ -484,8 +484,8 @@ Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to
 find for loop start: for i in {1..5}; do
 
 find job marker:
-#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
+#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
 
 find job:
 findNumber.sh 1234 $input > $number.$i.txt
@@ -495,8 +495,8 @@ findNumber.sh 1234 $input > $number.$i.txt --after parseing
 find loop end: done
 
 find job marker:
-#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 2G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 2G -t 50:0
+#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
 
 find job:
 cat $number.*.txt > all$number.txt
@@ -591,7 +591,7 @@ export PATH=$HOME/smartSlurm/bin:$PATH
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
 
 # Such as:    
-sbatchAndTop -p short -c 1 -t 2:0:0 --mem 2G --wrap "my_application para1 para2" 
+sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2" 
 # Here -p short is optional, because ssbatch chooses partition according to run time.  
 
 # or:     
