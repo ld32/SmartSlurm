@@ -550,9 +550,10 @@ ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, 
 # if less than 0, change to zeor
 awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/$tm.dataMem.csv > $smartSlurmLogDir/$tm.output.csv
 
-awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataMem.csv #> output.csv
+awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataMem.csv
 
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/$tm.barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot '$smartSlurmLogDir/$tm.dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
+width=`wc -l $smartSlurmLogDir/$tm.dataMem.csv | cut -d' ' -f1``; width=$((width*16)); [ $width -le 800 ] && width=800; 
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/$tm.barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot '$smartSlurmLogDir/$tm.dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
 
 echo To see the plot:
 echo display $smartSlurmLogDir/$tm.barchartMem.png
@@ -565,8 +566,9 @@ awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smar
 
 awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataTime.csv
 
+#width=`wc -l $smartSlurmLogDir/$tm.dataTime.csv | cut -d' ' -f1``; width=$((width*16)); [ $width -le 800 ] && width=800; 
 # all job time
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/$tm.barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '$smartSlurmLogDir/$tm.dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/$tm.barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '$smartSlurmLogDir/$tm.dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
 
 echo To see the plot:
 echo display $smartSlurmLogDir/$tm.barchartTime.png
@@ -577,36 +579,38 @@ echo display $smartSlurmLogDir/$tm.barchartTime.png
 # todo: should make the plot wider instead of shink it: 
 # https://stackoverflow.com/questions/13869439/gnuplot-how-to-increase-the-width-of-my-graph
 
-rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
-if [ "$rowTotal" -gt 50 ]; then 
-    maxMem=0; maxCpu=0; 
-    rate=`echo "scale=2;$rowTotal/50"|bc`
-    IFS=$'\n'; rowCount1=0; rowCount2=0
-    echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-    for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
-        mem=`echo $t | cut -d' ' -f2`
-        cpu=`echo $t | cut -d' ' -f5`
-        [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
-        [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
-        rowCount1=$((rowCount1 + 1))
-        rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
-        rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
-        if [ "$rowMax" -le "$rowCount1" ]; then 
-            rowCount2=$((rowCount2 + 1))
-            echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-            maxMem=0; maxCpu=0;
-        fi 
-    done
-else 
-    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-fi 
+# rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
+# if [ "$rowTotal" -gt 50 ]; then 
+#     maxMem=0; maxCpu=0; 
+#     rate=`echo "scale=2;$rowTotal/50"|bc`
+#     IFS=$'\n'; rowCount1=0; rowCount2=0
+#     echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+#     for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
+#         mem=`echo $t | cut -d' ' -f2`
+#         cpu=`echo $t | cut -d' ' -f5`
+#         [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
+#         [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
+#         rowCount1=$((rowCount1 + 1))
+#         rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
+#         rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
+#         if [ "$rowMax" -le "$rowCount1" ]; then 
+#             rowCount2=$((rowCount2 + 1))
+#             echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+#             maxMem=0; maxCpu=0;
+#         fi 
+#     done
+# else 
+#     cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+# fi 
 
 
 # time vs. memory for current job
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
+width=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1``; width=$((width*16)); [ $width -le 800 ] && width=800
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
 
 # time vs. CPU usage for current job
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
+width=`wc -l $smartSlurmLogDir/$tm.dataMem.csv | cut -d' ' -f1``; width=$((width*16)); [ $width -le 800 ] && width=800
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
 
 #fi
 
