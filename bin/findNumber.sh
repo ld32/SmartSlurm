@@ -11,7 +11,7 @@ echo "Start allocating memory..." >&2
 for input in "$2 $3 $4"; do
     [ -z "$input" ] && break
 
-    txt=$(cat $input); txt="$txt.$txt.$txt$txt.$txt.$txt"
+    txt=$(cat $input); txt="$txt.$txt.$txt.$txt.$txt.$txt.$txt.$txt.$txt.$txt.$txt.$txt"
     
     fileSize=`du --apparent-size -c -L $input | tail -n 1 | cut -f 1`
     
@@ -19,12 +19,12 @@ for input in "$2 $3 $4"; do
 
     grep $1 $input 
 
-    sleep 10
+    sleep 5
 done          
 
 #grep $1 university1.txt
 
-delay=$((totalSize * 3 / 100))  
+delay=$((totalSize * 3 / 100))  # 100
 
 echo "...end allocating memory. Begin sleeping for $delay seconds..." >&2
 

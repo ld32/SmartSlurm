@@ -240,7 +240,7 @@ if [[ ! -z "$slurmScript" ]]; then
                 "-t"    ) [ -z "$time" ] && echoerr Found -t && time="${arr[2]}";;
                 --time=* ) [ -z "$time" ] && echoerr Found --time= && time="${arr[1]}" && time="${time/--time=/}";;
                 "-J"    ) [ -z "$name" ] && echoerr Found -J && name="${arr[2]}";;
-                --job-name=* ) [ -z "$name" ] && echoerr Found --job-name= && name="${arr[1]}" && name="${name/--job-name=/}";;
+                --job-name=* ) [ -z "$name" ] && echoerr Found --job-name= && name="${arr[1]}" && name="${time/--job-name=/}";;
                 "-o"    ) [ -z "$out" ] && echoerr Found -o && out="${arr[2]}";;
                 --output=* ) [ -z "$out" ] && echoerr Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
                 "-e" ) [ -z "$err" ] && echoerr Found -e && err="${arr[2]}";;
@@ -267,12 +267,7 @@ fi
 #todo: err is ignored. will work on it later
 
 if [ -z "$flag" ]; then   
-    tm=`mktemp XXXXXXXX --dry-run` 
-    
-    # todo: should creat a link to slurm-40468559.out
-    #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
-    #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
-
+    tm=`mktemp XXXXXXXX --dry-run`
     if [ ! -z "$program" ]; then 
         [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm  
     elif [ ! -z "$name" ]; then 
@@ -334,7 +329,6 @@ else
 fi
 
 if [ -z "$time" ]; then
-    time=$defaultTime
     min=$defaultTime
 else
     [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
@@ -345,6 +339,8 @@ else
 fi
 
 resAjust="#Depend on: $depsID\n"
+
+resAjust="#Original mem $mem M, Original time: $min mins\n"
 
 # check job done before or not
 if [[ "$testRun" == "run" ]]; then
@@ -430,9 +426,9 @@ if [[ "$testRun" == "run" ]]; then
                 fi
             else
                 if [ -z "$deps" ]; then
-                    depsR=""   
+                    depsR="" #dependency=\"\""      
                 else
-                    depsR="dependency=$deps"
+                    epsR="dependency=$deps"
                 fi
 
                 scontrol requeue $id
@@ -453,60 +449,224 @@ if [[ "$testRun" == "run" ]]; then
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 fi
 
+[ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$(($defaultExtraMem * 2))
+
+ #extraMem=`sort $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1`
+
 # original mem and time
 memO=$mem; minO=$min
+inputSize=0
 
 echoerr
 echoerr Check if there input file list and this job does not depend on other jobs
 
 # has checkpoint ready to resume from
 if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
-    IFS=' ' read -r inputSize mem min extraMem  <<< `cat $smartSlurmLogDir/$flag.adjust`
-    #mem=`echo $tText | cut -d' ' -f1`
-    #min=`echo $tText | cut -d' ' -f2`
-    #extraMem=`echo $tText | cut -d' ' -f3`
-    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: >> $outFlag
-    #echo $tText >> $outFlag
+    tText=`cat $smartSlurmLogDir/$flag.adjust`
+    mem=`echo $tText | cut -d' ' -f1`
+    min=`echo $tText | cut -d' ' -f2`
+    extraMem=`echo $tText | cut -d' ' -f3`
+    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: > $outFlag
+    echo $tText >> $outFlag
 else
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
 
-    if [ -f .command.sh ] && [ -f .command.run ]; then 
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> ../../../.nextflow.log`
+
+    # do not have input file list    #todo: we can try to figure out the input from the program parameters here
+    if [[ "$inputs" == "none" ]]; then
+        echoerr No inputs
+        resAjust="$resAjust#This job does not have input.\n"
+        ref=${ref//\//-}
+
+        rows=`( wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
+        #echoerr rows  $rows
+        # empty or more than 60 minutes but less than 4 records
+        if test `find $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
+            mkdir -p $smartSlurmJobRecordDir/stats/
+            #cat /home/*/smartSlurm/stats/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
+            #test `find $smartSlurmJobRecordDir/jobRecord.txt -mmin +20` && echoerr jobRecord.txt synced within 21 hour. No need to re-sync || cat $HOME/smartSlurm/myJobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt
+
+            # todo: could use single file here
+            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput
+
+            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput
+
+            if [ -s $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput ] && [ -s $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput ]; then
+
+                #OUT="$(mktemp -d)"
+                paste $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput | column -s $'\t' -t | sed '$ d' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput
+
+                #cp $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput $OUT/timeMem.txt
+                #cd $OUT
+                # make plot and calculate statistics
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.stat.noInput
+
+                rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
+
+            fi
+        fi
+
+        # at least 3 records
+        if [ $rows -ge 3 ]; then
+            cutoffRow=$(( ($row - 1)  / 10  + 1)) # top 10
+
+            mem=`cat $smartSlurmJobRecordDir/stats/$program.$ref.mem.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+            mem=$((${mem/\.*/} + extraMem))
+            # mem=${txt[$cutoffRow]}; mem=$((${mem/\.*/} + extraMem))M
+
+            min=`cat $smartSlurmJobRecordDir/stats/$program.$ref.time.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+            min=$((${min/\.*/} + defaultExtraTime))
+
+            resAjust="$resAjust#Got estimation based on program.reference: $program.$ref.\n"
+            resAjust="$resAjust#Give ${extraMem} M extra memory and $defaultExtraTime more minutes. \n#So use this to submit the job: $mem M  ${min} min"
+
+        else
+            resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
+        fi
+
+
+    # not depends on other job, and there is input file list
+    elif [ -z "$deps" ]; then
+        echoerr Does not depend on other jobs and have inputs.
+        inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
+
+        if [[ "$inputSize" == "notExist" ]]; then
+            resAjust="$resAjust#Some or all input files not exist: $inputs\n"
+            echoerr Error! missingInputFile: ${inputs//,/ }
+            
+            [[ "$testRun" == "run" ]] && exit
+        else
+            #inputSize=$(($inputSize/1024)); # convert to M
+            resAjust="$resAjust#InputSize: $inputSize\n"
+
+            #rm ~/.rcbio/$program.$ref.mem.stat # for testing
+
+            if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+                if [ -f .command.sh ] && [ -f .command.run ]; then 
+                    output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
+                else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
+                    output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
+                fi 
+
+                
+                #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
+                resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
+                
+                if [[ "$output" == "outOfRange" ]]; then
+                    resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
+                    # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
+                elif [ ! -z "$output" ]; then
+                    output=${output% *}
+                    [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
+                    [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime mins more time."
+                    resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
+                fi
+
+            fi
+
+            if [[ "$output" == "outOfRange" ]] && test `find $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat -mmin +2` || [ ! -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+                resAjust="$resAjust#Do not have a formula, or it is old and out of range. Let us build one...\n"
+
+                #filter by program and reference
+                # todo: maybe able to replace / in ref at begaining of the script?
+                ref=${ref//\//-}
+                grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.mem
+
+                grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.time
+
+                echoerr "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$program.$ref.mem):"
+                echoerr `cat $smartSlurmJobRecordDir/stats/$program.$ref.mem`
+
+                echoerr "Got time data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$program.$ref.time):"
+                echoerr `cat $smartSlurmJobRecordDir/stats/$program.$ref.time`
+
+                if [[ $(wc -l <$smartSlurmJobRecordDir/stats/$program.$ref.mem) -lt 3 ]]; then
+                    echoerr There are less than 3 records. No way to fit a curve. User defaut values...
+                    resAjust="$resAjust#There are less than 3 records. No way to fit a curve.\n"
+
+                else
+                    gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+
+                    echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+                  
+                    echo SCount=$(wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem | cut -d' ' -f1) >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+
+                    sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+
+                    gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+
+                    echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+
+                    sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+
+                    echoerr
+                    echoerr You can see the plot using commands:
+                    echoerr display $smartSlurmJobRecordDir/stats/$program.$ref.mem.png
+                    echoerr display $smartSlurmJobRecordDir/stats/$program.$ref.time.png
+
+                    #echoerr got files in $smartSlurmJobRecordDir/stats:
+                    #ls -lrt $smartSlurmJobRecordDir/stats
+                    if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+                        if [ -f .command.sh ] && [ -f .command.run ]; then 
+                            output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
+                        else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
+                            output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
+                        fi 
+
+                        resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
+                        resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
+                        if [[ "$output" == "outOfRange" ]]; then
+                            resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
+                            # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
+                        elif [ ! -z "$output" ]; then
+                            output=${output% *}
+                            [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
+                            [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime more minutes."
+                            resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
+
+                        fi
+                        #echoerr got estimation $output
+                    fi
+
+                fi
+                #rm -r $OUT 2>/dev/null
+            fi
+
+        fi
     else
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> .smartSlurm.log`
-    fi     
+        echoerr Has input, but depends on other jobs
+        resAjust="$resAjust#Use default mem and time. Has input, but this job depends on $deps."
+
+    fi
+    
 fi
 
 [ -z "$min" ] && { echo did not find time limit; exit 1; }
 
 [ -z "$mem" ] && { echo did not find mem limit; exit 1; }
 
-#[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
 
-#[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
 
-echo -e "$resAjust" >> $outFlag
+echo -e "$resAjust\n" > $outFlag
 
 # testtime
 #min=10   # min
 # testmem
 # mem=20   # M
-if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then 
 
-    adjustPartition $(( ( $min + 59 ) / 60 )) $partition
+adjustPartition $(( ( $min + 59 ) / 60 )) $partition
 
-    seconds=$(( $min * 60 ))
+seconds=$(( $min * 60 ))
 
-    #echoerr srun seconds: $seconds
+#echoerr srun seconds: $seconds
 
-    time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-elif [ -z $partition ]; then     
-    adjustPartition $(( ( $min + 59 ) / 60 )) partition
-fi
+time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime\n    exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -606,15 +766,13 @@ else
     # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
     # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
 
+
+ 
     [ -z "$err" ] && errFlag=$outFlag
 
-    # don't need to be hold because got resource estimation and does depend on any jobs
-    [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ] && [ -z "$deps" ] && onhold=""
-
     cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
-    
-    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
-         
+    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $slurmAcc" >> $job
+
     if [ -z "$slurmScript" ]; then
         cmd="$cmd $additionalPara $job"
         echo -e " $additionalPara $job" >> $job
@@ -622,8 +780,7 @@ else
         cmd="$cmd $additionalPara $job $slurmScriptParas"
         echo -e " $additionalPara $job $slurmScriptParas" >> $job
     fi
-
-fi
+fi 
 
 echoerr New sbatch command to submit job:
 echoerr $cmd
@@ -681,4 +838,4 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 echo Submitted batch job $jobID
 echoerr -e "Submitted batch job $jobID" 
 
-[ -z "$runningSingleJob" ] || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+[ -z "$runningSingleJob" ] || echo -e "With mem: $mem and time: $time\nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2

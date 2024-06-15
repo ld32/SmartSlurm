@@ -6,21 +6,6 @@ echo Running: $0 $@
 cd $smartSlurmLogDir #`dirname $1` #${1%/$smartSlurmLogDir/*}
 #echo pwd `pwd`
 
-# requeue failed jobs
-#if ls $smartSlurmLogDir/*.requeueCMD 2>/dev/null && mkdir $smartSlurmLogDir/requeue.start; then
-#    for requeue in $smartSlurmLogDir/*.requeueCMD; do
-#        if grep -q $SLURM_JOBID $requeue; then
-#            rm $requeue
-#            rm ${requeue%.requeueCMD}.failed
-#        else
-#           sh $requeue && rm $requeue && rm ${requeue%.requeueCMD}.failed
-#        fi
-#        sleep 1
-#    done
-#    rm -r $smartSlurmLogDir/requeue.start
-#fi
-#set +x
-
 sleep 2
 
 START=`date +%s`
@@ -28,7 +13,7 @@ START=`date +%s`
 counter=0
 
 jobName=$1 #`basename $1` #${1#*/$smartSlurmLogDir/}
-#reservedMem=$2
+reservedMem=$2
 reservedTime=$3
 defaultMem=$4
 
@@ -36,18 +21,18 @@ defaultMem=$4
 
 [ -z "$defaultMem" ] && defaultMem=0
 
-# if jobs has --mem
-reservedMem=$SLURM_MEM_PER_NODE
+# # if jobs has --mem
+# reservedMem=$SLURM_MEM_PER_NODE
 
-# if job has --mem-per-cpu and -c
-[ -z "$reservedMem" ] && reservedMem=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
+# # if job has --mem-per-cpu and -c
+# [ -z "$reservedMem" ] && reservedMem=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
 
-# if job has --mem-per-cpu and -n
-[ -z "$reservedMem" ] &&  reservedMem=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
+# # if job has --mem-per-cpu and -n
+# [ -z "$reservedMem" ] &&  reservedMem=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
 
 #[ -f $jobName.adjust ] && reservedMem=`cat $jobName.adjust | cut -d' ' -f1`
-[ -f $jobName.adjust ] && reservedTime=`cat $jobName.adjust | cut -d' ' -f2`
+[ -f $jobName.adjust ] && IFS=' ' read -r inputSize reservedMem reservedTime extraM  <<< `cat $smartSlurmLogDir/$jobName.adjust`
 
 [ -z "$reservedTime" ] && reservedTime=0; 
 

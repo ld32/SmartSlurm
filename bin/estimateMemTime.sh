@@ -42,7 +42,7 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
 
     echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
-    if (( $(echo "$Maximum + 0.01 > $inputSize" |bc -l) )); then 
+    if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )); then 
         mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
         memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
         mem=${mem%.*}; [[ "$mem" -le 100 ]] && mem=100

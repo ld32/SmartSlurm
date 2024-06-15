@@ -17,7 +17,9 @@ export smartSlurmInputDir=inputSmartSlurm
 # output folder path 
 export smartSlurmOutputDir=$PWD/outputSmartSlurm
 
-export defaultMem=2048  # in M
+export firstBatchCount=2
+
+export defaultMem=4096  # in M
 export defaultTime=120  # in min
 
 export defaultExtraTime=5     # in min. extra minutes than the estimated time

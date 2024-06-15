@@ -1,9 +1,5 @@
 #!/bin/sh
 
-#usage() { echo -e "\nUsage: \n$0 <whole_path_to_job_id_file, with at least columns id and flag>"; exit 1; } 
-
-#[[ -z "$1" ]] && usage
-
 #set -x 
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -13,8 +9,6 @@ else
 fi
 
 [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
-
-#smartSlurmLogDir=`dirname $1`
 
 IFS=$'\n'
 
@@ -37,7 +31,6 @@ for line in $lines; do
     fi    
 done 
 
-
 if [ ! -z "${ids/ /}" ]; then
     IFS=' '
     echo the following jobs are not finished yet:
@@ -55,4 +48,3 @@ if [ ! -z "${ids/ /}" ]; then
 else 
     echo Could not find any jobs to cancel.
 fi
-exit 0;

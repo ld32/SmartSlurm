@@ -25,7 +25,7 @@ else
     submttingLog=$smartSlurmLogDir/../$submttingLog
 fi
 
-logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* 2>/dev/null`
+logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null`
 
 [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
@@ -35,8 +35,6 @@ activeJobs=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 GREEN='\033[0;32m'
-
-#echo -e "I ${RED}love${NC} Stack Overflow"
 
 while true; do
     echo Availale logFolders or file:

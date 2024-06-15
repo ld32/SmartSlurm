@@ -2,31 +2,30 @@
 
 #set -x
 
-#for i in {1..200}; do sleep 1; echo cleanup $i; done & 
+for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
-# to call this:  0     1         2       3       4          5       6       7      8     9      10         11       12     13     14
-#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memO  $timeO   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
+# to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13     14
+#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
 
-#Running /home/ld32/smartSlurm/bin/cleanUp.sh 16.15.cliper.sample1.treatment cliper none 0 12 10240 15 10240 15 short rccg none 5 5
+echo Running: $0 "$@"
 
-#smartSlurmLogDir=`dirname $1`
-flag=$1 #`basename $1`
+flag=$1 
 software=$2
 ref=$3
 inputSize=$4 # input might not exist when job was submitted.
 core=$5
-memO=$6
-timeO=$7
-#totalM=$8
+memDef=$6
+minDef=$7
+totalM=$8
 
-# if jobs has --mem
-totalM=$SLURM_MEM_PER_NODE
+# # if jobs has --mem
+# totalM=$SLURM_MEM_PER_NODE
 
-# if job has --mem-per-cpu and -c
-[ -z "$totalM" ] && totalM=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
+# # if job has --mem-per-cpu and -c
+# [ -z "$totalM" ] && totalM=$((SLURM_MEM_PER_CPU * SLURM_JOB_CPUS_PER_NODE))
 
-# if job has --mem-per-cpu and -n
-[ -z "$totalM" ] &&  totalM=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
+# # if job has --mem-per-cpu and -n
+# [ -z "$totalM" ] &&  totalM=$((SLURM_MEM_PER_CPU * SLURM_CPUS_PER_TASK))
 
 totalT=${9}
 partition=${10}
@@ -37,43 +36,16 @@ extraTime=${14}
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
 
-echo Running $0 $@
-#echo pwd: `pwd`
-
 # if not successful, delete cromwell error file, so that the job not labeled fail
 #ls -l execution
 [ -f $smartSlurmLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
 
-#cd ${1%log}
-
-# if [ -z "$smartSlurmsmartSlurmJobRecordDir" ]; then
-#     if [ -f ~/.smartSlurm/config/config.txt ]; then
-#         source ~/.smartSlurm/config/config.txt
-#     else
-#         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
-#     fi
-# fi
-
-#touch /tmp/job_$SLURM_JOB_ID.done
-#if [[ -z "$1" ]]; then
-
-   #out=$flag.out; out=${out/\%jerr=${4##* }; err=${err/\%j/$SLURM_JOB_ID}; script=${4% *}; script=${script#* }; succFile=${script/\.sh/}.success;      failFile=${script/\.sh/}.failed;
-#    out=slurm-$SLURM_JOBID.out; err=slurm-$SLURM_JOBID.err; script=$flag.sh; succFile=$flag.success; failFile=$flag.failed;
-#else
-    out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
-#fi
+out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
 
 [ -f .exitcode ] && touch $succFile
 
-# if [ -f $succFile ]; then
-
-#     adjustDownStreamJobs.sh $smartSlurmLogDir # todo, make sure to igore if running single job
-#     #rm $failFile 2>/dev/null
-# fi 
-
-
 # wait for slurm database update
-sleep 5
+sleep 1
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
@@ -90,71 +62,21 @@ jobStat=`echo -e "$sacct" | tail -n 1`
 
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID"
 
-#START=`echo $jobStat | cut -d" " -f3`
-
-#START=`date -d "$START" +%s`
-
 START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt | cut -d' ' -f6`
-
-#FINISH=`echo $jobStat | cut -d" " -f4`
-
-#FINISH=`date -d "$FINISH" +%s`
-
-#[ -z "$FINISH" ] &&
 FINISH=`date +%s`
 
 echo  start: $START fisnish: $FINISH
-#seconds=$((FINISH - START))
-
-# todo: might use real time directly?
-# time is too short, might be wrong result
-#[ $seconds -lt 10 ] && echo time is so short. is it right? Let us use real time... && FINISH=`date +%s`
 
 # time in minutes
 min=$((($FINISH - $START + 59)/60))
-
-#[[ "$mim" == 0 ]] && min=1
 
 # memory in M
 memSacct=`echo $jobStat | cut -d" " -f5`
 
 [[ "$memSacct" == "RUNNING" ]] && memSacct=NA
 
-# node
 node=`echo $jobStat | cut -d" " -f7`
 
-
-# todo: might directly delete this part
-#case "$jobStat" in
-# jobRecord.txt header
-#1user 2software 3ref 4inputName 5inputSizeInK 6CPUNumber 7memoryO 8timeO 9readMem 10RequestedTime 11jobID 12memoryM 13minRun 14Node 15 finalStatus
-#*COMPLETED* )  jobStatus="COMPLETED" && echo *Notice the sacct report above: while the main job is still running for sacct command, user task is completed.;;
-
-#*TIMEOUT*   )  jobStatus="OOT";;
-
-#*OUT_OF_ME*   ) jobStatus="OOM";;
-
-#*CANCELLED*	) jobStatus="Cancelled";;
-
-#*FAILED*	) jobStatus="Fail";;
-
-#*          )  jobStatus="Unknown";;
-
-
-#esac
-
-# for testing
-#jobStatus="OOM"
-
-#echo jobStatus: $jobStatus
-
-# sacct might give wrong resules
-#[[ $jobStatus != "OOM" ]] && [[ $jobStatus != "OOT" ]] && [[ $jobStatus != "Cancelled" ]] && [ -f $succFile ] && jobStatus="COMPLETED"
-
-#if [ -f $smartSlurmLogDir/$flag/checkpointDoneMem ]; then
-#    jobStatus=OOM
-#elif [ -f $smartSlurmLogDir/$flag/checkpointDoneTime ]; then
-#    jobStatus=OOT
 if [ -f $succFile ] ; then # or nextflow successful job
     jobStatus=COMPLETED
 elif [[ "$sacct" == *TIMEOUT* ]]; then
@@ -208,26 +130,25 @@ if [[ "$inputs" != "none" ]] && [[ "$inputSize" == "0" ]]; then
     fi
 fi
 
-
-
 # three possiblities to have this file:
 # 1 job was OOT
 # 2 job was oom
 # 3 job resournce was adjusted by upsteam jobs
 # 4 job checkpointed but OOT or OOM # this is special, because need to survive re-run from ssbatch
 if [ -f ${out%.out}.adjust ]; then
-   tText=`cat ${out%.out}.adjust`
+   #tText=`cat ${out%.out}.adjust`
    #totalM=`echo $tText | cut -d' ' -f1`
-   totalT=`echo $tText | cut -d' ' -f2`
-   extraMC=`echo $tText | cut -d' ' -f3`
-fi
+   #totalT=`echo $tText | cut -d' ' -f2`
+   #extraMC=`echo $tText | cut -d' ' -f3`
+   IFS=' ' read -r inputSize totalM totalT extraMemC  <<< `cat $smartSlurmLogDir/$flag.adjust`
+fi 
 
-[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
+#[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
 
 #set -x
 # totalM=200; totalT=200; srunM=1000; min=200;
 overReserved=""; overText=""; ratioM=""; ratioT=""
-if [ "$memO" -ne "$totalM" ] && [ "$totalT" -ne "$totalT" ]; then
+if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
   if [[ "$jobStatus" == COMPLETED ]]; then
     if [ "$totalM" -gt $((srunM * 2)) ] && [ $srunM -ge 1024 ]; then
         overReserved="O:"
@@ -236,31 +157,19 @@ if [ "$memO" -ne "$totalM" ] && [ "$totalT" -ne "$totalT" ]; then
         echo $overText
     fi
   fi
-  ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
-
 fi
-
+ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
 
 # todo: move this part to main job, so that when release job, this job record can be used for the statics 
-
-#set +x
                                 #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOB_ID,$inputSize,$memO,$totalT,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,$ratioM,$ratioT,`date`"  # 16 extraM
+record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`" 
 echo dataToPlot,$record
 
-
-
-
-#if [[ ! -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat || "$2" == "regularSbatch" ]]; then
-
 if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
-
-    #if [[ "$inputSize" == 0 ]]; then # || "$2" == "regularSbatch" ]] ; then
         records=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -u -n`
         #timeRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
         #memRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '`
         #timeRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
-
 
         #maxMem=`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
         #maxTime=`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
@@ -277,27 +186,8 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
             mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
         else
             echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
-
         fi
-    # else
-    #     maxMem=`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
-
-    #     maxTime=`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.txt  2>/dev/null | cut -f 2 -d " " | sort -nr | tr '\n' ' ' | cut -f 1 -d ' '`
-
-    #     if [ -z "$maxMem" ] || [ "${maxMem%.*}" -lt "${srunM%.*}" ] || [ -z "$maxTime" ] || [ "$maxTime" -lt "$min" ]; then
-    #         echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
-
-    #         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
-    #         rm $smartSlurmJobRecordDir/stats/$software.$ref.*  2>/dev/null
-
-    #     else
-    #         echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
-    #     fi
-    # fi
-#else
-    # todo: may not need failed job records?
-#    echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
-    #echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+        #cat $smartSlurmJobRecordDir/jobRecord.txt
 fi
 echo Final mem: $srunM M, time: $min mins
 
@@ -309,6 +199,7 @@ cat .command.log >> $out 2>/dev/null
 #rm $succFile
 #jobStatus=OOM
 if [ ! -f $succFile ]; then
+
     if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
         echo -e "This step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$flag" | mail -s "!!!!$SLURM_JOBID:$flag" $USER
     fi
@@ -325,15 +216,12 @@ if [ ! -f $succFile ]; then
             echo old extraMem:
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
-            #extraMemN=$(( ( totalM - srunM ) *2 ))
             extraMemN=$(( totalM - srunM + 1 ))
-            #[[ "$extraMemN" == 0 ]] && extraMemN=1
-            #[ ! -f "${out%.out}.likelyCheckpointOOM" ] &&
-            [ $extraMemN -gt 0 ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
-            #oomCount=`wc -l $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | cut -d' ' -f1`
             maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
             [ -z "$maxExtra" ] && maxExtra=5
+            [ $extraMemN -gt $maxExtra ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref && maxExtra=$extraMemN
+
             echo new extraMem:
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
         #else
@@ -343,7 +231,10 @@ if [ ! -f $succFile ]; then
         mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
         (
         #set -x;
-        if [ $totalM -lt 200 ]; then
+        if [ $totalM -lt 100 ]; then
+            totalM=100
+            newFactor=8
+        elif [ $totalM -lt 200 ]; then
             totalM=200
             newFactor=5
         elif [ $totalM -lt 512 ]; then
@@ -360,10 +251,13 @@ if [ ! -f $succFile ]; then
             newFactor=1.2
         fi
 
-        #newFactor=2
         mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
-        echo trying to requeue $try with $mem M
-        echo $mem $totalT $maxExtra > ${out%.out}.adjust
+        
+        # testing here
+        #mem=1000
+
+        echo Trying to requeue with $mem M
+        echo $inputSize $mem $totalT $maxExtra > ${out%.out}.adjust
 
         #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
         #set -x
@@ -373,22 +267,23 @@ if [ ! -f $succFile ]; then
         hours=$((($totalT + 59) / 60))
         adjustPartition $hours $partition
 
-        export  myPartition=$partition
+        export myPartition=$partition
         export myTime=$totalT
         export myMem=${mem}M
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
         requeueCmd=${requeueCmd#*submit the job: }
+        requeueCmd=${requeueCmd/ -H/}
         requeueCmd=${requeueCmd//\$myPartition/$myPartition}
         requeueCmd=${requeueCmd//\$myTime/$myTime}
         requeueCmd=${requeueCmd//\$myMem/$myMem}
 
-        requeueCmd=${requeueCmd/ -H/}
 		requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
         for try in {1..5}; do
             if [ ! -f $failFile.requeued.$try.mem ]; then
                 #sleep 2
                 touch $failFile.requeued.$try.mem
                 
+                echo cmd: $requeueCmd
 
                 newJobID=`$requeueCmd`
 
@@ -512,19 +407,17 @@ if [ ! -f $succFile ]; then
 
         #newFactor=2
         min=`echo "($min*$newFactor)/1" | bc`
-        echo trying to requeue $try with $min minutes
-        echo $totalM $min $maxExtra > ${out%.out}.adjust
-
+        echo Trying to requeue $try with $min minutes
+        echo $inputSize $totalM $min $maxExtra > ${out%.out}.adjust
 
         hours=$((($min + 59) / 60))
         adjustPartition $hours $partition
-
         seconds=$(($min * 60))
 
         # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
 
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-        export  myPartition=$partition
+        export myPartition=$partition
         export myTime=$time
         export myMem=${totalM}M
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
@@ -539,6 +432,8 @@ if [ ! -f $succFile ]; then
             if [ ! -f $failFile.requeued.$try.time ]; then
                 touch $failFile.requeued.$try.time
                 
+                echo cmd: $requeueCmd
+
 		        newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
@@ -636,49 +531,84 @@ if [ ! -f $succFile ]; then
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
     fi
-    if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
-        ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
-    fi
+    #if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
+    #    ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
+    #fi
 
 fi
 
-
-
+#if [[ x == y ]]; then 
 
 # all job plots
+tm=`mktemp XXXXXXXX --dry-run`
 
-rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
-echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/dataMem.csv
+#rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
+echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
 
-ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/dataMem.csv
+ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 
 # if less than 0, change to zeor
-awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/dataMem.csv > $smartSlurmLogDir/output.csv
+awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/$tm.dataMem.csv > $smartSlurmLogDir/$tm.output.csv
 
-awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/output.csv > $smartSlurmLogDir/dataMem.csv #> output.csv
+awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataMem.csv #> output.csv
 
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot '$smartSlurmLogDir/dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/$tm.barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot '$smartSlurmLogDir/$tm.dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
 
 echo To see the plot:
-echo display $smartSlurmLogDir/barchartMem.png
+echo display $smartSlurmLogDir/$tm.barchartMem.png
 
-echo Category,Used,Wasted,default,Saved > $smartSlurmLogDir/dataTime.csv
+echo Category,Used,Wasted,default,Saved > $smartSlurmLogDir/$tm.dataTime.csv
 
-ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9*$16,   ($7-$9)*$16, ($5-$7)*$16, $5*$16}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/dataTime.csv
+ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9*$16,   ($7-$9)*$16, ($5-$7)*$16, $5*$16}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataTime.csv
 
-awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/dataTime.csv > $smartSlurmLogDir/output.csv 
+awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/$tm.dataTime.csv > $smartSlurmLogDir/$tm.output.csv 
 
-awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/output.csv > $smartSlurmLogDir/dataTime.csv
+awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataTime.csv
 
 # all job time
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '$smartSlurmLogDir/dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/$tm.barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '$smartSlurmLogDir/$tm.dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
 
 echo To see the plot:
-echo display $smartSlurmLogDir/barchartTime.png
+echo display $smartSlurmLogDir/$tm.barchartTime.png
+
+#rm $smartSlurmLogDir/$tm.*.csv
 
 
+# todo: should make the plot wider instead of shink it: 
+# https://stackoverflow.com/questions/13869439/gnuplot-how-to-increase-the-width-of-my-graph
+
+rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
+if [ "$rowTotal" -gt 50 ]; then 
+    maxMem=0; maxCpu=0; 
+    rate=`echo "scale=2;$rowTotal/50"|bc`
+    IFS=$'\n'; rowCount1=0; rowCount2=0
+    echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+    for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
+        mem=`echo $t | cut -d' ' -f2`
+        cpu=`echo $t | cut -d' ' -f5`
+        [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
+        [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
+        rowCount1=$((rowCount1 + 1))
+        rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
+        rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
+        if [ "$rowMax" -le "$rowCount1" ]; then 
+            rowCount2=$((rowCount2 + 1))
+            echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+            maxMem=0; maxCpu=0;
+        fi 
+    done
+else 
+    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
+fi 
 
 
+# time vs. memory for current job
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
+
+# time vs. CPU usage for current job
+gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size 800,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
+
+#fi
 
 minimumsize=9000
 
@@ -723,12 +653,11 @@ echo "Sending email..."
 
 if [[ $USER != ld32 ]]; then
     if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
     elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ld32
-
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ld32
     else
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png ld32
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png ld32
     fi
 fi
 
@@ -736,22 +665,15 @@ fi
 
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try1. || echo Email still not sent!!; }
 elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent || \
         { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try2. || echo Email still not sent!!; }
-else
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/barchartMem.png -a $smartSlurmLogDir/barchartTime.png $USER && echo email sent || \
+elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
+    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent || \
+    { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
+else 
+    echo -e "$toSend" | mail -s "$s" $USER && echo email sent || \
     { echo Email not sent.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try3. || echo Email still not sent!!; }
 fi
-
-
-echo
-
-# create an empty file so that it is easier to match job name to job ID
-#touch $out.$SLURM_JOB_ID
-# move this to job sbumission time,
-
-# wait for email to be sent
-sleep 5

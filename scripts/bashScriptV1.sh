@@ -8,7 +8,7 @@ for i in {1..5}; do
     
     input=numbers$i.txt
     
-    findNumber.sh 1234 $input > $number.$i.txt
+    findNumber.sh $number $input > $number.$i.txt
   
 done
 

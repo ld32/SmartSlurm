@@ -13,6 +13,11 @@ for count in {2..5}; do
         cat numbers1.txt >> numbers$count.txt 
     done    
 done
+
+for count in {6..10}; do
+    cp numbers2.txt  numbers$count.txt
+done
+
 echo "Done"
 
 ls -lh numbers*
