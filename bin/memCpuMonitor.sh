@@ -109,6 +109,6 @@ while true; do
     #         cancelMailSent=yes
     #     fi
     # fi
-    sleep 5
+    sleep 60
 done
 

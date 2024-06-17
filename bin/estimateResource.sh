@@ -60,11 +60,12 @@ if [ $inputs == none ]; then
     else
         resAjust="$resAjust#There are less than 3 job records. Use default mem and time."
     fi
-
-
 else 
-    inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
- 
+    if [[ "$inputs" =~ ,jobSize:[0-9]+$ ]]; then 
+        inputSize=${inputs#,jobSize:}
+    else 
+        inputSize=`{ du --apparent-size -c -L ${inputs//,/ } 2>/dev/null || echo notExist; } | tail -n 1 | cut -f 1`
+    fi 
     if [[ "$inputSize" == "notExist" ]]; then
         inputSize=missingInputFile
         resAjust="$resAjust#Some or all input files not exist: $inputs\n"
@@ -74,7 +75,6 @@ else
         resAjust="$resAjust#InputSize: $inputSize\n"
 
         #rm ~/.rcbio/$program.$ref.mem.stat # for testing
-
         if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
             
             if [ -f .command.sh ] && [ -f .command.run ]; then 
