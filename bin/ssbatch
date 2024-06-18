@@ -102,7 +102,7 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
   	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
-        "--mail-user="  )   userEmail="${array[$i]}" && userEmail="${userEmail/--userEmail=/}";;
+        --mail-user=*   )   userEmail="${array[$i]}" && userEmail="${userEmail/--mail-user=/}";;
         "-H"            )   onhold=-H;;
         "-D"            )   chdir="${array[$i+1]}" && array[$i+1]="";;
         --chdir=*       )   chdir="${array[$i]}" && chdir="${chdir/--chdir=/}";;
@@ -615,7 +615,7 @@ else
     # don't need to be hold because got resource estimation and does depend on any jobs
     [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ] && [ -z "$deps" ] && onhold=""
 
-    [ -z "$userEmmal" ] || userEmail="--mail-user=$userEmail"
+    [ -z "$userEmail" ] || userEmail="--mail-user=$userEmail"
 
     cmd="/usr/bin/sbatch --mail-type=FAIL $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
     

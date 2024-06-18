@@ -6,7 +6,7 @@ number=$1
 
 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScriptV1.sh <numbert>" && exit 1
 
-for i in {10..1}; do
+for i in {1..10}; do
     
     input=numbers$i.txt
     in=jobSize:$i 
