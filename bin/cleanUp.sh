@@ -4,8 +4,8 @@
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
-# to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13     14
-#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime smartSlurmJobRecordDir
+# to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13       14          15
+#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime userEmail
 
 echo Running: $0 "$@"
 
@@ -33,6 +33,8 @@ slurmAcc=${11}
 inputs=${12}
 extraMemC=${13}
 extraTime=${14}
+userEmail=${15}
+
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
 

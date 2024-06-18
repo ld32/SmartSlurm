@@ -102,6 +102,7 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
   	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
+        "--mail-user="  )   userEmail="${array[$i]}" && userEmail="${userEmail/--userEmail=/}";;
         "-H"            )   onhold=-H;;
         "-D"            )   chdir="${array[$i+1]}" && array[$i+1]="";;
         --chdir=*       )   chdir="${array[$i]}" && chdir="${chdir/--chdir=/}";;
@@ -509,7 +510,7 @@ fi
 
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime $userEmail\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -522,7 +523,7 @@ else
     echoerr Building new sbatch command ...
  
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime $userEmail; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
         echo -e "unset SLURM_CPU_BIND" >> $job
 
         #echo "touch $startFlag" >> $job
@@ -581,7 +582,7 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript >> $job || true >> $job
-        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
+        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime $userEmail; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job

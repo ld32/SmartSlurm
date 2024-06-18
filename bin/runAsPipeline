@@ -119,10 +119,10 @@ elif [[ "$2" == *\ --account=* ]]; then
 fi
 
 if [[ "$2" == *\ --mail-user=* ]]; then
-    userEmail=${2#*--mail-user=}
-    export userEmail="${userEmail%% *}"
+    userEmail="--mail-user ${2#*--mail-user=}"
+    #export userEmail="${userEmail%% *}"
 else 
-    unset userEmail
+    userEmail="";
 fi
 
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $2; exit 1; }
@@ -328,7 +328,7 @@ for t in `cat ${1%% *}`; do
 
 
 
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
 
         echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 
