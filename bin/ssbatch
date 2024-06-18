@@ -615,9 +615,11 @@ else
     # don't need to be hold because got resource estimation and does depend on any jobs
     [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ] && [ -z "$deps" ] && onhold=""
 
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
+    [ -z "$userEmmal" ] || userEmail="--mail-user=$userEmail"
+
+    cmd="/usr/bin/sbatch --mail-type=FAIL $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
     
-    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
+    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
          
     if [ -z "$slurmScript" ]; then
         cmd="$cmd $additionalPara $job"
