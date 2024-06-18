@@ -628,7 +628,6 @@ else
         cmd="$cmd $additionalPara $job $slurmScriptParas"
         echo -e " $additionalPara $job $slurmScriptParas" >> $job
     fi
-
 fi
 
 echoerr New sbatch command to submit job:
