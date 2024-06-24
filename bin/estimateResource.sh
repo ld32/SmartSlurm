@@ -14,7 +14,7 @@ for param in "$@"; do
         output="$output $param"
     fi
 done
-echo "$output"
+echoerr "$output"
 
 program=$1
 ref=$2; ref=${ref//\//-}
