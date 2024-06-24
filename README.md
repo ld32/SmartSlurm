@@ -48,15 +48,15 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
 Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.time.png)
+![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/findNumber.none.time.png)
 
 Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMem.png)
+![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/barchartMem.png)
 
 Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartTime.png)
+![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/barchartTime.png)
 
 Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
 
