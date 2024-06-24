@@ -6,7 +6,15 @@ usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time 
 
 #set -x  
 
-echoerr Running: $0 $@
+output="Running: $0"
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echo "$output"
 
 program=$1
 ref=$2; ref=${ref//\//-}

@@ -7,7 +7,15 @@ for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done &
 # to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13       14          15
 #cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime userEmail
 
-echo Running: $0 "$@"
+output="Running: $0"
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echor "$output"
 
 flag=$1 
 software=$2

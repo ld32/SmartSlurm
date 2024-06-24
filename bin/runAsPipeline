@@ -1,11 +1,22 @@
 #!/bin/sh
 
-usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
+#set -x
+#set -u
 
 echolog() { echo "$@" | tee -a .smartSlurm.log; }
 
-#set -x
-#set -u
+output="Running: $0"
+
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echolog "$output"
+
+usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
 
 [ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
 
@@ -33,8 +44,6 @@ fi
 current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
 echolog runAsPipeline run date: $current_date
 
-echolog Running: $0 "$@"
-
 module list
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -46,7 +55,6 @@ fi
 [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
 
 [ -d $smartSlurmLogDir ] && [[ "$4" == run ]] && cp -rp $smartSlurmLogDir $smartSlurmLogDir.$(stat -c '%.19z' $smartSlurmLogDir | tr " " "." | tr ":" "-")
-
 
 mkdir -p $smartSlurmLogDir
 

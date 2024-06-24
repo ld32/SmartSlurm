@@ -31,17 +31,33 @@
 
 parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
 
+[[ "$parentCmd" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
+
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     echoerr() { echo "$@" >> ../../../.nextflow.log; }
 # snakemake
-else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
+elif [[ "$parentCmd" == *slurmPipeLine* ]]; then
     echoerr() { echo "$@" >> .smartSlurm.log; }
+else 
+    echoerr() { echo "$@" >&2; }
 fi 
 
-echoerr1() { echo "$@" >&2; }
+output="Running: $0"
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echoerr "$output"
 
-#echoerr parent: $parentCmd 
+current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
+echoerr ssbatch run date: $current_date
+echoerr pwd: `pwd`
+
+echoerr1() { echo "$@" >&2; }
 
 usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
@@ -60,11 +76,6 @@ fi
 mkdir -p $smartSlurmJobRecordDir/stats
 
 [ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt
-
-current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
-echoerr ssbatch run date: $current_date
-echoerr Running: $0 "$@"
-echoerr pwd: `pwd`
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -85,7 +96,6 @@ array=( "$@" )
 arrayC=("${array[@]}")  
 
 export alwaysRequeueIfFail=""
-caller=`ps -f $PPID` && [[ "$caller" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
 
 [ ! -z "$runningSingleJob" ] && set -- "$@" run && testRun=run
 

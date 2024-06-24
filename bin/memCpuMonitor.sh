@@ -2,7 +2,16 @@
 
 #set -x
 
-echo Running: $0 $@
+output="Running: $0"
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echo "$output"
+
 cd $smartSlurmLogDir #`dirname $1` #${1%/$smartSlurmLogDir/*}
 #echo pwd `pwd`
 

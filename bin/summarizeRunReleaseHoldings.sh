@@ -4,7 +4,15 @@ Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go th
 
 #set -x
 
-echo Running: $0 $@
+output="Running: $0"
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+echo "$output"
 
 if [ -f $smartSlurmLogDir/allJobs.txt ]; then 
     lines=`tail -n +2 $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
