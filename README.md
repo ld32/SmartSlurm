@@ -48,15 +48,15 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
 Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
 
-![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/findNumber.none.time.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png)
 
 Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
 
-![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/barchartMem.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMem.png)
 
 Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
 
-![](https://github.com/ld32/SmartSlurm/blob/main/stats/back/barchartTime.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png)
 
 Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
 
@@ -155,11 +155,11 @@ ________________________________________________________________________________
 
 \#Here is the input size vs memory plot for findNumber: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.mem.png)
+![](https://github.com/ld32/smartSlurm/blob/master/stats/back/findNumber.none.mem.png)
 
 \#Here is the input size vs run-time plot for findNumber: 
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/findNumber.none.time.png)
+![](https://github.com/ld32/smartSlurm/blob/master/stats/back/findNumber.none.time.png)
 
 2) Auto choose partition according to run-time request
 
@@ -357,7 +357,7 @@ Smart pipeline was originally designed to run bash scripts as a pipeline in a Sl
 \#Here is the memory usage by the optimized workflow: The original pipeline has 11 steps. Most of the steps only need less than 10G memory to run. But one of the steps need 140G. Because the original pipeline is submitted as a single huge job, 140G is reserved for all the steps. (Each compute node in the cluster has 256 GB RAM.) By submitting each step as a separate job, most steps only need to reserve 10G, which decreases memory usage dramatically. (The pink part of the graph below shows these savings.) Another optimization is to dynamically allocate memory based on the reference genome size and input sequencing data size. (This in shown in the yellow part of the graph.)
 Because of the decreased resource demand, the jobs can start earlier, and in turn increase the overall throughput.
 
-![](https://github.com/ld32/smartSlurm/blob/main/stats/back/barchartMemSaved.png)
+![](https://github.com/ld32/smartSlurm/blob/master/stats/back/barchartMemSaved.png)
 
 ## smart pipeline features:
 [Back to top](#SmartSlurm)
