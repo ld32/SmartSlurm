@@ -677,8 +677,6 @@ fi
 
 [ -z "$userEmail" ] || USER=$userEmail
 
-echo "Sending email to $USER ..."
-
 #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
     echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
@@ -693,3 +691,5 @@ else
     echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
     { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
 fi
+
+sleep 5

@@ -694,6 +694,5 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 
 
 echo Submitted batch job $jobID
-echoerr -e "Submitted batch job $jobID" 
 
-[ -z "$runningSingleJob" ] || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+[ -z "$runningSingleJob" ] && echoerr "Submitted batch job $jobID" || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
