@@ -30,7 +30,9 @@ usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [paramet
 if [ ! -z "$5" ]; then
     if [[ "$5" == checkpoint ]]; then
         checkpoint=".Checkpoint"
-    else
+    elif [[ "$5" == excludeFailedNodes ]]; then
+        echolog "Excluding failed nodes"
+    else 
         usage
     fi
 else
@@ -334,9 +336,9 @@ for t in `cat ${1%% *}`; do
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
         #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
 
+        [[ "$5" == excludeFailedNodes ]] &&  excludeFailedNode="-X"
 
-
-        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
+        [[ "$4" == run ]] && echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
 
         echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
 

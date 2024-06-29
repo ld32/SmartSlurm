@@ -114,6 +114,7 @@ for (( i=0; i<$(($#)); i++ )); do
   	case "${array[$i]}" in
         --mail-user=*   )   userEmail="${array[$i]}" && userEmail="${userEmail/--mail-user=/}";;
         "-H"            )   onhold=-H;;
+        "-X"            )   excludeFailedNodes=y;;
         "-D"            )   chdir="${array[$i+1]}" && array[$i+1]="";;
         --chdir=*       )   chdir="${array[$i]}" && chdir="${chdir/--chdir=/}";;
         --comment=*     )   comment="${array[$i]}";; # && comment=${comment/--comment=/};; # && for c in "${arr[@]}"; do eval $c; done;;
@@ -367,10 +368,8 @@ if [[ "$testRun" == "run" ]]; then
         if [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
             echo skipThisJob
             exit
-        elif [ -z "$runningSingleJob" ] && ( [ -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] ||  [ -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] ) && [ -z "$deps" ]; then
-            echo skipThisJob
-            exit
-        else     
+        elif [ -z "$runningSingleJob" ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] || [ ! -z "$runningSingleJob" ] ; then
+    
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
             echoerr1 $flag was done before, do you want to re-run it?
             echoerr1 -e "y:        To re-run this job, press y, then enter key."
@@ -470,6 +469,9 @@ fi
 # original mem and time
 memO=$mem; minO=$min
 
+
+[ -f $smartSlurmJobRecordDir/stats/badNodes.$program.$ref ] && [ ! -z "$excludeFailedNodes" ] && exNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$program.$ref`"
+
 echoerr
 echoerr Check if there input file list and this job does not depend on other jobs
 
@@ -520,12 +522,12 @@ fi
 
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime $userEmail\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
     diff .command.run .command.run.back >> ../../../.nextflow.log
-    cmd="/usr/bin/sbatch --mail-type=FAIL --requeue --parsable -p $partition --mem $mem -t $time .command.run"
+    cmd="/usr/bin/sbatch --mail-type=FAIL $exNodeList --requeue --parsable -p $partition --mem $mem -t $time .command.run"
     
 else 
 
@@ -533,7 +535,7 @@ else
     echoerr Building new sbatch command ...
  
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime $userEmail; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
         echo -e "unset SLURM_CPU_BIND" >> $job
 
         #echo "touch $startFlag" >> $job
@@ -592,7 +594,7 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript >> $job || true >> $job
-        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime $userEmail; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
+        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
@@ -627,9 +629,9 @@ else
 
     [ -z "$userEmail" ] || userEmail="--mail-user=$userEmail"
 
-    cmd="/usr/bin/sbatch --mail-type=FAIL $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
+    cmd="/usr/bin/sbatch --mail-type=FAIL $exNodeList $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
     
-    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
+    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch $exNodeList --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
          
     if [ -z "$slurmScript" ]; then
         cmd="$cmd $additionalPara $job"
