@@ -31,3 +31,5 @@ echo "...end allocating memory. Begin sleeping for $delay seconds..." >&2
 sleep $delay
 
 echo "Done" >&2
+
+#exit 1

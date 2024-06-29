@@ -15,7 +15,7 @@ for param in "$@"; do
         output="$output $param"
     fi
 done
-echor "$output"
+echo "$output"
 
 flag=$1 
 software=$2
@@ -42,6 +42,7 @@ inputs=${12}
 extraMemC=${13}
 extraTime=${14}
 userEmail=${15}
+excludeFailedNodes=${16}
 
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
@@ -540,6 +541,101 @@ if [ ! -f $succFile ]; then
 
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
+        
+
+
+        if [ ! -z "$excludeFailedNodes" ]; then 
+            echo -n ,$SLURMD_NODENAME >> $smartSlurmJobRecordDir/stats/badNodes.$software.$ref
+            
+            badNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$software.$ref`"
+   
+            export myPartition=$partition
+            export myTime=$totalT
+            export myMem=${totalM}M
+            requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
+            requeueCmd=${requeueCmd#*submit the job: }
+            requeueCmd=${requeueCmd//\$myPartition/$myPartition}
+            requeueCmd=${requeueCmd//\$myTime/$myTime}
+            requeueCmd=${requeueCmd//\$myMem/$myMem $badNodeList}
+            requeueCmd=${requeueCmd/ -H/}
+            requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
+
+            for try in {1..3}; do
+                if [ ! -f $failFile.requeued.$try.fail ]; then
+                    touch $failFile.requeued.$try.fail
+                    
+                    echo cmd: $requeueCmd
+
+                    newJobID=`$requeueCmd`
+
+                    if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
+                        echo "# mem=$myMem time=$myTime " >> $script
+                        IFS=$'\n'
+                        for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
+                            job=${line%% *}
+                            deps=`echo $line | awk '{print $2}'`
+
+                            if [[ $deps == null ]]; then
+                                deps=""
+                            elif [[ $deps == ${deps/:/} ]]; then
+                                deps="Dependency=afterok:$newJobID"
+                            else
+                                tmp=""; IFS=$' '
+                                for t in ${deps//:/ }; do
+                                    [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
+                                done
+                                [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
+                            fi
+                            if [ ! -z "$deps" ]; then
+                                scontrol update jobid=$job $deps
+                                flg=`echo $line | awk '{print $3}'`
+                                echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
+                            fi
+                        done
+
+                        #if `sh $PWD/$smartSlurmLogDir/$flag.requeueCMD; rm $PWD/$smartSlurmLogDir/$flag.requeueCMD;`; then
+                        #rm $smartSlurmLogDir/$flag.requeueCMD #;  then
+                        #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
+                        #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
+
+                        echo Requeued successfully
+                        [ -f $failFile ] && rm $failFile
+
+                        s="FailBadNode.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
+                        echo -e "" | mail -s "$s" $USER
+                        [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
+
+                        touch $out.$newJobID
+
+                        cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+                        while true; do
+                            if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
+                                break
+                            else 
+                                folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
+                                current_time=$(date +%s)
+
+                                if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
+                                    touch $smartSlurmLogDir/job.adjusting.lock 
+                                    break
+                                fi    
+                            fi
+                            echo waiting for lock to adjust job ids 
+                            sleep 1
+                        done                     
+
+                        sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
+                        rm -r $smartSlurmLogDir/job.adjusting.lock
+                        cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
+                        echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
+                        break
+                    
+                    else 
+                        echo re-submit failed;
+                    fi    
+                fi
+            done
+        fi 
     fi
     #if [ "$min" -ge 20 ] && [ ! -z "$alwaysRequeueIfFail" ] && [ "$jobStatus" != "Cancelled" ]; then
     #    ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
