@@ -171,6 +171,7 @@ echoerr partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $ta
 if [ -z "$slurmScript" ]; then
     echoerr wrapCMD: $wrapCMD
 else
+
     echoerr slurmScript: $slurmScript
     echoerr slurmScriptParas: $slurmScriptParas
 fi
@@ -278,6 +279,26 @@ fi
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
 
+# todo: figure out how to find program name and input automatically
+if [ -z "$program" ]; then 
+    if [ ! -z "$wrapCMD" ]; then
+        arr=($wrapCMD)
+        # need remove the parameters, to get unique name for job types
+        if [[ "${arr[0]}" == sh || "${arr[0]}" == bash || "${arr[0]}" == python || ""${arr[0]}" == python3  || "${arr[0]}" == matlab || ""${arr[0]}" == Rscript ]]; then
+            program="${arr[1]}"
+        else
+            program="${arr[0]}"
+        fi
+        program=${program##*/}
+        #flag=${wrapCMD// /.}; flag=${flag%;}.$tm
+    else
+        program=${slurmScript##*/}
+        #flag=$program.${slurmScriptParas// /.}
+        #flag=${flag%.}.$tm
+        
+    fi 
+fi         
+
 if [ -z "$flag" ]; then   
     tm=`mktemp XXXXXXXX --dry-run` 
     
@@ -290,22 +311,6 @@ if [ -z "$flag" ]; then
     elif [ ! -z "$name" ]; then 
         flag=$name.$tm
     else 
-        # todo: figure out how to find program name and input automatically
-        if [ ! -z "$wrapCMD" ]; then
-            arr=($wrapCMD)
-            # need remove the parameters, to get unique name for job types
-            if [[ "${arr[0]}" == sh || "${arr[0]}" == bash || "${arr[0]}" == python || ""${arr[0]}" == python3  || "${arr[0]}" == matlab || ""${arr[0]}" == Rscript ]]; then
-                program="${arr[1]}"
-            else
-                program="${arr[0]}"
-            fi
-            program=${program##*/}
-            #flag=${wrapCMD// /.}; flag=${flag%;}.$tm
-        else
-            program=${slurmScript##*/}
-            #flag=$program.${slurmScriptParas// /.}
-            #flag=${flag%.}.$tm
-        fi
         [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm 
 
     fi
