@@ -155,11 +155,11 @@ ________________________________________________________________________________
 
 \#Here is the input size vs memory plot for findNumber: 
 
-![](https://github.com/ld32/smartSlurm/blob/master/stats/back/findNumber.none.mem.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png)
 
 \#Here is the input size vs run-time plot for findNumber: 
 
-![](https://github.com/ld32/smartSlurm/blob/master/stats/back/findNumber.none.time.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png)
 
 2) Auto choose partition according to run-time request
 
@@ -286,20 +286,20 @@ adjustPartition() {
 ``` bash
 # Download smartSlurm if it is not done yet 
 cd $HOME
-git clone https://github.com/ld32/smartSlurm.git  
-export PATH=$HOME/smartSlurm/bin:$PATH
+git clone https://github.com/ld32/SmartSlurm.git  
+export PATH=$HOME/SmartSlurm/bin:$PATH
 
-cp $HOME/smartSlurm/bin/Snakefile .
-cp $HOME/smartSlurm/bin/config.yaml .
+cp $HOME/SmartSlurm/bin/Snakefile .
+cp $HOME/SmartSlurm/bin/config.yaml .
 
 # Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 module load miniconda3
-mamba env create --name snakemakeEnv --file $PWD/smartSlurm/config/snakemakeEnv.yaml
+mamba env create --name snakemakeEnv --file $PWD/SmartSlurm/config/snakemakeEnv.yaml
 
 # Review Snakefile, activate the snakemake env and run test
 module load miniconda3
 source activate snakemakeEnv
-export PATH=$PWD/smartSlurm/bin:$PATH
+export PATH=$PWD/SmartSlurm/bin:$PATH
 cat Snakefile
 snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p short"
 
@@ -322,7 +322,7 @@ Coming soon
 ``` bash
 # Download smartSlurm if it is not done yet 
 cd $HOME
-git clone https://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git  
 
 # Create Nextflow conda env
 module load miniconda3
@@ -330,10 +330,10 @@ mamba create -n  nextflowEnv -c bioconda -y nextflow
 
 # Review nextflow file, activate the nextflow env, and run test
 module load miniconda3
-export PATH=$HOME/smartSlurm/bin:$PATH  
+export PATH=$HOME/SmartSlurm/bin:$PATH  
 source activate nextflowEnv
-cp $HOME/smartSlurm/bin/nextflow.nf .
-cp $HOME/smartSlurm/config/nextflow.config .
+cp $HOME/SmartSlurm/bin/nextflow.nf .
+cp $HOME/SmartSlurm/config/nextflow.config .
 
 # If you have multiple Slurm account, modify the config file:
 nano nextflow.config
@@ -357,7 +357,7 @@ Smart pipeline was originally designed to run bash scripts as a pipeline in a Sl
 \#Here is the memory usage by the optimized workflow: The original pipeline has 11 steps. Most of the steps only need less than 10G memory to run. But one of the steps need 140G. Because the original pipeline is submitted as a single huge job, 140G is reserved for all the steps. (Each compute node in the cluster has 256 GB RAM.) By submitting each step as a separate job, most steps only need to reserve 10G, which decreases memory usage dramatically. (The pink part of the graph below shows these savings.) Another optimization is to dynamically allocate memory based on the reference genome size and input sequencing data size. (This in shown in the yellow part of the graph.)
 Because of the decreased resource demand, the jobs can start earlier, and in turn increase the overall throughput.
 
-![](https://github.com/ld32/smartSlurm/blob/master/stats/back/barchartMemSaved.png)
+![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMemSaved.png)
 
 ## smart pipeline features:
 [Back to top](#SmartSlurm)
@@ -378,13 +378,13 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 ``` bash
 # Download if it is not downlaod yet
 cd $HOME
-git clone https://github.com/ld32/smartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git  
 
 # Setup path
-export PATH=$HOME/smartSlurm/bin:$PATH  
+export PATH=$HOME/SmartSlurm/bin:$PATH  
 
 # Take a look at a regular example bash script
-cat $HOME/smartSlurm/scripts/bashScriptV1.sh
+cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
 
 # Below is the content of a regular bashScriptV1.sh 
  1 #!/bin/sh
@@ -409,7 +409,7 @@ cat $HOME/smartSlurm/scripts/bashScriptV1.sh
 
 # In order to tell the Smart Pipeline which step/command we want to submit as Slurm jobs, 
 # we add comments above the commands also some helping commands:  
-cat $HOME/smartSlurm/scripts/bashScriptV2.sh
+cat $HOME/SmartSlurm/scripts/bashScriptV2.sh
 
 # Below is the content of bashScriptV2.sh
  1 #!/bin/sh
@@ -475,11 +475,11 @@ runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
 
 
 runAsPipeline run date: 2024-04-28_16-03-36_4432
-Running: /home/ld32/smartSlurm/bin/runAsPipeline /home/ld32/smartSlurm/scripts/bashScriptV2.sh 1234
+Running: /home/ld32/SmartSlurm/bin/runAsPipeline /home/ld32/SmartSlurm/scripts/bashScriptV2.sh 1234
     sbatch -A rccg -p short -c 1 --mem 4G -t 50:0 noTmp run
 
-Converting /home/ld32/smartSlurm/scripts/bashScriptV2.sh to 
-    /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
+Converting /home/ld32/SmartSlurm/scripts/bashScriptV2.sh to 
+    /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
 
 find for loop start: for i in {1..5}; do
 
@@ -502,10 +502,10 @@ find job:
 cat $number.*.txt > all$number.txt
 cat $number.*.txt > all$number.txt --before parsing
 cat $number.*.txt > all$number.txt --after parseing
-/home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.
-    7ae574.run.sh /home/ld32/smartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
-Running /home/ld32/scratch/smartSlurmTest/log/slurmPipeLine.7ae574.run.sh 
-    /home/ld32/smartSlurm/scripts/bashScriptV2.sh
+/home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.
+    7ae574.run.sh /home/ld32/SmartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
+Running /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.7ae574.run.sh 
+    /home/ld32/SmartSlurm/scripts/bashScriptV2.sh
 
 ---------------------------------------------------------
 
@@ -586,8 +586,8 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
 ```
 cd ~    
-git clone git@github.com:ld32/smartSlurm.git  
-export PATH=$HOME/smartSlurm/bin:$PATH    
+git clone git@github.com:ld32/SmartSlurm.git  
+export PATH=$HOME/SmartSlurm/bin:$PATH    
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
 
 # Such as:    
