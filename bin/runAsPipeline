@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#set -x
+[ -z "$DEBUG" ] || set -x
 #set -u
 
 echolog() { echo "$@" | tee -a .smartSlurm.log; }

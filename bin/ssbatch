@@ -26,7 +26,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-#set -x
+[ -z "$DEBUG" ] || set -x
 #set -u
 
 parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
@@ -35,9 +35,12 @@ parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
 
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
+    exec 2>>../../../.nextflow.log
     echoerr() { echo "$@" >> ../../../.nextflow.log; }
-# snakemake
+
+# runAsPipeline
 elif [[ "$parentCmd" == *slurmPipeLine* ]]; then
+    exec 2>>.smartSlurm.log
     echoerr() { echo "$@" >> .smartSlurm.log; }
 else 
     echoerr() { echo "$@" >&2; }
@@ -100,9 +103,9 @@ export alwaysRequeueIfFail=""
 [ ! -z "$runningSingleJob" ] && set -- "$@" run && testRun=run
 
 # nextflow pipeline, log dir is on the top folder
-if [ -f .command.sh ] && [ -f .command.run ]; then 
-    export smartSlurmLogDir="../../../$smartSlurmLogDir"
-fi 
+# if [ -f .command.sh ] && [ -f .command.run ]; then 
+#     export smartSlurmLogDir="../../../$smartSlurmLogDir"
+# fi 
 mkdir -p $smartSlurmLogDir/
 
 #slurmScriptPosition=$(($(($#))-2))
@@ -295,7 +298,6 @@ if [ -z "$program" ]; then
         program=${slurmScript##*/}
         #flag=$program.${slurmScriptParas// /.}
         #flag=${flag%.}.$tm
-        
     fi 
 fi         
 
@@ -312,7 +314,6 @@ if [ -z "$flag" ]; then
         flag=$name.$tm
     else 
         [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm 
-
     fi
 fi
 
@@ -473,7 +474,6 @@ fi
 
 # original mem and time
 memO=$mem; minO=$min
-
 
 [ -f $smartSlurmJobRecordDir/stats/badNodes.$program.$ref ] && [ ! -z "$excludeFailedNodes" ] && exNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$program.$ref`"
 

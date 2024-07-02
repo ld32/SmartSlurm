@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x 
+[ -z "$DEBUG" ] || set -x
 
 usage() { echo -e "Usage: \n${0##*/} Rename jobRecord folder and job log folder, and start new run using bashScriptV2.sh"; exit 1; }
 

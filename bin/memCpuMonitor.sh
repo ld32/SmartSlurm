@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x
+[ -z "$DEBUG" ] || set -x
 
 output="Running: $0"
 for param in "$@"; do
@@ -110,14 +110,14 @@ while true; do
         exit
     fi
 
-   	# if [ -z "$cancelMailSent" ] && [ "$reservedTime" -ge 120 ]; then
-    #     CURRENT=`date +%s`
-    #     min=$(( $reservedTime - ($CURRENT - $START + 59)/60))
-    #     if [ $min -le 15 ]; then
-    #         echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
-    #         cancelMailSent=yes
-    #     fi
-    # fi
+   	if [ -z "$cancelMailSent" ] && [ "$reservedTime" -ge 120 ]; then
+        CURRENT=`date +%s`
+        min=$(( $reservedTime - ($CURRENT - $START + 59)/60))
+        if [ $min -le 15 ]; then
+            echo "$SLURM_JOB_ID is running out of time. Please contact admin to rextend." | mail -s "$SLURM_JOB_ID is running out of time" $USER
+            cancelMailSent=yes
+        fi
+    fi
     sleep 60
 done
 
