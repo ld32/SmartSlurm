@@ -217,7 +217,11 @@ adjustPartition() {
     Yes. But If -I is not given, resource estimation will be based on program name only. 
 
 ### Can -I directly take file size or job size? 
-    Not right now. I think it is good suggetion. We can add the function to next release.    
+    Yes. Please use this: 
+
+    someVariableName=jobSize:12
+    
+    #@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G
 
 ### Can I have -c or other sbatch options? 
 
