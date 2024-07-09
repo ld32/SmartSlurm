@@ -22,6 +22,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [How about multiple inputs?](#how-about-multiple-inputs)
         - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
         - [How does the memory and time formulas are calculated?](#how-does-the-memory-and-time-formulas-are-calculated)
+        - [Where is the memory and time formulas saved?](#where-is-the-memory-and-time-formulas-saved)
         - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
@@ -262,6 +263,10 @@ adjustPartition() {
         calcualte extraMem for future job estimations
     
         remove formula for this software and referencce 
+
+### Where is the memory and time formulas saved?
+
+   It is in folder: $smartSlurmJobRecordDir/stats. Here $smartSlurmJobRecordDir is defined in SmartSlurm/config/config.txt      
 
 ### What is the logic to estimate memory and time?
 
