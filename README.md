@@ -24,6 +24,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [How does the memory and time formulas are calculated?](#how-does-the-memory-and-time-formulas-are-calculated)
         - [Where is the memory and time formulas saved?](#where-is-the-memory-and-time-formulas-saved)
         - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
+        - [How ssbatch recognizes whether jobs have been previously run?](#how-ssbatch-recognizes-whether-jobs-have-been-previously-run)
         
 - [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
 
@@ -40,6 +41,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
+        - [How runAsPipeline recognizes whether jobs have been previously run?](#how-runAsPipeline-recognizes-whether-jobs-have-been-previously-run)
 
 - [sbatchAndTop](#sbatchAndTop)
 
@@ -220,9 +222,7 @@ adjustPartition() {
 ### Can -I directly take file size or job size? 
     Yes. Please use this: 
 
-    someVariableName=jobSize:12
-    
-    #@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G
+    ssbatch -I jobSize:12 ... # Here 12 is the input size. It can be any integer.
 
 ### Can I have -c or other sbatch options? 
 
@@ -288,7 +288,13 @@ adjustPartition() {
             Otherwise, use default memory/time and submit job.
 
         Otherwise: use 90th percentile as estimated value and submit job
+        
+### How ssbatch recognizes whether jobs have been previously run?
 
+  When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
+
+  Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt 
+        
 # Use ssbatch in Snakemake pipeline
 [Back to top](#SmartSlurm)
 
@@ -576,7 +582,12 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
     No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the othe jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
 
 ### Can -I directly take file size or job size? 
-    Not right now. I think it is good suggetion. We can add the function to next release.    
+
+    Yes. Please us this: 
+    
+    someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.
+    
+    #@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G
 
 ### Can I have -c x? 
 
@@ -585,6 +596,12 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 ### How about multiple inputs? 
 
     Yes. You can have input="input1.txt input2.txt" or #@2,1,find,,input1.input2,sbstch ...
+
+### How runAsPipeline recognizes whether jobs have been previously run?
+
+  When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
+
+  Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt     
 
 =======
 
