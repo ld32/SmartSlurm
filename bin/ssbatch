@@ -658,7 +658,7 @@ if [[ "$testRun" == "run" ]]; then
         jobID=$($cmd 2>jobErr)
         jobErr=$(< jobErr); rm jobErr
 
-        [ -z "$jobErr" ] || echo $jobErr >&2 
+        #[ -z "$jobErr" ] || echo $jobErr >&2 
 
         # no error and a number job ID
         if [ ! -z "$jobID" ] && [ "$jobID" -eq "$jobID" ]; then
@@ -675,6 +675,7 @@ if [[ "$testRun" == "run" ]]; then
                 break
             else
                 echoerr "not sure what error it is: $jobErr"
+                echo $jobErr
                 exit
             fi
         fi

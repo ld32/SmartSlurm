@@ -542,8 +542,6 @@ if [ ! -f $succFile ]; then
     else
         echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
         
-
-
         if [ ! -z "$excludeFailedNodes" ]; then 
             echo -n ,$SLURMD_NODENAME >> $smartSlurmJobRecordDir/stats/badNodes.$software.$ref
             
