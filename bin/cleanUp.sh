@@ -648,7 +648,7 @@ tm=$SLURM_JOBID #  `mktemp XXXXXXXX --dry-run`
 
 #rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
 echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
-/n/scratch/users/l/ld32/smartSlurmTest/work/dd/97e8dddbc0700edea966bd683bbef7/log/CreateFileB.fileA.txt.out
+
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     ls -cr $smartSlurmLogDir/../../../*/*/*/*.out | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 else 

@@ -28,7 +28,7 @@ for i in $output; do
     id=${arrIN[0]}
     deps=${arrIN[1]}
     name=${arrIN[2]}
-    software=${arrIN[3]}
+    program=${arrIN[3]}
     ref=${arrIN[4]}  ; ref=${ref//\//-}
     inputs=${arrIN[5]}
 
