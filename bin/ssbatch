@@ -39,14 +39,15 @@ if [ -f .command.sh ] && [ -f .command.run ]; then
     echoerr() { echo "$@" >> ../../../.nextflow.log; }
 
 # runAsPipeline
-elif [[ "$parentCmd" == *slurmPipeLine* ]]; then
-    exec 2>>.smartSlurm.log
-    echoerr() { echo "$@" >> .smartSlurm.log; }
-else 
+elif [ -z "$runningSingleJob" ]; then
     echoerr() { echo "$@" >&2; }
+
+# single job without runAsPipeline
+else     
+    echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
 fi 
 
-output="Running: $0"
+output="Running: `realpath $0`"
 for param in "$@"; do
     if [[ "$param" == *\ * ]]; then
         output="$output \"$param\""
@@ -54,17 +55,19 @@ for param in "$@"; do
         output="$output $param"
     fi
 done
-echoerr "$output"
 
 current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
 echoerr ssbatch run date: $current_date
 echoerr pwd: `pwd`
+echoerr "$output"
 
-echoerr1() { echo "$@" >&2; }
+#echoerr() { echo "$@" >&2; }
 
 usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
 
-[ -z "$1" ] || [[ "-h" == "$1" ]] || [[ "--help" == "$1" ]] && usage
+[[ "$1" == "-h" || "$1" == "--help" ]] && usage
+
+#todo: add HERE DOC function, example: /n/shared_db/misc/juicer/juicer.short.12hours.4core.sh
 
 if [ -z "$smartSlurmJobRecordDir" ]; then
     if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -181,6 +184,22 @@ fi
 #echoerr test or run: $testRun
 #echoerr
 
+if [ -z "$wrapCMD" ] && [ -z "$slurmScript" ]; then 
+    tm=cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
+    # check if there is commands piped in
+    while IFS= read -r line; do
+        echo "Received: $line"
+        echo -e "$line" >> $tm
+    done
+    if [ -f $tm ] && [ -s $tm ]; then 
+        slurmScript=$tm
+    else 
+        echo Error: Did not find --wrap, did not find slurmScript either.
+        usage 
+
+    fi 
+fi 
+
 if [ ! -z "$slurmScript" ]; then
   echoerr Validating slurmScript:
   firstRow=`head -n 1 $slurmScript`
@@ -230,7 +249,7 @@ if [ ! -z "$slurmScript" ]; then
   fi  
 fi
 
-[ -z "$wrapCMD" ] && [ -z "$slurmScript" ] && echo Error: Did not find --wrap, did not find slurmScript either. && exit 1
+
 
 if [[ ! -z "$slurmScript" ]]; then
     echoerr
@@ -377,20 +396,20 @@ if [[ "$testRun" == "run" ]]; then
         elif [ -z "$runningSingleJob" ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] || [ ! -z "$runningSingleJob" ] ; then
     
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
-            echoerr1 $flag was done before, do you want to re-run it?
-            echoerr1 -e "y:        To re-run this job, press y, then enter key."
-            [ -z "$runningSingleJob" ] && echoerr1 -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
-            [ -z "$runningSingleJob" ] && echoerr1 -e "yall:     To re-run all jobs, type yall, then press enter key."
+            echoerr $flag was done before, do you want to re-run it?
+            echoerr -e "y:        To re-run this job, press y, then enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key."
             echoerr -e "enter:    To not re-run this job, directly press enter key."
-            [ -z "$runningSingleJob" ] && echoerr1 -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
-            [ -z "$runningSingleJob" ] && echoerr1 -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
+            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
             read -p "" x </dev/tty
 
-            echoerr1 You typed: \"$x\"
+            echoerr You typed: \"$x\"
 
             if [[ "$x" == "y" ]]; then
                 [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
-                [ -z "$runningSingleJob" ] && echoerr1 "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
+                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
             elif [[ "$x" == "ystep" ]]; then
                 touch $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt
             elif [[ "$x" == "nstep" ]]; then
@@ -525,6 +544,8 @@ elif [ -z $partition ]; then
     adjustPartition $(( ( $min + 59 ) / 60 )) partition
 fi
 
+
+# nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
     sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
@@ -538,7 +559,8 @@ else
 
     echoerr
     echoerr Building new sbatch command ...
- 
+
+    # has --wrap
     if [ -z "$slurmScript" ]; then
         echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
         echo -e "unset SLURM_CPU_BIND" >> $job
@@ -591,10 +613,12 @@ else
             else 
 
                 # !!! runAsPipeline jobs will land here !!!
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && adjustDownStreamJobs.sh" >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh" >> $job
                 # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
             fi 
         fi
+
+    # no --wrap, has slurm script    
     else
         echo -e "#!/bin/bash" > $job
 
@@ -604,7 +628,7 @@ else
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
         if [[ "$program" == *.Checkpoint ]]; then
-            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobs.sh $smartSlurmLogDir; \"" >> $job
+            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir; \"" >> $job
         else
             
             if [ ! -z "$runningSingleJob" ]; then
@@ -614,7 +638,7 @@ else
             else 
 
                 # this is never called? Because runAsPipeline usa --wrap ? 
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag" >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir && touch $succFlag" >> $job
             fi     
         fi
     fi

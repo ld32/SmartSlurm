@@ -2,28 +2,21 @@
 
 #set -x
 
-usage() {
-    echo "Usage: checkRun [Optional log folder name, such log, or smartSlurmLog]
-          This script can guild user to debug smartSlurm runs." 
-    exit 1; 
-}
-
 submttingLog=.smartSlurm.log
 
-if [ -z "$1" ]; then 
-
-    if [ -f ~/.smartSlurm/config/config.txt ]; then
-        source ~/.smartSlurm/config/config.txt
-    else
-        source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
-    fi
-    # [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
-elif [[ $1 == "-h" ||  $i == "--help" ]]; then
-    usage; 
-else 
-    smartSlurmLogDir=$1
-    submttingLog=$smartSlurmLogDir/../$submttingLog
+if [[ $1 == "-h" ||  $i == "--help" ]]; then
+    echo "checkRun: This script can guild user to debug smartSlurm runs." 
+    exit 1; 
 fi
+if [ -f ~/.smartSlurm/config/config.txt ]; then
+    source ~/.smartSlurm/config/config.txt
+else
+    source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
+fi
+
+#export smartSlurmLogDir=smartSlurmLog #log
+
+[ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
 logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null`
 
@@ -40,8 +33,31 @@ while true; do
     echo Availale logFolders or file:
     count=1
     for i in $logFolders; do
-        [ -f "$i" ] && echo -e "${GREEN}$count${NC} file:   $i" || echo -e "${GREEN}$count${NC} folder: $i"
-        count=$((count + 1))
+    
+         # no job is submitted, ignore it
+        if [ -f "$i" ]; then 
+            nJobs=$(grep "Got output from ssbatch: Submitted batch job" $i | wc -l)
+            if [ $nJobs -gt 0 ] || [ ! -z "$all" ]; then 
+                
+                echo -en "${GREEN}$(printf "%-2s\n" $count)${NC}"
+                #echo Submitted $(grep "Got output from ssbatch: Submitted batch job" $i | wc -l) jobs 
+                printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted"
+                count=$((count + 1))
+            fi 
+            
+        else 
+            if [ -f $i/allJobs.txt ]; then 
+                nJobs=$(($(wc -l < $i/allJobs.txt) -1))
+                if [ $nJobs -gt 0 ] || [ ! -z "$all" ]; then 
+                    echo -en "${RED}$(printf "%-2s\n" $count)${NC}"
+                    
+                    printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted"
+
+                    count=$((count + 1))
+                fi 
+            fi 
+        fi  
+        [ $nJobs -eq 0 ] && hidden=y    
     done
     if [ $count -eq 2 ] && [ -z "$x" ]; then
         
@@ -50,9 +66,19 @@ while true; do
         #firstRound=y
         #x=1
     else
-        echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
+        if [ -z "$hidden" ]; then 
+            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
+        else 
+            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, and ${GREEN}a${NC} to show/hide no job logs:"
+        fi 
         read -p "" x </dev/tty
         [[ "$x" == q ]] && break
+        if [[ "$x" == a ]]; then 
+            [[ "$all" = y ]] && all="" || all=y 
+            continue
+        fi     
+        [[ "$x" == h ]] && all="" && continue
+
         [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
     fi
     

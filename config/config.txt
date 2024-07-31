@@ -9,7 +9,7 @@
 # export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
 export smartSlurmJobRecordDir=$HOME/.smartSlurm 
 
-export smartSlurmLogDir=log
+export smartSlurmLogDir=smartSlurmLog
 
 # input folder name
 export smartSlurmInputDir=inputSmartSlurm
