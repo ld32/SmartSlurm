@@ -188,7 +188,7 @@ if [ -z "$wrapCMD" ] && [ -z "$slurmScript" ]; then
     tm=cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
     # check if there is commands piped in
     while IFS= read -r line; do
-        echo "Received: $line"
+        #echo "Received: $line"
         echo -e "$line" >> $tm
     done
     if [ -f $tm ] && [ -s $tm ]; then 
@@ -622,7 +622,7 @@ else
     else
         echo -e "#!/bin/bash" > $job
 
-        grep "^#SBATCH" $slurmScript >> $job || true >> $job
+        grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
         echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
 
         #echo "touch $startFlag" >> $job

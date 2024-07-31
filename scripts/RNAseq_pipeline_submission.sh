@@ -143,6 +143,8 @@ echo "bam" > DEseq_bams.txt
 echo "condition" > DEseq_conditions.txt
 echo "label" > DEseq_labels.txt
 
+statsCMD="";
+
 #loopStart:flag1
 {
 while read -r f1 f2 f3 f4; do
@@ -237,15 +239,16 @@ while read -r f1 f2 f3 f4; do
             cd ../mapping
 
             #@8,7,mapping,Reference,in,sbatch -c 5 -p short -t 12:0:0 --mem 45G
-            STAR --runThreadN 5 --runMode alignReads --genomeDir ${Reference} --readFilesIn ../SpikeIn/${fileR1%.fastq*}_1.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn} ../SpikeIn/${fileR1%.fastq*}_2.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn} --quantMode TranscriptomeSAM GeneCounts --outSAMtype BAM SortedByCoordinate --limitBAMsortRAM 42949672960 --outFileNamePrefix $fileR1 --outMultimapperOrder Random --outSAMattrIHstart 0 --outFilterType BySJout --outFilterMismatchNmax ${numbermismatches} --alignSJoverhangMin 8 --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonicalUnannotated --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --outWigType bedGraph --outWigNorm None --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0; \
+            STAR --runThreadN 5 --runMode alignReads --genomeDir ${Reference} --readFilesIn ../SpikeIn/${fileR1%.fastq*}_1.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn} ../SpikeIn/${fileR1%.fastq*}_2.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn} --quantMode TranscriptomeSAM GeneCounts --outSAMtype BAM SortedByCoordinate --outFileNamePrefix $fileR1 --outMultimapperOrder Random --outSAMattrIHstart 0 --outFilterType BySJout --outFilterMismatchNmax ${numbermismatches} --alignSJoverhangMin 8 --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonicalUnannotated --alignIntronMin 20 --alignIntronMax 1000000 --alignMatesGapMax 1000000 --outWigType bedGraph --outWigNorm None --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0; \
             rm ../SpikeIn/${fileR1%.fastq*}_1.fastq${fileR1#*.fastq}*.bz2 ../SpikeIn/${fileR1%.fastq*}_2.fastq${fileR1#*.fastq}*.bz2 2>/dev/null || true; \
             bzip2 ../SpikeIn/${fileR1%.fastq*}_1.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn}; bzip2 ../SpikeIn/${fileR1%.fastq*}_2.fastq${fileR1#*.fastq}_NOT_${genomeSpikeIn}; \
             samtools index -@ 5 ${fileR1}Aligned.sortedByCoord.out.bam; \
             mkdir -p Dedup; cd Dedup; \
-            STAR --runThreadN 5 --limitBAMsortRAM 42949672960 --runMode inputAlignmentsFromBAM --bamRemoveDuplicatesType UniqueIdenticalNotMulti --inputBAMfile ../${fileR1}Aligned.sortedByCoord.out.bam --outFileNamePrefix $fileR1.flagdedup --outSAMtype BAM SortedByCoordinate; \
+            STAR --runThreadN 5 --runMode inputAlignmentsFromBAM --bamRemoveDuplicatesType UniqueIdenticalNotMulti --inputBAMfile ../${fileR1}Aligned.sortedByCoord.out.bam --outFileNamePrefix $fileR1.flagdedup --outSAMtype BAM SortedByCoordinate; \
             samtools view -b -F 0x400 $fileR1.flagdedupProcessed.out.bam > $fileR1.dedup.Processed.out.bam; \
             samtools index -@ 5 $fileR1.dedup.Processed.out.bam
 
+            statsCMD="$statsCMD sh $scriptsPath/RNA_stats.sh ${fileR1};"
             bams1="$bams1 Dedup/$fileR1.dedup.Processed.out.bam"
 
         done
@@ -271,8 +274,7 @@ while read -r f1 f2 f3 f4; do
     sort -k 1,1 -k 2,2n ${samplename}_rawcounts_dedup_coverage_minus.bedGraph > ${samplename}_sorted_dedup_coverage_minus.bedGraph; \
     bedGraphToBigWig ${samplename}_sorted_dedup_coverage_minus.bedGraph ${chrsizes} ${samplename}_rawcounts_dedup_coverage_minus.bw; \
     sort -k 1,1 -k 2,2n ${samplename}_rawcounts_dedup_coverage_plus.bedGraph > ${samplename}_sorted_dedup_coverage_plus.bedGraph; \
-    bedGraphToBigWig ${samplename}_sorted_dedup_coverage_plus.bedGraph $chrsizes ${samplename}_rawcounts_dedup_coverage_plus.bw; \
-    sh $scriptsPath/RNA_stats.sh $samplename
+    bedGraphToBigWig ${samplename}_sorted_dedup_coverage_plus.bedGraph $chrsizes ${samplename}_rawcounts_dedup_coverage_plus.bw
 
     [[ $f4 == empty ]] && exit
 
@@ -285,6 +287,9 @@ done
 } < "$manifest"
 
 paste DEseq_bams.txt DEseq_conditions.txt | paste - DEseq_labels.txt > DEseq_metadata.txt
+
+#@12,8,stats,,,sbatch -p short -t 30 --mem 8G -c 1
+$statsCMD
 
 ##@12,11,deseq,,,sbatch -p short -t 30 --mem 8G -c 5
 #[ -d DEseqOutput ] && rm -r DEseqOutput; Rscript $scriptsPath/deseq_analysis.r DEseq_metadata.txt ${gtf} TRUE 2 DEseq 2 0.001 '${numerator_cond}' '${denominator_cond}' 2>&1 | tee rscript.out; \
