@@ -185,7 +185,7 @@ fi
 #echoerr
 
 if [ -z "$wrapCMD" ] && [ -z "$slurmScript" ]; then 
-    tm=cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
+    tm=$smartSlurmLogDir/cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
     # check if there is commands piped in
     while IFS= read -r line; do
         #echo "Received: $line"
