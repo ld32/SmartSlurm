@@ -341,19 +341,24 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
 
-        echo "${space}echo -e \"Got output from ssbatch: \$id\"" >> $run
+        echo "${space}green=\"Got output from ssbatch: \\033[0;32m\$id\\033[0m\"" >> $run
+        echo "${space}red=\"Got output from ssbatch: \\033[0;31m\$id\\033[0m\"" >> $run
+       
+        #echo "${space}echo -e \"\$red \$green\"  ">> $run
 
-        echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$id\n\" && exit ">> $run
+        # GREEN='\033[0;32m' RED='\033[0;31m' NC='\033[0m' # No Color 
+        echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$red\" && exit ">> $run
 
         #echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$id\n\" && id=\"\" ">> $run
 
-        echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
+        echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && echo -e \"\$green\" && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
 
-        echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
+        echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$green\" && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
 
         [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run
 
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
+        echo "${space}    echo -e \"\$green\" " >> $run 
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
         echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run
@@ -377,7 +382,7 @@ for t in `cat ${1%% *}`; do
         echo "${space}    [ -z \"\${jobIDs[$step]}\" ] && jobIDs[$step]=\$id || jobIDs[$step]=\${jobIDs[$step]}:\$id"  >> $run
 
         echo "${space}else" >> $run
-        echo "${space}    echo  job \$flag is not submitted"  >> $run
+        echo "${space}    echo -e \"\$red\" && echo -e \"\\033[0;31mJob \$flag is not submitted!\\033[0m\""  >> $run
         #echo "${space}    echo Please check .smartSlurm.log for detail logs." >> $run
         echo "${space}    exit 1"  >> $run
 
@@ -443,8 +448,12 @@ echolog $run $para is ready to run. Starting to run ...
 
 eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
 
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+GREEN='\033[0;32m'
+
 echolog Thank you for using Smart Slurm. You can run:
 #echolog less .smartSlurm.log to see detail submission log.
-echolog checkRun to check run status and submission logs, and
-echolog cancellAllJobs to cancal all jobs surmitted from current directory. 
+echolog -e ${GREEN}checkRun${NC} to check run status and submission logs, and
+echolog -e ${RED}cancellAllJobs${NC} to cancal all jobs surmitted from current directory. 
 echolog

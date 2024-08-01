@@ -18,7 +18,7 @@ fi
 
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
-logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null`
+logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* 2>/dev/null`
 
 [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
