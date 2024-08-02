@@ -5,7 +5,17 @@
 user=$1
 [ -z "$user" ] && { echo -e "Usage: ondemand.sh <USER> \nThis script can visualize the user's OOD jobs' files and can be useful to debug problems with that job.\nThe tool first lists all the OOD apps used, then shows the session and logs for the selected app. Finally, it presents a list of OOD-related files that can be visualized."; exit 1; }
 
-folders=`sudo ls -td /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/* /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/*/output`
+#folders=`sudo ls -td /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/* /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/*/output`
+# * does not work
+fs=`sudo ls /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/`
+
+for i in $fs; do 
+    folders="$folders /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$i /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$i/output"
+done 
+
+folders=`sudo ls -d $folders`
+
+[ -z "$folders" ] && echo No app sessions found for this user && exit 
 
 RED='\033[0;31m'
 NC='\033[0m' # No Color

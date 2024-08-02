@@ -88,7 +88,7 @@ else
             if [ -f .command.sh ] && [ -f .command.run ]; then 
                 output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
             else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
-                output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
+                output=`estimateMemTime.sh $program ${ref//\//-} $inputSize`
             fi 
 
             #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"

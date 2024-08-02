@@ -253,6 +253,7 @@ while read -r f1 f2 f3 f4; do
         cd $wkdir/mapping
         #@9,8,merge,,,sbatch -c 1 -p short -t 2:0:0 --mem 10G
         samtools merge -f $r1fastq.dedup.Processed.out.bam $bams1
+        
         bams="$bams $r1fastq.dedup.Processed.out.bam"
         #break; 
     done
