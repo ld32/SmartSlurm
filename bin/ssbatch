@@ -563,13 +563,17 @@ else
     # has --wrap
     if [ -z "$slurmScript" ]; then
         echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+
+        # testing without trap
+        #echo -e "#!/bin/bash\ndate\n" > $job
+
         echo -e "unset SLURM_CPU_BIND" >> $job
 
         #echo "touch $startFlag" >> $job
         [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
         # `echo -e "$wrapCMD" | xargs echo -ne`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
         if [[ "$program" == *.Checkpoint ]]; then
-            #echo -e "set -x\ntrap \"[ -f $succFlag ] || touch $failFlag\" EXIT SIGSTOP SIGHUP\nsh -e -c \"$wrapCMD\" && touch $succFlag" > ${job%.sh}.cmd
+           
 
             # echo -e "set -x\nps -u $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
             # echo -e "pid=\$$" >> ${job%.sh}.cmd
@@ -613,7 +617,7 @@ else
             else 
 
                 # !!! runAsPipeline jobs will land here !!!
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh" >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
                 # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
             fi 
         fi

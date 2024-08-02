@@ -18,7 +18,7 @@ fi
 
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
-logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.20*  $submttingLog* 2>/dev/null`
+logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
 
 [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
@@ -29,36 +29,30 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 GREEN='\033[0;32m'
 
+records=""; count=1; all=y 
+for i in $logFolders; do
+    
+    if [ -d $i ]; then 
+        [ -f $i/allJobs.txt ] && nJobs=$(($(wc -l < $i/allJobs.txt) -1)) || nJobs=0
+        records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
+        count=$((count + 1))
+
+    elif [ -f "$i" ]; then 
+        nJobs=$(grep "^Submitted batch job" $i | wc -l)
+        
+        records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
+        count=$((count + 1))    
+    fi    
+done
+
 while true; do
     echo Availale logFolders or file:
-    count=1
-    for i in $logFolders; do
+    if [ ! -z "$all" ]; then 
+        echo  -e "$records" | grep -v " 0 jobs submitted"
+    else 
+        echo  -e "$records"
+    fi 
     
-         # no job is submitted, ignore it
-        if [ -f "$i" ]; then 
-            nJobs=$(grep "Got output from ssbatch: Submitted batch job" $i | wc -l)
-            if [ $nJobs -gt 0 ] || [ ! -z "$all" ]; then 
-                
-                echo -en "${GREEN}$(printf "%-2s\n" $count)${NC}"
-                #echo Submitted $(grep "Got output from ssbatch: Submitted batch job" $i | wc -l) jobs 
-                printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted"
-                count=$((count + 1))
-            fi 
-            
-        else 
-            if [ -f $i/allJobs.txt ]; then 
-                nJobs=$(($(wc -l < $i/allJobs.txt) -1))
-                if [ $nJobs -gt 0 ] || [ ! -z "$all" ]; then 
-                    echo -en "${RED}$(printf "%-2s\n" $count)${NC}"
-                    
-                    printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted"
-
-                    count=$((count + 1))
-                fi 
-            fi 
-        fi  
-        [ $nJobs -eq 0 ] && hidden=y    
-    done
     if [ $count -eq 2 ] && [ -z "$x" ]; then
         
         echo Only one logFolder. No need to select.
@@ -66,18 +60,18 @@ while true; do
         #firstRound=y
         #x=1
     else
-        if [ -z "$hidden" ]; then 
-            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
-        else 
-            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, and ${GREEN}a${NC} to show/hide no job logs:"
-        fi 
+        #if [ -z "$all" ]; then 
+        #    echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
+        #else 
+            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, and ${GREEN}h${NC} to show/hide no job logs:"
+        #fi 
         read -p "" x </dev/tty
         [[ "$x" == q ]] && break
-        if [[ "$x" == a ]]; then 
+        if [[ "$x" == h ]]; then 
             [[ "$all" = y ]] && all="" || all=y 
             continue
         fi     
-        [[ "$x" == h ]] && all="" && continue
+        #[[ "$x" == h ]] && all="" && continue
 
         [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
     fi

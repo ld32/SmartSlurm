@@ -250,13 +250,14 @@ while read -r f1 f2 f3 f4; do
 
             statsCMD="$statsCMD sh $scriptsPath/RNA_stats.sh ${fileR1};"
             bams1="$bams1 Dedup/$fileR1.dedup.Processed.out.bam"
-
+            break 
         done
 
         cd $wkdir/mapping
         #@9,8,merge,,,sbatch -c 1 -p short -t 2:0:0 --mem 10G
         samtools merge -f $r1fastq.dedup.Processed.out.bam $bams1
         bams="$bams $r1fastq.dedup.Processed.out.bam"
+        break; 
     done
     #@10,9,merge1,,,sbatch -c 5 -p short -t 12:0:0 --mem 45G
     samtools merge -f $samplename.dedup.Processed.out.bam $bams; \
@@ -283,6 +284,7 @@ while read -r f1 f2 f3 f4; do
     echo "mapping/$samplename.dedup.Processed.out.bam" >> DEseq_bams.txt
     echo $f4 >> DEseq_conditions.txt
     echo $samplename >> DEseq_labels.txt
+    break
 done
 } < "$manifest"
 
