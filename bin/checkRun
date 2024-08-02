@@ -46,7 +46,8 @@ for i in $logFolders; do
 done
 
 while true; do
-    echo Availale logFolders or file:
+    echo Path: $PWD
+    echo Availale logFolders or files:
     if [ ! -z "$all" ]; then 
         echo  -e "$records" | grep -v " 0 jobs submitted"
     else 

@@ -1,0 +1,126 @@
+#!/bin/sh
+
+#set -x
+
+user=$1
+[ -z "$user" ] && { echo -e "Usage: ondemand.sh <USER> \nThis script can visualize the user's OOD jobs' files and can be useful to debug problems with that job.\nThe tool first lists all the OOD apps used, then shows the session and logs for the selected app. Finally, it presents a list of OOD-related files that can be visualized."; exit 1; }
+
+folders=`sudo ls -td /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/* /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/*/output`
+
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+GREEN='\033[0;32m'
+
+records=""; count=1; all=""; apps="" 
+for i in $folders; do
+    if [[ "$i" == *output ]]; then 
+        i=${i%\/output}; i=${i##*\/}
+        if [[ "$records" != *$i* ]]; then 
+            records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-20s\n" " $i")\n"
+            count=$((count + 1))
+            apps="$apps$i "
+        fi     
+    else 
+        i=${i##*\/}
+        if [[ "$records" != *$i* ]]; then 
+            if [[ "$folders" != *$i/output* ]]; then 
+                records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-20s %-5s\n" " $i" "${RED}empty${NC}")\n"
+            else 
+                records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-20s\n" " $i")\n"
+            fi
+            apps="$apps$i "
+            count=$((count + 1))
+        else 
+            echo ignore $i 
+        fi  
+    fi 
+done
+
+while true; do
+    echo Path:  /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/
+    echo Availale apps:
+    if [ ! -z "$all" ]; then 
+        echo  -e "$records" | grep -v " empty"
+    else 
+        echo  -e "$records"
+    fi 
+    
+    if [ $count -eq 2 ] && [ -z "$x" ]; then
+        
+        echo Only one app. No need to select.
+        x=1 
+        #firstRound=y
+        #x=1
+    else
+        #if [ -z "$all" ]; then 
+        #    echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
+        #else 
+            echo -e "Please select the app  you want to check or type ${RED}q${NC} to quit, and ${GREEN}h${NC} to show/hide no job logs:"
+        #fi 
+        read -p "" x </dev/tty
+        [[ "$x" == q ]] && break
+        if [[ "$x" == h ]]; then 
+            [[ "$all" = y ]] && all="" || all=y 
+            continue
+        fi     
+        #[[ "$x" == h ]] && all="" && continue
+
+        [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
+    fi
+
+    app=`echo -e "$apps" | cut -d' ' -f$x`
+
+    sessions=`sudo ls -lt /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output | tail -n+2`
+    
+
+    [ -z "$sessions" ] && sleep 2 && continue
+    IFS=$'\n'; count1=1
+    for i in $sessions; do
+            ss="${GREEN}$count1${NC} $i\n$ss"
+            count1=$((count1 + 1))
+        done
+
+    while true; do
+        echo Available sessions:
+        echo -e "$ss"
+        
+        if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
+            echo Only one session. No need to select.
+            xx=1
+        else
+            echo -e "Please select a session (type q to quit):"; 
+            read -p "" xx </dev/tty;
+        
+            [[ "$xx" == q ]] && break 
+        
+            [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count1 && "$xx" -ne 0 ]] || { echo "Out of range. Should be > 0 and < $count1";  continue; }
+        fi
+        
+        session=`echo -e "$sessions" | head -n $xx | tail -n1 | awk '{print $NF}'`
+
+        #echo jobInfo:
+
+        #sudo less /home/$user/ondemand/data/sys/dashboard/batch_connect/db/$session
+
+        files=`sudo ls /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output/$session`
+
+        while true; do
+
+            count2=1
+            echo Available files:
+            for i in $files; do
+                echo -e "${GREEN}$count2${NC} $i"
+                count2=$((count2 + 1))
+            done
+            echo -e "Please select a file to view (type q to quit):"
+            read -p "" xxx </dev/tty
+
+            [[ "$xxx" == q ]] && break;
+            [[ "$xxx" =~ ^[0-9]+$ && "$xxx" -lt $count2 && "$xxx" -ne 0 ]] || { echo "Out of range. Should be > 0 and < $count2";  continue; }
+
+            file=`echo $files | cut -d' ' -f$xxx`
+
+            sudo less /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output/$session/$file
+        done
+    done
+done

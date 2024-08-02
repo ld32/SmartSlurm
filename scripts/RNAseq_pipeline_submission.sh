@@ -143,8 +143,6 @@ echo "bam" > DEseq_bams.txt
 echo "condition" > DEseq_conditions.txt
 echo "label" > DEseq_labels.txt
 
-statsCMD="";
-
 #loopStart:flag1
 {
 while read -r f1 f2 f3 f4; do
@@ -246,18 +244,17 @@ while read -r f1 f2 f3 f4; do
             mkdir -p Dedup; cd Dedup; \
             STAR --runThreadN 5 --runMode inputAlignmentsFromBAM --bamRemoveDuplicatesType UniqueIdenticalNotMulti --inputBAMfile ../${fileR1}Aligned.sortedByCoord.out.bam --outFileNamePrefix $fileR1.flagdedup --outSAMtype BAM SortedByCoordinate; \
             samtools view -b -F 0x400 $fileR1.flagdedupProcessed.out.bam > $fileR1.dedup.Processed.out.bam; \
-            samtools index -@ 5 $fileR1.dedup.Processed.out.bam
+            samtools index -@ 5 $fileR1.dedup.Processed.out.bam; sh $scriptsPath/RNA_stats.sh ${fileR1}
 
-            statsCMD="$statsCMD sh $scriptsPath/RNA_stats.sh ${fileR1};"
             bams1="$bams1 Dedup/$fileR1.dedup.Processed.out.bam"
-            break 
+            #break 
         done
 
         cd $wkdir/mapping
         #@9,8,merge,,,sbatch -c 1 -p short -t 2:0:0 --mem 10G
         samtools merge -f $r1fastq.dedup.Processed.out.bam $bams1
         bams="$bams $r1fastq.dedup.Processed.out.bam"
-        break; 
+        #break; 
     done
     #@10,9,merge1,,,sbatch -c 5 -p short -t 12:0:0 --mem 45G
     samtools merge -f $samplename.dedup.Processed.out.bam $bams; \
@@ -284,14 +281,11 @@ while read -r f1 f2 f3 f4; do
     echo "mapping/$samplename.dedup.Processed.out.bam" >> DEseq_bams.txt
     echo $f4 >> DEseq_conditions.txt
     echo $samplename >> DEseq_labels.txt
-    break
+    #break
 done
 } < "$manifest"
 
 paste DEseq_bams.txt DEseq_conditions.txt | paste - DEseq_labels.txt > DEseq_metadata.txt
-
-#@12,8,stats,,,sbatch -p short -t 30 --mem 8G -c 1
-$statsCMD
 
 ##@12,11,deseq,,,sbatch -p short -t 30 --mem 8G -c 5
 #[ -d DEseqOutput ] && rm -r DEseqOutput; Rscript $scriptsPath/deseq_analysis.r DEseq_metadata.txt ${gtf} TRUE 2 DEseq 2 0.001 '${numerator_cond}' '${denominator_cond}' 2>&1 | tee rscript.out; \
