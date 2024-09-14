@@ -2,7 +2,7 @@
 
 Usage="Usage: $0 [ workDir/log, the log folder name. ]  \nThis script will go through job name list in allJobs.txt to see if the jobs finish successfully or not."
 
-[ -z "$DEBUG" ] || set -x
+#set -x
 
 output="Running: $0"
 for param in "$@"; do

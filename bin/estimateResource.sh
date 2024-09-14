@@ -4,7 +4,7 @@ echoerr() { echo "$@" 1>&2; }
 
 usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
-[ -z "$DEBUG" ] || set -x
+#set -x
 
 output="Running: $0"
 for param in "$@"; do

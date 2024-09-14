@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ -z "$DEBUG" ] || set -x
+set -x
 #set -u
 
 echolog() { echo "$@" | tee -a .smartSlurm.log; }
@@ -127,6 +127,12 @@ elif [[ "$2" == *\ --account\ * ]]; then
 elif [[ "$2" == *\ --account=* ]]; then
     slurmAccount=${2#*--account\=}
     slurmAccount="-A ${slurmAccount%% *}"
+elif [[ "$2" == *\ --array=* ]]; then
+    echolog Error: job array is not supported! $2
+    exit
+elif [[ "$2" == *\ -a\ * ]]; then
+    echolog Error: job array is not supported! $2
+    exit
 fi
 
 if [[ "$2" == *\ --mail-user=* ]]; then
@@ -189,6 +195,14 @@ for t in `cat ${1%% *}`; do
         [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
         [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echolog sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
+        
+        if [[ "$xsuba" == *\ --array=* ]]; then
+            echolog Error: job array is not supported! $xsuba
+            exit
+        elif [[ "$xsuba" == *\ -a\ * ]]; then
+            echolog Error: job array is not supported! $xsuba
+            exit
+        fi
 
         # echolog run content:
         # tail $run

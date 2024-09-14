@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[ -z "$DEBUG" ] || set -x
+#set -x
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 

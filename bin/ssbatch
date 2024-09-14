@@ -26,7 +26,7 @@
 # Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
 
 #set -e
-[ -z "$DEBUG" ] || set -x
+#set -x
 #set -u
 
 parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
@@ -118,6 +118,8 @@ for (( i=0; i<$(($#)); i++ )); do
     [ -z "${array[$i]}" ] && continue
   	#echoerr $i " / " $(($#)) " : " ${array[$i]}
   	case "${array[$i]}" in
+  	    --array=*       )   { echoerr Error: job array is not supported!; exit; };;
+  	    "-a"            )   { echoerr Error: job array is not supported!; exit; };;
         --mail-user=*   )   userEmail="${array[$i]}" && userEmail="${userEmail/--mail-user=/}";;
         "-H"            )   onhold=-H;;
         "-X"            )   excludeFailedNodes=y;;
@@ -259,7 +261,10 @@ if [[ ! -z "$slurmScript" ]]; then
         arr=($line)
         if [[ ${arr[0]} == "#SBATCH" ]]; then
             case "${arr[1]}" in
-                --comment=*    )   echoerr found --comment && comment="${arr[1]}";; # && comment=${comment/--comment=/};; # && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
+                --array=* )   { echoerr Error: job array is not supported!; exit; };;
+  	            "-a"      )   { echoerr Error: job array is not supported!; exit; };;
+            
+                --comment=* )   echoerr found --comment && comment="${arr[1]}";; # && comment=${comment/--comment=/};; # && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
 
                 "-A"   )   echoerr Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
                 "--mem" ) [ -z "$mem" ] && echoerr Found --mem && mem="${arr[2]}";;
@@ -306,7 +311,7 @@ if [ -z "$program" ]; then
     if [ ! -z "$wrapCMD" ]; then
         arr=($wrapCMD)
         # need remove the parameters, to get unique name for job types
-        if [[ "${arr[0]}" == sh || "${arr[0]}" == bash || "${arr[0]}" == python || ""${arr[0]}" == python3  || "${arr[0]}" == matlab || ""${arr[0]}" == Rscript ]]; then
+        if [[ "${arr[0]}" == sh || "${arr[0]}" == perl || "${arr[0]}" == bash || "${arr[0]}" == python || ""${arr[0]}" == python3  || "${arr[0]}" == matlab || ""${arr[0]}" == Rscript ]]; then
             program="${arr[1]}"
         else
             program="${arr[0]}"
@@ -364,9 +369,11 @@ if [ -z "$mem" ]; then
     if [ -z "$mem1" ]; then
         mem=$defaultMem
     else
+        [[ "$mem1" == *B ]] && mem1=${mem1%B}
         [[ "$mem1" == *G ]] && mem=$(( ${mem1%G} * $core * 1024)) || mem=$(( ${mem1%M} * $core ))
     fi
 else
+    [[ "$mem" == *B ]] && mem=${mem%B}
     [[ "$mem" == *G ]] && mem=$(( ${mem%G} * 1024 )) || mem=${mem%M}
 fi
 

@@ -76,7 +76,8 @@ fi
 
 # load modules
 module purge
-module load conda2/4.2.13
+#module load conda2/4.2.13
+module load miniconda3/23.1.0
 module load gcc/6.2.0 python/2.7.12
 unset PYTHONPATH
 module load cutadapt/1.14

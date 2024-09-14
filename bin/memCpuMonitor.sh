@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[ -z "$DEBUG" ] || set -x
+#set -x
 
 output="Running: $0"
 for param in "$@"; do
