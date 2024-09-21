@@ -50,8 +50,10 @@ echolog "$output"
 module list
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
+    echolog Config file path: ~/.smartSlurm/config/config.txt
     source ~/.smartSlurm/config/config.txt
 else
+    echolog Config file path: $(dirname $0)/../config/config.txt
     source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 fi
 
