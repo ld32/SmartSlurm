@@ -296,5 +296,8 @@ done
 
 # project-level stats
 #@11,10,multistats,,,sbatch -p short -t 30 --mem=8G
-/n/data1/cores/ntc/pipeline2_smartSlurm/mergeStats.sh $metadata $no_dedup; \
-Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata
+# ntc conda env must be installed from the yml file in the ntc_env github repo
+conda activate ntc; \
+/n/data1/cores/ntc/scripts/SmartSlurm/bin/mergePROseqStats.sh $metadata $no_dedup; \
+Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata; \
+conda deactivate
