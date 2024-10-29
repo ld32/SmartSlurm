@@ -296,7 +296,9 @@ done
 
 # project-level stats
 #@11,10,multistats,,,sbatch -p short -t 30 --mem=8G
-# ntc conda env must be installed from the yml file in the ntc_env github repo
+module unload R/4.0.1; \
+unset R_LIBS; \
+source /n/app/miniconda3/23.1.0/etc/profile.d/conda.sh; \
 conda activate ntc; \
 /n/data1/cores/ntc/scripts/SmartSlurm/bin/mergePROseqStats.sh $metadata $no_dedup; \
 Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata; \
