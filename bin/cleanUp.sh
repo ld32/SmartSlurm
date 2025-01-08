@@ -652,7 +652,6 @@ echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     ls -cr $smartSlurmLogDir/../../../*/*/*/*.out | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 else 
-
     ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 fi    
 
@@ -723,8 +722,14 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 
 #fi
 
-minimumsize=9000
 
+//todo: should use $smartSlurmLogDir/$tm.dataMem.csv to directly get the data for current job and all jobs? 
+rate=0.0013 # $0.0013 per G per hour 
+maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
+savedDollar=$(echo "$rate * $maxSave / 1024 * jMin / 60" | bc -l)
+
+minimumsize=9000
 actualsize=`wc -c $out || echo 0`
 
 [ -f $succFile ] && s="${overReserved}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
@@ -741,6 +746,8 @@ else
    toSend="$toSend\nJob log:\n`cat $out`"
    #toSend="$s\n$toSend"
 fi
+
+toSend="SmartSlurm Saved $$savedDollar by dynamic allocation of memory for this job \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`
