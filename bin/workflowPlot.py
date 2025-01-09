@@ -2,7 +2,6 @@
 
 # need to install python3 and the matplot lib first
 # pip install --user networkx matplotlib
-
 import sys
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -42,9 +41,17 @@ def main():
     G = nx.DiGraph()
     G.add_edges_from(edges)
 
+    # Define colors for nodes
+    color_map = []
+    for node in G:
+        if node == 'job1':
+            color_map.append('green')
+        else:
+            color_map.append('lightblue')
+
     # Draw the graph using NetworkX's spring layout for better visibility
     pos = nx.spring_layout(G)
-    nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, font_size=10, arrowsize=20)
+    nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=2000, font_size=10, arrowsize=20)
 
     # Show the plot
     plt.title('Job Dependency Graph')
