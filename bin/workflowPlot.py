@@ -2,6 +2,8 @@
 
 # need to install python3 and the matplot lib first
 # pip install --user networkx matplotlib
+
+
 import sys
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -49,14 +51,12 @@ def main():
         else:
             color_map.append('lightblue')
 
-    # Draw the graph using NetworkX's spring layout for better visibility
-    pos = nx.spring_layout(G)
-    nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=2000, font_size=10, arrowsize=20)
+    try:
+        # Use the graphviz layout for a hierarchical structure
+        pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
+    except ImportError:
+        print("PyGraphviz not available, falling back to spring layout.")
+        pos = nx.spring_layout(G)
 
-    # Show the plot
-    plt.title('Job Dependency Graph')
-    plt.show()
-
-# Run the main function
-if __name__ == "__main__":
-    main()
+    # Draw the graph
+    nx.draw(G, pos, with_labels=True, node
