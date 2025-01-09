@@ -1,5 +1,8 @@
 #!/bin/env python3
 
+# need to install python3 and the matplot lib first
+# pip install --user networkx matplotlib
+
 import sys
 import matplotlib.pyplot as plt
 import networkx as nx
