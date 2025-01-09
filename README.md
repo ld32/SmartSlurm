@@ -127,7 +127,7 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt"
 
 # To remove ssbatch from PATH: 
-source `which unExport`; unExport ssbatch
+source unExport; unExport SmartSlurm
 
 ```
 

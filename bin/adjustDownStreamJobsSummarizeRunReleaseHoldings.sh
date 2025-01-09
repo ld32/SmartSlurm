@@ -109,7 +109,7 @@ else
 fi
 #rm -r $smartSlurmLogDir/downsteamjob.adjusting 2>/dev/null
 
-#summarizeRunReleaseHoldings.sh 
+#summarizeRunReleaseHoldings.sh    
 
 IFS=$'\n'
 
