@@ -5,7 +5,6 @@
 
 
 
-
 import sys
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -54,7 +53,7 @@ def main():
             color_map.append('lightblue')
 
     try:
-        # Use the graphviz layout for a hierarchical structure
+        # Use the graphviz layout with 'dot' for a vertical or horizontal tree structure
         pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
     except ImportError:
         print("PyGraphviz not available, falling back to spring layout.")
@@ -70,4 +69,3 @@ def main():
 # Run the main function
 if __name__ == "__main__":
     main()
-    
