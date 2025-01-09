@@ -4,6 +4,8 @@
 # pip install --user networkx matplotlib
 
 
+
+
 import sys
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -59,4 +61,13 @@ def main():
         pos = nx.spring_layout(G)
 
     # Draw the graph
-    nx.draw(G, pos, with_labels=True, node
+    nx.draw(G, pos, with_labels=True, node_color=color_map, node_size=2000, font_size=10, arrowsize=20)
+
+    # Show the plot
+    plt.title('Job Dependency Graph')
+    plt.show()
+
+# Run the main function
+if __name__ == "__main__":
+    main()
+    
