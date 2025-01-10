@@ -22,7 +22,7 @@ def write_dot_file(edges, node_colors, filename='jobs.dot'):
             unique_nodes.add(job_id)
 
         for node in unique_nodes:
-            color = node_colors.get(node, 'black')  # Default color if not specified
+            color = node_colors.get(node, 'white')  # Default color if not specified
             f.write(f'    "{node}" [color="{color}", style=filled];\n')
 
         # Write the edges
@@ -56,7 +56,8 @@ if __name__ == "__main__":
     node_colors = {
         'job0': 'red',
         'job1': 'green',
-        'job4': 'blue'
+        'job4': 'blue', 
+        'job3': 'white'
     }
 
     write_dot_file(edges, node_colors)
