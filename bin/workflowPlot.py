@@ -5,7 +5,7 @@
 
 # to run: 
 # source activate myenv
-# workflowPlot.py 
+# workflowPlot.py
 
 # after running the script, do system call
 # dot -Tsvg jobs.dot -o dag.svg
@@ -22,7 +22,7 @@ def write_dot_file(edges, node_colors, filename='jobs.dot'):
             unique_nodes.add(job_id)
 
         for node in unique_nodes:
-            color = node_colors.get(node, 'white')  # Default color if not specified
+            color = node_colors.get(node, 'black')  # Default color if not specified
             f.write(f'    "{node}" [color="{color}", style=filled];\n')
 
         # Write the edges
@@ -42,13 +42,6 @@ def read_jobs(filename):
             parts = line.split()
             job_id = parts[0]
             dependencies = parts[1] if len(parts) > 1 else ""
-            extra_info = parts[2] if len(parts) > 2 else None  # Read third column
-
-            # Manage multiple dependencies separated by ':'
-            if dependencies:
-                for dep in dependencies.split(':'):
-                    # Append a tuple (dependency, job_id, extra_info)
-                    edges.append((dep, job_id, extra_info))
 
             if dependencies:
                 for dep in dependencies.split(':'):
