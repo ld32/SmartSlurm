@@ -42,9 +42,7 @@ def read_jobs(filename):
             parts = line.split()
             job_id = parts[0]
             dependencies = parts[1] if len(parts) > 1 else ""
-            extra_info = parts[2] if 
-            if len(parts) > 2: 
-                 else None  # Read third column
+            extra_info = parts[2] if len(parts) > 2 else None  # Read third column
 
             # Manage multiple dependencies separated by ':'
             if dependencies:
