@@ -22,7 +22,7 @@ optional arguments:
     "
 }
 
-repoPath=/n/data1/cores/ntc #$(dirname $0)
+repoPath="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 if [[ $repoPath =~ /n/data1/cores/ntc ]]; then
    groups_path=/n/data1/cores/ntc
    scriptsPath=/n/data1/cores/ntc/scripts
