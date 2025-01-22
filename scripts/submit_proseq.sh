@@ -299,6 +299,6 @@ module unload R/4.0.1; \
 unset R_LIBS; \
 source /n/app/miniconda3/23.1.0/etc/profile.d/conda.sh; \
 conda activate ntc; \
-$scriptsPath/SmartSlurm/bin/mergePROseqStats.sh $metadata $no_dedup; \
+$scriptsPath/SmartSlurm/SmartSlurm/bin/mergePROseqStats.sh $metadata $no_dedup; \
 Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata; \
 conda deactivate
