@@ -28,11 +28,13 @@ if [[ $repoPath =~ /n/data1/cores/ntc ]]; then
    scriptsPath=/n/data1/cores/ntc/scripts
    bwtPath=/n/data1/cores/ntc/scripts/bowtie2-indexes
    pythonPath=/n/data1/cores/ntc/ntc-conda
+   smartSurmPath=/n/data1/cores/ntc/scripts/SmartSlurm
 elif [[ $repoPath =~ /n/data1/hms/bcmp/adelman ]]; then
    groups_path=/n/data1/hms/bcmp/adelman
    scriptsPath=/n/data1/hms/bcmp/adelman/Scripts/ntc
    bwtPath=/n/data1/hms/bcmp/adelman/Scripts/bowtie2-indexes
    pythonPath=/n/data1/hms/bcmp/adelman/ntc-conda
+   smartSurmPath=/n/data1/hms/bcmp/adelman/Scripts/SmartSlurm
 else
    echo exit 1
 fi
@@ -299,6 +301,6 @@ module unload R/4.0.1; \
 unset R_LIBS; \
 source /n/app/miniconda3/23.1.0/etc/profile.d/conda.sh; \
 conda activate ntc; \
-/n/data1/hms/bcmp/adelman/Scripts/SmartSlurm/SmartSlurm/bin/mergePROseqStats.sh $metadata $no_dedup; \
+$smartSurmPath/bin/mergePROseqStats.sh $metadata $no_dedup; \
 Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata; \
 conda deactivate
