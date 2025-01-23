@@ -81,14 +81,14 @@ while true; do
     app=`echo -e "$apps" | cut -d' ' -f$x`
 
     sessions=`sudo ls -lt /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output | tail -n+2`
-    
+    ss=""
 
     [ -z "$sessions" ] && sleep 2 && continue
     IFS=$'\n'; count1=1
     for i in $sessions; do
-            ss="${GREEN}$count1${NC} $i\n$ss"
-            count1=$((count1 + 1))
-        done
+        ss="${GREEN}$count1${NC} $i\n$ss"
+        count1=$((count1 + 1))
+    done
 
     while true; do
         echo Available sessions:
