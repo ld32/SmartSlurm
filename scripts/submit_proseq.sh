@@ -290,7 +290,7 @@ do
     rm $outDir/logs/$sampleName.stats.txt &>/dev/null || : ; \
     $scriptsPath/AdelmanLab/NIH_scripts/make_heatmap/make_heatmap -t 6 -l s -s s --nohead -p $outDir/bedGraphs/${refPrefix}_3pr_forward.bedGraph -m $outDir/bedGraphs/${refPrefix}_3pr_reverse.bedGraph -- $tssList $outDir/matrix/${cellType}_${tssPrefix}_${refPrefix}_3pr_25mer_+-2kb.txt -2000 25 160;\
     $scriptsPath/AdelmanLab/NIH_scripts/make_heatmap/make_heatmap -t 6 -l s -s s --nohead -p $outDir/bedGraphs/${refPrefix}_5pr_forward.bedGraph -m $outDir/bedGraphs/${refPrefix}_5pr_reverse.bedGraph -- $tssList $outDir/matrix/${cellType}_${tssPrefix}_${refPrefix}_5pr_5mer_+-500.txt -500 5 200; \
-    sh $scriptsPath/NascentTranscriptionCore/pipeline2/stats.sh $sampleName $genomeSpike $genomeRef $outDir $no_dedup
+    sh $smartSurmPath/bin/PROseqStats.sh $sampleName $genomeSpike $genomeRef $outDir $no_dedup
     #exit
 done
 } < "$metadata"
