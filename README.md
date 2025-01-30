@@ -617,6 +617,17 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
   or
 
   runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail
+
+### Can I eliminate the command line sbatch options?  
+
+  Sure. If all the steps in the bash script have sbatch options. Please run: 
+
+  runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+
+  or
+
+  runAsPipeline "bashScriptV2.sh 123" useTmp run
+
   
 =======
 
