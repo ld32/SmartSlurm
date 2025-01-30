@@ -2,7 +2,7 @@
 
 number=$1
 
-[ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScriptV1.sh <numbert>" && exit 1
+[ -z "$number" ] && echo -e "Error: number is missing.\nUsage: `basename $0` <numbert>" && exit 1
 
 for i in {1..5}; do
     

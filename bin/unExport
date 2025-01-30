@@ -1,5 +1,5 @@
 function unExport() {
-    path=`which $1 2>/dev/null`; path=${path%/*}
+    path=`which ssbatch 2>/dev/null`; path=${path%/*}
     [ -z "$path" ] && echo "Usage: unExport <command from that path>" && exit
     [[ $PATH == *$path:* ]] && eval "export PATH="${PATH//$path:/}""
     [[ $PATH == *:$path* ]] && eval "export PATH="${PATH//:$path/}""
