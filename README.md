@@ -127,7 +127,7 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt"
 
 # To remove ssbatch from PATH: 
-source `which unExport`; unExport ssbatch
+source unExport; unExport
 
 ```
 
@@ -302,6 +302,9 @@ adjustPartition() {
 # Download smartSlurm if it is not done yet 
 cd $HOME
 git clone https://github.com/ld32/SmartSlurm.git  
+
+ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
+
 export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
@@ -338,6 +341,8 @@ Coming soon
 # Download smartSlurm if it is not done yet 
 cd $HOME
 git clone https://github.com/ld32/SmartSlurm.git  
+
+ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
 
 # Create Nextflow conda env
 module load miniconda3
@@ -466,7 +471,7 @@ Here are two more examples:
 [Back to top](#SmartSlurm)
 
 ```
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp
 
 ```
 
@@ -480,7 +485,7 @@ With useTmp, the pipeline runner copy related data to /tmp, and all file paths w
 Sample output from the test run
 
 Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp
 
 # here are the outputs:
 [Back to top](#SmartSlurm)
@@ -603,6 +608,27 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
   Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt     
 
+### Can I receieve less email or no email? 
+
+  Sure. Please run: 
+
+  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail
+
+  or
+
+  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail
+
+### Can I eliminate the command line sbatch options?  
+
+  Sure. If all the steps in the bash script have sbatch options. Please run: 
+
+  runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+
+  or
+
+  runAsPipeline "bashScriptV2.sh 123" useTmp run
+
+  
 =======
 
 
