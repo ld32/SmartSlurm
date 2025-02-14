@@ -262,6 +262,8 @@ if [ ! -f $succFile ]; then
             newFactor=1.2
         fi
 
+ 	newFactor=$((newFactor * 1.2))
+
         mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
         
         # testing here
@@ -416,6 +418,8 @@ if [ ! -f $succFile ]; then
             newFactor=1.2
         fi
 
+	newFactor=$((newFactor * 1.2))
+ 
         #newFactor=2
         min=`echo "($min*$newFactor)/1" | bc`
         echo Trying to requeue $try with $min minutes
