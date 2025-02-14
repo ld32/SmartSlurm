@@ -24,7 +24,7 @@ if [ -z "$2" ]; then
     echolog Commandline sbatch option is empty. Please make sure all steps have sbatch options in your bash script.
 elif [[ "$2" != sbatch* ]]; then 
     args=("$@")
-    new_arg="sbatch -p short -c 1 -A --mem 2G -t 50:0"
+    new_arg="sbatch -p short -c 1 --mem 2G -t 50:0"
     args=("${args[0]}" "$new_arg" "${args[@]:1}")
     set -- "${args[@]}"
 else 
