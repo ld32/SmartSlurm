@@ -49,7 +49,7 @@ while true; do
     echo Path: $PWD
     echo Availale logFolders or files:
     if [ ! -z "$all" ]; then 
-        echo  -e "$records" | grep -v " 0 jobs submitted"
+        echo  -e "$records" #| grep -v " 0 jobs submitted"
     else 
         echo  -e "$records"
     fi 

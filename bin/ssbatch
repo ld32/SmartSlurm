@@ -230,7 +230,8 @@ if [ ! -z "$slurmScript" ]; then
     fi 
 
     
-    flag=$program.${inputs##*/}
+    flag=$program.${inputs##*/}; 
+    flag=${flag// /}; 
     
     echoerr Got snakemake parameter: rule: $program, threads: $core input: $inputs 
 
@@ -246,6 +247,7 @@ if [ ! -z "$slurmScript" ]; then
     program=`grep "# NEXTFLOW TASK:" .command.run`; program=${program#*NEXTFLOW TASK: }; 
 
     flag=$program.${inputs##*/}
+    flag=${flag// /}; 
 
     echoerr Got parameter for nextflow: program: $program flag: $flag inputs: $inputs
   fi  
@@ -343,8 +345,10 @@ fi
 
 flag=${flag//\//-}
 flag=${flag//../.}
+flag=${flag// /}
 
 [ -z "$name" ] && name=$flag
+
 
 mkdir -p $smartSlurmLogDir/
 job=$smartSlurmLogDir/$flag.sh
@@ -518,9 +522,9 @@ else
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
 
     if [ -f .command.sh ] && [ -f .command.run ]; then 
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> ../../../.nextflow.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> ../../../.nextflow.log`
     else
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> .smartSlurm.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> .smartSlurm.log`
     fi     
 fi
 
