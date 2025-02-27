@@ -630,6 +630,28 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
   runAsPipeline "bashScriptV2.sh 123" useTmp run
 
+### Does runAsPipeline run the commands in the modified script in original order?
+
+  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. 
+  
+  With runAsPipeline, the commands still run from top to bottom, except for the commands directly below #@. 
+  
+  Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
+
+### How about while loop?
+
+ For for loop, runAsPipeline can directly use the given variable as loop variable. For example: 
+
+ For file in `ls someFolder`; do
+
+ The value of variable will be use as loop variable, and later become part of job flag.
+
+ If you have a while loop of string format. Please add #loopStart:someVariable  above the while keyword  such as: 
+
+ #loopStart:f1
+ {
+ while read -r f1 f2 f3 f4; do
+ ...
   
 =======
 
