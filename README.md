@@ -42,6 +42,8 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
         - [How runAsPipeline recognizes whether jobs have been previously run?](#how-runAsPipeline-recognizes-whether-jobs-have-been-previously-run)
+        - [Does runAsPipeline run the commands in the modified script in original order?](#does-runAsPipeline-run-the-commands-in-the-modified-script-in-original-order)
+        - [How about while loop?](#how-about-while-loop)
 
 - [sbatchAndTop](#sbatchAndTop)
 
