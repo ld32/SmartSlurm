@@ -514,7 +514,7 @@ findNumber.sh 1234 $input > $number.$i.txt
 findNumber.sh 1234 $input > $number.$i.txt --before parsing
 findNumber.sh 1234 $input > $number.$i.txt --after parseing
 
-find loop end: done
+find  end: done
 
 find job marker:
 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
@@ -649,8 +649,11 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
  If you have a while loop of string format. Please add #loopStart:someVariable  above the while keyword  such as: 
 
  #loopStart:f1
+ 
  {
+ 
  while read -r f1 f2 f3 f4; do
+ 
  ...
   
 =======
