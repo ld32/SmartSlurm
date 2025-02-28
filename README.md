@@ -8,7 +8,8 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
    Here is how it works:
    
-   ![image](https://github.com/user-attachments/assets/99ac15a8-4728-4ebd-b94e-6019ffaeb7d4)
+   ![Untitled Diagram](https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7)
+
    
 
 # SmartSlurm
