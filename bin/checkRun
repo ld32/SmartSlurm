@@ -18,32 +18,37 @@ fi
 
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
-logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
+function loadData() {
+    logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
 
-[ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
+    [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
-IFS=$'\n'
-activeJobs=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
+    IFS=$'\n'
+    activeJobs=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
 
-RED='\033[0;31m'
-NC='\033[0m' # No Color
-GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    NC='\033[0m' # No Color
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
 
-records=""; count=1; all=y 
-for i in $logFolders; do
-    
-    if [ -d $i ]; then 
-        [ -f $i/allJobs.txt ] && nJobs=$(($(wc -l < $i/allJobs.txt) -1)) || nJobs=0
-        records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
-        count=$((count + 1))
-
-    elif [ -f "$i" ]; then 
-        nJobs=$(grep "^Submitted batch job" $i | wc -l)
+    records=""; count=1; all=y 
+    for i in $logFolders; do
         
-        records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
-        count=$((count + 1))    
-    fi    
-done
+        if [ -d $i ]; then 
+            [ -f $i/allJobs.txt ] && nJobs=$(($(wc -l < $i/allJobs.txt) -1)) || nJobs=0
+            records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
+            count=$((count + 1))
+
+        elif [ -f "$i" ]; then 
+            nJobs=$(grep "^Submitted batch job" $i | wc -l)
+            
+            records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
+            count=$((count + 1))    
+        fi    
+    done
+}
+
+loadData
 
 while true; do
     echo Path: $PWD
@@ -64,16 +69,19 @@ while true; do
         #if [ -z "$all" ]; then 
         #    echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
         #else 
-            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, and ${GREEN}h${NC} to show/hide no job logs:"
+            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, or type ${BLUE}r${NC} to reload and ${GREEN}h${NC} to show/hide no job logs:"
         #fi 
         read -p "" x </dev/tty
+        
         [[ "$x" == q ]] && break
+        
+        [[ "$x" == r ]] && loadData && continue
+
         if [[ "$x" == h ]]; then 
             [[ "$all" = y ]] && all="" || all=y 
             continue
         fi     
-        #[[ "$x" == h ]] && all="" && continue
-
+    
         [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
     fi
     
@@ -124,33 +132,32 @@ while true; do
         if [ $count -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
             xx=1
-        else
+        else  #Or ${RED}r${NC} to run the job command. 
             [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
-Or ${RED}r${NC} to run the job command. 
 Or ${RED}l${NC} to list all log file related to this job. Or "
             echo -e "Select a failed step to check the .out log or type ${RED}q${NC} to quit:"
             read -p "" xx </dev/tty;
         
             [[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
 
-            if [[ "$xx" == r ]]; then 
-                #set -x 
-                echo -e "${RED}Command to re-run the job interactively:"
-                echo 
-                jobStep=${failedJob##*/}
-                jobStep=${jobStep%%.*}
-                file=`ls -lrt $logFolder/slurm*.run.sh`
-                txt=`cat ${file##* }`
-                txt=${txt%%\#@$jobStep*}
-                echo -e "$txt" | grep "module load \|export PATH" 
+            # if [[ "$xx" == r ]]; then 
+            #     #set -x 
+            #     echo -e "${RED}Command to re-run the job interactively:"
+            #     echo 
+            #     jobStep=${failedJob##*/}
+            #     jobStep=${jobStep%%.*}
+            #     file=`ls -lrt $logFolder/slurm*.run.sh`
+            #     txt=`cat ${file##* }`
+            #     txt=${txt%%\#@$jobStep*}
+            #     echo -e "$txt" | grep "module load \|export PATH" 
                  
-                txt=`grep pipefail $logFolder/$failedJob.sh`
-                txt=${txt#*-c \'}
-                txt=${txt%\' && touch*}
-                echo $txt | less 
-                #set +x 
-                continue
-            fi 
+            #     txt=`grep pipefail $logFolder/$failedJob.sh`
+            #     txt=${txt#*-c \'}
+            #     txt=${txt%\' && touch*}
+            #     echo $txt | less 
+            #     #set +x 
+            #     continue
+            # fi 
             [[ "$xx" == q ]] && break
             
             [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
