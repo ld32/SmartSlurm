@@ -50,6 +50,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [How runAsPipeline recognizes whether jobs have been previously run?](#how-runAsPipeline-recognizes-whether-jobs-have-been-previously-run)
         - [Does runAsPipeline run the commands in the modified script in original order?](#does-runAsPipeline-run-the-commands-in-the-modified-script-in-original-order)
         - [How about while loop?](#how-about-while-loop)
+        - [Where is jobRecord.txt saved?](#where-is-jobrecord.txt-saved)
 
 - [sbatchAndTop](#sbatchAndTop)
 
@@ -661,6 +662,44 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
  while read -r f1 f2 f3 f4; do
  
  ...
+
+### Where is jobRecord.txt saved?
+
+As mentioned in SmartSlurm/config/config.txt: 
+
+Job record folder can be shared with a group of users.
+
+Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
+
+User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
+
+export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+
+Or: 
+
+export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+
+There are also other default settings as well: 
+
+export smartSlurmLogDir=smartSlurmLog
+
+Input folder name:
+
+export smartSlurmInputDir=inputSmartSlurm
+
+Output folder path:
+
+export smartSlurmOutputDir=$PWD/outputSmartSlurm
+
+export firstBatchCount=5
+
+export defaultMem=4096  # in M
+
+export defaultTime=120  # in min
+
+export defaultExtraTime=5     # in min. extra minutes than the estimated time
+
+export defaultExtraMem=5      # in M. extra memory than the estinated memory
   
 =======
 
