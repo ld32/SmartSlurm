@@ -3,7 +3,10 @@
 #set -x
 
 user=$1
-[ -z "$user" ] && { echo -e "Usage: ondemand.sh <USER> \nThis script can visualize the user's OOD jobs' files and can be useful to debug problems with that job.\nThe tool first lists all the OOD apps used, then shows the session and logs for the selected app. Finally, it presents a list of OOD-related files that can be visualized."; exit 1; }
+
+[ -z "$user" ] && user=$USER 
+
+[[ "$user" == "-h" ]] && { echo -e "Usage: ondemand.sh <USER> \nThis script can visualize the user's OOD jobs' files and can be useful to debug problems with that job.\nThe tool first lists all the OOD apps used, then shows the session and logs for the selected app. Finally, it presents a list of OOD-related files that can be visualized."; exit 1; }
 
 #folders=`sudo ls -td /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/* /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/*/output`
 # * does not work
@@ -122,10 +125,18 @@ while true; do
                 echo -e "${GREEN}$count2${NC} $i"
                 count2=$((count2 + 1))
             done
-            echo -e "Please select a file to view (type q to quit):"
+            echo -e "Please select a file to view, $RED a $NC for user selections, $RED b $NC for output, $RED q $NC to quit:"
             read -p "" xxx </dev/tty
-
-            [[ "$xxx" == q ]] && break;
+ 
+            if [[ "$xxx" == a ]]; then 
+                less /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output/$session/user_defined_context.json
+                continue
+            elif [[ "$xxx" == b ]]; then 
+                less /home/$user/ondemand/data/sys/dashboard/batch_connect/sys/$app/output/$session/output.log
+                continue 
+            elif [[ "$xxx" == q ]]; then 
+                 break;
+            fi 
             [[ "$xxx" =~ ^[0-9]+$ && "$xxx" -lt $count2 && "$xxx" -ne 0 ]] || { echo "Out of range. Should be > 0 and < $count2";  continue; }
 
             file=`echo $files | cut -d' ' -f$xxx`
