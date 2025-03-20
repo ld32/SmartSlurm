@@ -121,15 +121,15 @@ while true; do
 
     while true; do
         echo Available logs:
-        count=1
+        count1=1
         IFS=$'\n'
         #set -x 
         for i in `echo -e "$toShow" | tail -n +2`; do
-            echo -e "$GREEN$count ${i#*\/}"
-            count=$((count + 1))
+            echo -e "$GREEN$count1 ${i#*\/}"
+            count1=$((count1 + 1))
         done
       
-        if [ $count -eq 2 ] && [ -z "$xx" ]; then
+        if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
             xx=1
         else  #Or ${RED}r${NC} to run the job command. 
@@ -161,7 +161,7 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
             [[ "$xx" == q ]] && break
             
             [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
-            [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count";  continue; }
+            [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count1 && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count1";  continue; }
         fi
         
         failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $NF}'`
