@@ -1,7 +1,7 @@
 #!/bin/bash
 
 usage() {
-  $0 <startTime> [endTime] [userID]; exit 1; 
+  echo "$0 <startTime> [endTime] [userID]"; exit 1; 
 }
 [ -z $1 ] && usage
 
