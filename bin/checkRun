@@ -128,12 +128,12 @@ while true; do
             echo -e "$GREEN$count1 ${i#*\/}"
             count1=$((count1 + 1))
         done
-      
+        echo Currently working folder: $logFolder and job: $failedJob
         if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
             xx=1
         else  #Or ${RED}r${NC} to run the job command. 
-            echo Currently working folder: $logFolder and job: $failedJob
+            
             [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
 Or ${RED}l${NC} to list all log file related to this job. Or "
             echo -e "Select a failed step to check the .out log or type ${RED}q${NC} to quit:"
