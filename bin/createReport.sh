@@ -1,11 +1,15 @@
 #!/bin/sh
 
 usage() {
-	$0 <groupEmailAddress>
+	echo "$0 <groupEmailAddress> [run]"
 	exit 1
 }
 
 groupemail="$1";
+
+run="$2"
+
+[[ "$run" != run ]] && user=ld32 || user=""
 
 [ -z "$groupemail" ] && usage
 
@@ -13,7 +17,7 @@ startdate=`date +%Y-%m-%d -d "now - 7 days"`
 
 enddate=`date +%Y-%m-%d`
 
-report=`sacctWrapper.sh "$startdate" "$enddate"`
+report=`sacctWrapper.sh "$startdate" "$enddate" $user`
 
 IFS=
 reportheader=`echo $report | head -n 3`
