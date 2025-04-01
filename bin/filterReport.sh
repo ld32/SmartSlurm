@@ -22,19 +22,12 @@ current_report_no_header=$(echo "$current_report" | tail -n +4)
 #last_report_header=$(echo "$last_report" | head -n 3)
 last_report_no_header=$(echo "$last_report" | tail -n +4)
 
-# Prepare blacklist and group information
-blacklist="rc_training"
-rccg=$(getent group rccg | cut -d":" -f4 | tr ',' ' ')
-
 declare -A userFairshare
-
-populate_fairshare_map() {
-    while IFS='|' read -r user fairshare; do
-        if [[ -n $user && $user != "User" ]]; then
-            userFairshare["$user"]="$fairshare"
-        fi
-    done < <(sacctmgr show assoc format=User,FairShare -P)
-}
+while IFS='|' read -r user fairshare; do
+    if [[ -n $user && $user != "User" ]]; then
+        userFairshare["$user"]="$fairshare"
+    fi
+done < <(sacctmgr show assoc format=User,FairShare -P)
 
 send_email_notification() {
     local user_email="$1"
@@ -51,34 +44,6 @@ was_good_last_week() {
         fi
     done
     return 1
-}
-
-process_bad_users() {
-    for user in "${currentweekBad[@]}"; do
-        local fairshare="${userFairshare["$user"]}"
-        if [[ "$fairshare" == "1" ]]; then
-            if was_good_last_week "$user"; then
-                send_email_notification "${user}@example.com" "Fairshare Warning" "Your fairshare might be lowered if performance doesn't improve."
-            else
-                echo "Lowering fairshare for user: $user"
-                # Example command to lower fairshare
-                # sacctmgr modify user where name=$user set fairshare=0.5
-                send_email_notification "${user}@example.com" "Fairshare Notice" "Your fairshare has been lowered due to poor performance."
-            fi
-        fi
-    done
-}
-
-process_good_users() {
-    for user in "${currentweekGood[@]}"; do
-        local fairshare="${userFairshare["$user"]}"
-        if [[ "$fairshare" == "0" ]]; then
-            echo "Resetting fairshare to 1 for user: $user"
-            # Reset fairshare command
-            # sacctmgr modify user where name=$user set fairshare=1
-            send_email_notification "${user}@example.com" "Fairshare Update" "Your fairshare has been reset to 1 due to your good usage this week."
-        fi
-    done
 }
 
 process_file() {
@@ -131,15 +96,30 @@ declare -a lastweekGood=()
 declare -a lastweekBad=()
 declare -A lastweekBadData=()
 
-# Populate user fairshare data
-populate_fairshare_map
-
 # Process the reports
 process_file "$current_report_no_header" currentweekGood currentweekBad currentweekBadData
 process_file "$last_report_no_header" lastweekGood lastweekBad lastweekBadData
 
-# Process bad users and potentially modify their fairshare
-process_bad_users
+for user in "${currentweekBad[@]}"; do
+    local fairshare="${userFairshare["$user"]}"
+    if [[ "$fairshare" == "1" ]]; then
+        if was_good_last_week "$user"; then
+            send_email_notification "${user}@example.com" "Fairshare Warning" "Your fairshare might be lowered if performance doesn't improve."
+        else
+            echo "Lowering fairshare for user: $user"
+            # Example command to lower fairshare
+            # sacctmgr modify user where name=$user set fairshare=0.5
+            send_email_notification "${user}@example.com" "Fairshare Notice" "Your fairshare has been lowered due to poor performance."
+        fi
+    fi
+done
 
-# Process good users and potentially reset their fairshare
-process_good_users
+for user in "${currentweekGood[@]}"; do
+    local fairshare="${userFairshare["$user"]}"
+    if [[ "$fairshare" == "0" ]]; then
+        echo "Resetting fairshare to 1 for user: $user"
+        # Reset fairshare command
+        # sacctmgr modify user where name=$user set fairshare=1
+        send_email_notification "${user}@example.com" "Fairshare Update" "Your fairshare has been reset to 1 due to your good usage this week."
+    fi
+done
