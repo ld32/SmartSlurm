@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# this is part of slurm fairshare adjusting tools
+
 usage() {
   echo "$0 <startTime> [endTime] [userID]"; exit 1; 
 }

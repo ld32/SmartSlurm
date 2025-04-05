@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# this is part of slurm fairshare adjusting tools
 usage() {
 	echo "$0 <groupEmailAddress> [run]"
 	exit 1

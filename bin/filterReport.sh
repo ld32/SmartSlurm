@@ -2,6 +2,8 @@
 
 set -x 
 
+# this is part of slurm fairshare adjusting tools
+
 # Directory for storing report files (organized by year)
 directory_path="hpc_usage_reporting/$(date +%Y)"
 mkdir -p "$directory_path"

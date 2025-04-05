@@ -178,6 +178,8 @@ if [ -z $mem ] || [ -z $min ]; then
     mem=$defaultMem    
     min=$defaultMin
 else 
+    # larger than 249G, change to 249G
+    [ "$mem" -gt 254976 ] && mem=254976 && resAjust="$resAjust\n#Mem is reset to 249G. "
     
     #[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
     #[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "

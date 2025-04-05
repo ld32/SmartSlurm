@@ -65,7 +65,7 @@ else
                 continue
             fi
 
-            IFS=' ' read -r inputSize mem min extraMem <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag 0 0 adjust`
+            IFS=' ' read -r inputSize mem min extraMem <<< `estimateResource.sh $program ${ref//\//-} $inputs $name 0 0 adjust`
 
             #inputSize=${output%% *}; mem=${output% *}; mem=${mem#* }; min=${output##* }
 
