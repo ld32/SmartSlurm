@@ -191,10 +191,9 @@ for line in $lines; do
                         echo Fail to estimate new resource. Directly release one job anyway. 
                         echo -e "Job is beging direcly released by $SLURM_JOBID $currentName\n" >> $smartSlurmLogDir/$name.out
                         scontrol release $id 
-                    fi 
-                    
+                    fi
                 fi
-            fi            
+            fi    
         elif [ -f $smartSlurmLogDir/$name.failed.requeued.1.time ]; then 
             toSend="$toSend\n${line:0:40} Requeued"
             requeue=$((requeue + 1))    
@@ -203,7 +202,7 @@ for line in $lines; do
             unknown=$((unknown + 1))
         fi
         if [ "$id" == "$SLURM_JOBID" ]; then 
-            #check if statics is available for new ten hoding jobs
+            #check if statics is available for new ten holding jobs
             unholdCounter=5 # only take care of jobs without dependency
         fi 
     fi

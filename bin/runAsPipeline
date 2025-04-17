@@ -27,8 +27,8 @@ elif [[ "$2" != sbatch* ]]; then
     new_arg="sbatch -p short -c 1 --mem 2G -t 50:0"
     args=("${args[0]}" "$new_arg" "${args[@]:1}")
     set -- "${args[@]}"
-else 
-    usage
+#else 
+#    usage
 fi
 
 [[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage
