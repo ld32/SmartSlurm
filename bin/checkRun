@@ -35,7 +35,7 @@ function loadData() {
     for i in $logFolders; do
         
         if [ -d $i ]; then 
-            [ -f $i/allJobs.txt ] && nJobs=$(($(wc -l < $i/allJobs.txt) -1)) || nJobs=0
+            [ -f $i/allJobs.txt ] && nJobs=$(grep -v ^job_id $i/allJobs.txt | wc -l) || nJobs=0
             records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
             count=$((count + 1))
 
@@ -89,7 +89,7 @@ while true; do
 
     [ -f "$logFolder" ] && less $logFolder && continue
 
-    lines=`tail -n +2 $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+    lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
     current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
     toShow="Summery for jobs in allJobs.txt:"

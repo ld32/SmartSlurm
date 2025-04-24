@@ -47,7 +47,13 @@ else
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
 fi 
 
-output="Running: `realpath $0`"
+output="Running: `realpath $0` $@"
+
+current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
+echoerr ssbatch run date: $current_date
+echoerr pwd: `pwd`
+echoerr "$output"
+
 for param in "$@"; do
     if [[ "$param" == *\ * ]]; then
         output="$output \"$param\""
@@ -55,11 +61,6 @@ for param in "$@"; do
         output="$output $param"
     fi
 done
-
-current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
-echoerr ssbatch run date: $current_date
-echoerr pwd: `pwd`
-echoerr "$output"
 
 #echoerr() { echo "$@" >&2; }
 
@@ -738,8 +739,10 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 
 #echoerr New slurmScirpt is ready. The content is:
 #cat $job >&2
+echoerr "Submitted batch job $jobID"
 
+[ -z "$runningSingleJob" ] || echoerr -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
 
 echo Submitted batch job $jobID
 
-[ -z "$runningSingleJob" ] && echoerr "Submitted batch job $jobID" || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+
