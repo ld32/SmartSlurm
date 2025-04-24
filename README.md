@@ -98,11 +98,11 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers1.txt"
+
 ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers3.txt"
-
-ssbatch -P findNumber -I numbers4.txt -F find4 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers4.txt"
 
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers5.txt"
@@ -111,8 +111,8 @@ ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt"
+ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers2.txt"
 
 # You can have multiple inputs: 
 ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
