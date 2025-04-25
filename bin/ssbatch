@@ -695,7 +695,7 @@ if [[ "$testRun" == "run" ]]; then
 
     # try to submit the job three time in case it fails
     for i in {1..3}; do
-        jobID=$($cmd 2>jobErr)
+        jobID=$(unset SLURM_MEM_PER_CPU SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU; $cmd 2>jobErr; )
         jobErr=$(< jobErr); rm jobErr
 
         #[ -z "$jobErr" ] || echo $jobErr >&2 
@@ -732,6 +732,8 @@ else
 fi
 
 echo -e "\n#myMem=$mem myTime=$time" >> $job
+  
+  [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
 
 #if [[ "$parentCmd" != */bin/snakemake* ]]; then
     printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs>> $smartSlurmLogDir/allJobs.txt;
