@@ -177,16 +177,22 @@ fi
 if [ -z $mem ] || [ -z $min ]; then 
     mem=$defaultMem    
     min=$defaultMin
-else 
+fi 
+#else 
     
-    #[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
-    #[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+#    [ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+#    [ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+   
+#fi
 
-    if [[ $adjust == "adjust" ]]; then 
-        echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
-    fi  
-fi
+[ $mem -gt 254976 ] && mem=254976 && resAjust="$resAjust\n#Mem is reset to 249G. "
+
+if [[ $adjust == "adjust" ]]; then 
+    echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
+fi  
+
 echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
+
 echo $inputSize $mem $min $extraMem
 
 echoerr Got $inputSize $mem $min $extraMem

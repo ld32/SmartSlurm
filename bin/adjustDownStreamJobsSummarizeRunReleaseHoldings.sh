@@ -11,10 +11,9 @@ echo Running: $0  $@
 
 # jobid, deps, flag, software, ref, input, inputSize
 if [ -f $smartSlurmLogDir/allJobs.txt ]; then 
-    lines=`tail -n +2 $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
+    lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
 else 
     exit 1; 
-    #lines="$SLURMJOB_ID $2" # tail -n +2 allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 fi 
 
 IFS=$' ';
@@ -65,7 +64,7 @@ else
                 continue
             fi
 
-            IFS=' ' read -r inputSize mem min extraMem <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag 0 0 adjust`
+            IFS=' ' read -r inputSize mem min extraMem <<< `estimateResource.sh $program ${ref//\//-} $inputs $name 0 0 adjust`
 
             #inputSize=${output%% *}; mem=${output% *}; mem=${mem#* }; min=${output##* }
 
