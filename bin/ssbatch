@@ -539,6 +539,8 @@ fi
 
 echo -e "$resAjust" >> $outFlag
 
+[ -z "$slurmAcc" ] && [ ! -z "$defaultSlurmAcc" ] && slurmAcc="-A $defaultSlurmAcc"
+
 # testtime
 #min=10   # min
 # testmem
