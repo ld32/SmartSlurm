@@ -4,7 +4,13 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 
 1. ssbatch: An sbatch wrapper with a custom function to estimate memory RAM and time based on several factors (i.e., program type, input size,previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and sending an optional email notification.
  
-2. runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency. 
+2. runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency.
+
+   Here is how it works:
+   
+   ![Untitled Diagram](https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7)
+
+      
 
 # SmartSlurm
 
@@ -42,6 +48,9 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [Can I have -c x](#can-i-have--c-x)
         - [How about multiple inputs](#how-about-multiple-inputs)
         - [How runAsPipeline recognizes whether jobs have been previously run?](#how-runAsPipeline-recognizes-whether-jobs-have-been-previously-run)
+        - [Does runAsPipeline run the commands in the modified script in original order?](#does-runAsPipeline-run-the-commands-in-the-modified-script-in-original-order)
+        - [How about while loop?](#how-about-while-loop)
+        - [Where is jobRecord.txt saved?](#where-is-jobrecord.txt-saved)
 
 - [sbatchAndTop](#sbatchAndTop)
 
@@ -89,11 +98,11 @@ createNumberFiles.sh
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
 # findNumber is just a random name. You can use anything you like.
 
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers1.txt"
+
 ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers3.txt"
-
-ssbatch -P findNumber -I numbers4.txt -F find4 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers4.txt"
 
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers5.txt"
@@ -102,8 +111,8 @@ ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
 # memory and run-time according input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt"
+ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers2.txt"
 
 # You can have multiple inputs: 
 ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
@@ -127,7 +136,7 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers1.txt"
 
 # To remove ssbatch from PATH: 
-source unExport; unExport SmartSlurm
+source unExport; unExport
 
 ```
 
@@ -302,6 +311,9 @@ adjustPartition() {
 # Download smartSlurm if it is not done yet 
 cd $HOME
 git clone https://github.com/ld32/SmartSlurm.git  
+
+ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
+
 export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
@@ -338,6 +350,8 @@ Coming soon
 # Download smartSlurm if it is not done yet 
 cd $HOME
 git clone https://github.com/ld32/SmartSlurm.git  
+
+ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
 
 # Create Nextflow conda env
 module load miniconda3
@@ -466,7 +480,7 @@ Here are two more examples:
 [Back to top](#SmartSlurm)
 
 ```
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp
 
 ```
 
@@ -480,7 +494,7 @@ With useTmp, the pipeline runner copy related data to /tmp, and all file paths w
 Sample output from the test run
 
 Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
-runAsPipeline bashScriptV2.sh "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp
 
 # here are the outputs:
 [Back to top](#SmartSlurm)
@@ -507,7 +521,7 @@ findNumber.sh 1234 $input > $number.$i.txt
 findNumber.sh 1234 $input > $number.$i.txt --before parsing
 findNumber.sh 1234 $input > $number.$i.txt --after parseing
 
-find loop end: done
+find  end: done
 
 find job marker:
 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
@@ -603,6 +617,90 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
   Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt     
 
+### Can I receieve less email or no email? 
+
+  Sure. Please run: 
+
+  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail
+
+  or
+
+  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail
+
+### Can I eliminate the command line sbatch options?  
+
+  Sure. If all the steps in the bash script have sbatch options. Please run: 
+
+  runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+
+  or
+
+  runAsPipeline "bashScriptV2.sh 123" useTmp run
+
+### Does runAsPipeline run the commands in the modified script in original order?
+
+  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. 
+  
+  With runAsPipeline, the commands still run from top to bottom, except for the commands directly below #@. 
+  
+  Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
+
+### How about while loop?
+
+ For for loop, runAsPipeline can directly use the given variable as loop variable. For example: 
+
+ For file in `ls someFolder`; do
+
+ The value of variable will be use as loop variable, and later become part of job flag.
+
+ If you have a while loop of string format. Please add #loopStart:someVariable  above the while keyword  such as: 
+
+ #loopStart:f1
+ 
+ {
+ 
+ while read -r f1 f2 f3 f4; do
+ 
+ ...
+
+### Where is jobRecord.txt saved?
+
+As mentioned in SmartSlurm/config/config.txt: 
+
+Job record folder can be shared with a group of users.
+
+Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
+
+User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
+
+export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+
+Or: 
+
+export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+
+There are also other default settings as well: 
+
+export smartSlurmLogDir=smartSlurmLog
+
+Input folder name:
+
+export smartSlurmInputDir=inputSmartSlurm
+
+Output folder path:
+
+export smartSlurmOutputDir=$PWD/outputSmartSlurm
+
+export firstBatchCount=5
+
+export defaultMem=4096  # in M
+
+export defaultTime=120  # in min
+
+export defaultExtraTime=5     # in min. extra minutes than the estimated time
+
+export defaultExtraMem=5      # in M. extra memory than the estinated memory
+  
 =======
 
 

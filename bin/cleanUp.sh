@@ -262,7 +262,9 @@ if [ ! -f $succFile ]; then
             newFactor=1.2
         fi
 
-        mem=`echo "($totalM*$newFactor+$maxExtra*2)/1" | bc`
+
+
+        mem=`echo "($totalM*$newFactor*1.2+$maxExtra*2)/1" | bc`
         
         # testing here
         #mem=1000
@@ -415,9 +417,9 @@ if [ ! -f $succFile ]; then
         else
             newFactor=1.2
         fi
-
+ 
         #newFactor=2
-        min=`echo "($min*$newFactor)/1" | bc`
+        min=`echo "($min*$newFactor*1.2)/1" | bc`
         echo Trying to requeue $try with $min minutes
         echo $inputSize $totalM $min $maxExtra > ${out%.out}.adjust
 
@@ -711,7 +713,7 @@ echo display $smartSlurmLogDir/$tm.barchartTime.png
 #     cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
 # fi 
 
-
+# todo: need adjust reserved memory if the job was ajusted by upstream job!!!!!!!
 # time vs. memory for current job
 width=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`; width=$((width*16)); [ $width -le 800 ] && width=800
 gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time (min)'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
@@ -798,19 +800,26 @@ fi
 
 [ -z "$userEmail" ] || USER=$userEmail
 
-#echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
-        { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
-elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
-        { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
-elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
-    echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
-    { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
-else 
-    echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
-    { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
-fi
 
+if [[ "$lessEmail" == "noEmail" ]]; then 
+    echo noEmail
+elif [[ "$lessEmail" == "noSuccEmail" ]] && [[ "$s" == *Succ* ]]; then
+    echo lessEmail: not sending email because job successful
+ 
+else 
+    #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
+            { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
+    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
+            { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
+    elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
+        { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
+    else 
+        echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
+        { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
+    fi
+fi 
 sleep 5

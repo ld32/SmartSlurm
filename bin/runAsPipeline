@@ -16,21 +16,37 @@ for param in "$@"; do
 done
 
 
-usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> <sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .> <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [checkpoint]"; exit 1; }
+usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> [sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .] <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [noEmail/noSuccEmail, default is all emails.]"; exit 1; }
 
 [ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
 
-[[ "$2" != sbatch* ]] && usage
+if [ -z "$2" ]; then 
+    echolog Commandline sbatch option is empty. Please make sure all steps have sbatch options in your bash script.
+elif [[ "$2" != sbatch* ]]; then 
+    args=("$@")
+    new_arg="sbatch -p short -c 1 --mem 2G -t 50:0"
+    args=("${args[0]}" "$new_arg" "${args[@]:1}")
+    set -- "${args[@]}"
+#else 
+#    usage
+fi
 
 [[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage
 
 [[ -z "$4"  ]] || [[ "$4" == run ]] || usage
 
+[[ -z "$5" ]] || [[ "$5" == noSuccEmail ]] || [[ "$5" == noEmail ]] || usage 
 
-if [ ! -z "$5" ]; then
-    if [[ "$5" == checkpoint ]]; then
+if [ -z "$5" ]; then
+    export lessEmail=""
+else 
+    export lessEmail="$5"
+fi 
+
+if [ ! -z "$6" ]; then
+    if [[ "$6" == checkpoint ]]; then
         checkpoint=".Checkpoint"
-    elif [[ "$5" == excludeFailedNodes ]]; then
+    elif [[ "$6" == excludeFailedNodes ]]; then
         echolog "Excluding failed nodes"
     else 
         usage

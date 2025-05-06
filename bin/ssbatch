@@ -47,7 +47,13 @@ else
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
 fi 
 
-output="Running: `realpath $0`"
+output="Running: `realpath $0` $@"
+
+current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
+echoerr ssbatch run date: $current_date
+echoerr pwd: `pwd`
+echoerr "$output"
+
 for param in "$@"; do
     if [[ "$param" == *\ * ]]; then
         output="$output \"$param\""
@@ -55,11 +61,6 @@ for param in "$@"; do
         output="$output $param"
     fi
 done
-
-current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
-echoerr ssbatch run date: $current_date
-echoerr pwd: `pwd`
-echoerr "$output"
 
 #echoerr() { echo "$@" >&2; }
 
@@ -230,7 +231,8 @@ if [ ! -z "$slurmScript" ]; then
     fi 
 
     
-    flag=$program.${inputs##*/}
+    flag=$program.${inputs##*/}; 
+    flag=${flag// /}; 
     
     echoerr Got snakemake parameter: rule: $program, threads: $core input: $inputs 
 
@@ -246,6 +248,7 @@ if [ ! -z "$slurmScript" ]; then
     program=`grep "# NEXTFLOW TASK:" .command.run`; program=${program#*NEXTFLOW TASK: }; 
 
     flag=$program.${inputs##*/}
+    flag=${flag// /}; 
 
     echoerr Got parameter for nextflow: program: $program flag: $flag inputs: $inputs
   fi  
@@ -343,8 +346,10 @@ fi
 
 flag=${flag//\//-}
 flag=${flag//../.}
+flag=${flag// /}
 
 [ -z "$name" ] && name=$flag
+
 
 mkdir -p $smartSlurmLogDir/
 job=$smartSlurmLogDir/$flag.sh
@@ -518,9 +523,9 @@ else
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
 
     if [ -f .command.sh ] && [ -f .command.run ]; then 
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> ../../../.nextflow.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> ../../../.nextflow.log`
     else
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} $inputs $flag $mem $min 2>> .smartSlurm.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> .smartSlurm.log`
     fi     
 fi
 
@@ -533,6 +538,8 @@ fi
 #[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
 
 echo -e "$resAjust" >> $outFlag
+
+[ -z "$slurmAcc" ] && [ ! -z "$defaultSlurmAcc" ] && slurmAcc="-A $defaultSlurmAcc"
 
 # testtime
 #min=10   # min
@@ -690,7 +697,7 @@ if [[ "$testRun" == "run" ]]; then
 
     # try to submit the job three time in case it fails
     for i in {1..3}; do
-        jobID=$($cmd 2>jobErr)
+        jobID=$(unset SLURM_MEM_PER_CPU SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU; $cmd 2>jobErr; )
         jobErr=$(< jobErr); rm jobErr
 
         #[ -z "$jobErr" ] || echo $jobErr >&2 
@@ -727,6 +734,8 @@ else
 fi
 
 echo -e "\n#myMem=$mem myTime=$time" >> $job
+  
+  [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
 
 #if [[ "$parentCmd" != */bin/snakemake* ]]; then
     printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs>> $smartSlurmLogDir/allJobs.txt;
@@ -734,8 +743,10 @@ echo -e "\n#myMem=$mem myTime=$time" >> $job
 
 #echoerr New slurmScirpt is ready. The content is:
 #cat $job >&2
+echoerr "Submitted batch job $jobID"
 
+[ -z "$runningSingleJob" ] || echoerr -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
 
 echo Submitted batch job $jobID
 
-[ -z "$runningSingleJob" ] && echoerr "Submitted batch job $jobID" || echo -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+

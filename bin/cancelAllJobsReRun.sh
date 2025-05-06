@@ -12,7 +12,7 @@ out=`squeue -u $USER -t PD,R -o "%.18i"`
 
 declare -A nmap
 
-lines=`tail -n +2 $smartSlurmLogDir/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
+lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`

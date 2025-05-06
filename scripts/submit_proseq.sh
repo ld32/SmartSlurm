@@ -22,20 +22,54 @@ optional arguments:
     "
 }
 
-repoPath=/n/data1/cores/ntc #$(dirname $0)
-if [[ $repoPath =~ /n/data1/cores/ntc ]]; then
-   groups_path=/n/data1/cores/ntc
-   scriptsPath=/n/data1/cores/ntc/scripts
-   bwtPath=/n/data1/cores/ntc/scripts/bowtie2-indexes
-   pythonPath=/n/data1/cores/ntc/ntc-conda
-elif [[ $repoPath =~ /n/data1/hms/bcmp/adelman ]]; then
-   groups_path=/n/data1/hms/bcmp/adelman
-   scriptsPath=/n/data1/hms/bcmp/adelman/Scripts/ntc
-   bwtPath=/n/data1/hms/bcmp/adelman/Scripts/bowtie2-indexes
-   pythonPath=/n/data1/hms/bcmp/adelman/ntc-conda
+# Function to set paths based on the matched group
+set_paths() {
+  local group=$1
+  case $group in
+    ntc)
+      groups_path=/n/data1/cores/ntc
+      scriptsPath=/n/data1/cores/ntc/scripts
+      bwtPath=/n/data1/cores/ntc/scripts/bowtie2-indexes
+      pythonPath=/n/data1/cores/ntc/ntc-conda
+      ;;
+    adelman)
+      groups_path=/n/data1/hms/bcmp/adelman
+      scriptsPath=/n/data1/hms/bcmp/adelman/Scripts/ntc
+      bwtPath=/n/data1/hms/bcmp/adelman/Scripts/bowtie2-indexes
+      pythonPath=/n/data1/hms/bcmp/adelman/ntc-conda
+      ;;
+    *)
+      echo "No matching group found"
+      exit 1
+      ;;
+  esac
+}
+
+# Get the user's groups and read them into an array
+IFS=' ' read -r -a groups <<< "$(id -Gn)"
+
+# Debugging output
+#echo "User's groups: ${groups[@]}"
+
+# Check for groups in the desired priority order
+if [[ " ${groups[@]} " =~ " ntc " ]]; then
+  matched_group="ntc"
+  echo "Matched group: $matched_group"
+  set_paths $matched_group
+elif [[ " ${groups[@]} " =~ " adelman " ]]; then
+  matched_group="adelman"
+  echo "Matched group: $matched_group"
+  set_paths $matched_group
 else
-   echo exit 1
+  echo "No matching group found"
+  exit 1
 fi
+
+# Print the paths (for debugging purposes)
+echo "groups_path: $groups_path"
+echo "scriptsPath: $scriptsPath"
+echo "bwtPath: $bwtPath"
+echo "pythonPath: $pythonPath"
 
 # groups_path=/home/ld32/scratch3/data/ntc
 # scriptsPath=/home/ld32/scratch3/data/ntc/scripts
@@ -288,13 +322,17 @@ do
     rm $outDir/logs/$sampleName.stats.txt &>/dev/null || : ; \
     $scriptsPath/AdelmanLab/NIH_scripts/make_heatmap/make_heatmap -t 6 -l s -s s --nohead -p $outDir/bedGraphs/${refPrefix}_3pr_forward.bedGraph -m $outDir/bedGraphs/${refPrefix}_3pr_reverse.bedGraph -- $tssList $outDir/matrix/${cellType}_${tssPrefix}_${refPrefix}_3pr_25mer_+-2kb.txt -2000 25 160;\
     $scriptsPath/AdelmanLab/NIH_scripts/make_heatmap/make_heatmap -t 6 -l s -s s --nohead -p $outDir/bedGraphs/${refPrefix}_5pr_forward.bedGraph -m $outDir/bedGraphs/${refPrefix}_5pr_reverse.bedGraph -- $tssList $outDir/matrix/${cellType}_${tssPrefix}_${refPrefix}_5pr_5mer_+-500.txt -500 5 200; \
-    sh /n/data1/cores/ntc/pipeline2_smartSlurm/stats.sh $sampleName $genomeSpike $genomeRef $outDir $no_dedup $scriptsPath
-
+    sh $smartSurmPath/scripts/PROseqStats.sh $sampleName $genomeSpike $genomeRef $outDir $no_dedup
     #exit
 done
 } < "$metadata"
 
 # project-level stats
 #@11,10,multistats,,,sbatch -p short -t 30 --mem=8G
-/n/data1/cores/ntc/pipeline2_smartSlurm/mergeStats.sh $metadata $no_dedup; \
-Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata
+module unload R/4.0.1; \
+unset R_LIBS; \
+source /n/app/miniconda3/23.1.0/etc/profile.d/conda.sh; \
+conda activate ntc; \
+$smartSurmPath/scripts/mergePROseqStats.sh $metadata $no_dedup; \
+Rscript $scriptsPath/NascentTranscriptionCore/pipeline2/multiStats.R $metadata; \
+conda deactivate
