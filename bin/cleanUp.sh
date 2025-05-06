@@ -730,11 +730,11 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 rate=0.0013 # $0.0013 per G per hour 
 maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
 jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
-savedDollar=$(echo "$rate * $maxSave / 1024 * $jMin / 60" | bc -l)
+savedDollar=$(echo "$rate * $maxSaved / 1024 * $jMin / 60" | bc -l)
 
 maxUsed=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
 #jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
-savedDollar1=$(echo "$rate * ($defaultMem - $mmaxUsed) / 1024 * $jMin / 60" | bc -l)
+savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc -l)
 
 #echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
 savedMem=`awk -F',' '{sum += $4} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
@@ -761,10 +761,11 @@ else
    #toSend="$s\n$toSend"
 fi
 
-toSend="SmartSlurm Saved $$savedDollar by dynamic allocation of memory for this job.\n$toSend"
-toSend="SmartSlurm Saved $$savedDollar1 by split workflow into steps from this job.\n$toSend"
-toSend="SmartSlurm Saved $$savedDollar3 by dynamic allocation of memory for all jobs in this run.\n$toSend"
-toSend="SmartSlurm Saved $$savedDollar4 by split workflow into steps from this run. \n$toSend"
+toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
+toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
+
+toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
+toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`

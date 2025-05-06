@@ -221,7 +221,7 @@ s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$t
 
 if [ $running -eq 0 ] && [ $pending -eq 0 ]; then 
     
-    echo should sent final run summary here >> $smartSlurmLogDir/summary.$SLURMJOB_ID
+    echo This should be the last job for this run... >> $smartSlurmLogDir/summary.$SLURMJOB_ID
     
 else 
     rm $smartSlurmLogDir/summary.run 2>/dev/null

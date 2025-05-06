@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # to install
-# conda create -n myenv graphviz
+# mamba create -n myenv graphviz
 
 # to run: 
 # source activate myenv
