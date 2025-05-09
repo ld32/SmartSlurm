@@ -317,7 +317,7 @@ ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
 export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
-cp $HOME/SmartSlurm/bin/config.yaml .
+cp $HOME/SmartSlurm/config/config.yaml .
 
 # Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 module load miniconda3
