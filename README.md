@@ -328,10 +328,13 @@ module load miniconda3
 source activate snakemakeEnv
 export PATH=$PWD/SmartSlurm/bin:$PATH
 cat Snakefile
-snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p short"
+snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -t 100 --mem 1G -p short"
 
 If you have multiple Slurm account:
-snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 100 --mem 1G"
+snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -A mySlurmAccount -t 100 --mem 1G"
+
+# To remove ssbatch from PATH: 
+source unExport; unExport
 
 ```
 
