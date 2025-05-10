@@ -194,7 +194,7 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
                 if [ ! -f $logFolder/dag.svg ]; then 
                     #set -x 
                     module load miniconda3/23.1.0
-                    source activate graphvizEnv
+                    source activate smartSlurmEnv
                     workflowPlot.py $logFolder &&  dot -Tsvg $logFolder/jobs.dot -o $logFolder/dag.svg
                 fi 
                 display $logFolder/dag.svg 

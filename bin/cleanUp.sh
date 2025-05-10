@@ -804,7 +804,7 @@ fi
 #set -x 
 module load miniconda3/23.1.0
 source activate smartSlurmEnv
-#workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
+workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
 
 #set +x 
 
