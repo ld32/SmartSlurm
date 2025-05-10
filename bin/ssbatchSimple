@@ -303,9 +303,6 @@ if [[ ! -z "$slurmScript" ]]; then
     echoerr slurmScriptParas: $slurmScriptParas
 fi
 
-# convert 4g to 4G
-mem="${mem^^}"; mem1="${mem1^^}"
-
 [ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
 
 [ -z "$out" ] || out=`realpath $out`

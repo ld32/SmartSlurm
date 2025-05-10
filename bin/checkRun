@@ -24,7 +24,25 @@ function loadData() {
     [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
     IFS=$'\n'
-    activeJobs=`squeue -u $USER -t PD,R --noheader -o "%.18i-%t"`
+
+    # Cache file path and TTL (2 minutes)
+    SQUEUE_CACHE_FILE="squeue_cache.txt"
+    SQUEUE_CACHE_TTL=120
+
+    # Check if cache exists and is recent enough
+    if [ -f "$SQUEUE_CACHE_FILE" ]; then
+        cache_mtime=$(stat -c %Y "$SQUEUE_CACHE_FILE")
+        current_time=$(date +%s)
+        if [ $((current_time - cache_mtime)) -lt $SQUEUE_CACHE_TTL ]; then
+            activeJobs=$(cat "$SQUEUE_CACHE_FILE")
+        else
+            activeJobs=$(squeue -u $USER -t PD,R --noheader -o "%.18i-%t")
+            echo "$activeJobs" > "$SQUEUE_CACHE_FILE"
+        fi
+    else
+        activeJobs=$(squeue -u $USER -t PD,R --noheader -o "%.18i-%t")
+        echo "$activeJobs" > "$SQUEUE_CACHE_FILE"
+    fi
 
     RED='\033[0;31m'
     NC='\033[0m' # No Color
@@ -136,7 +154,7 @@ while true; do
             
             [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
 Or ${RED}l${NC} to list all log file related to this job. Or "
-            echo -e "Select a failed step to check the .out log or type ${RED}q${NC} to quit:"
+            echo -e "Select a failed step to check the .out log, ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit:"
             read -p "" xx </dev/tty;
         
             [[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
@@ -162,7 +180,29 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
             [[ "$xx" == q ]] && break
             
             [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
+            
+            if [[ "$xx" == w ]]; then 
+
+                if [ -f "$logFolder/dag.svg" ]; then 
+                    cache_mtime=$(stat -c %Y "$logFolder/dag.svg")
+                    current_time=$(date +%s)
+                    if [ $((current_time - cache_mtime)) -gt 600 ]; then
+                        rm $logFolder/dag.svg
+                    fi 
+                fi 
+                #rm $logFolder/dag.svg
+                if [ ! -f $logFolder/dag.svg ]; then 
+                    #set -x 
+                    module load miniconda3/23.1.0
+                    source activate graphvizEnv
+                    workflowPlot.py $logFolder &&  dot -Tsvg $logFolder/jobs.dot -o $logFolder/dag.svg
+                fi 
+                display $logFolder/dag.svg 
+            fi
+
             [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count1 && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count1";  continue; }
+
+
         fi
         
         failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $NF}'`
