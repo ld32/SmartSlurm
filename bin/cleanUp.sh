@@ -813,7 +813,7 @@ if [[ "$lessEmail" == "noEmail" ]]; then
 elif [[ "$lessEmail" == "noSuccEmail" ]] && [[ "$s" == *Succ* ]]; then
     echo lessEmail: not sending email because job successful
  
-else 
+elif [ -f $smartSlurmLogDir/dag.png ]; then
     #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
     if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
@@ -823,6 +823,21 @@ else
             { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
     elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
+        { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
+    else 
+        echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
+        { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
+    fi
+else 
+    #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
+            { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
+    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
+            { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
+    elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
         { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
     else 
         echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \

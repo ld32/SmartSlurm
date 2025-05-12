@@ -17,63 +17,49 @@ import shutil
 import os
 from pathlib import Path
 import glob
-import sys 
-import tempfile
 
+# Get the path of the Python script itself
+script_dir = Path(__file__).resolve().parent
 
+# Define the paths to the configuration files
+home_config = Path.home() / ".smartSlurm/config/config.txt"
+local_config = script_dir.parent / "config/config.txt"
 
-if len(sys.argv) == 2:
-    job_file = sys.argv[1]  # Get first argument as folder name
-    #job_file = os.path.join(log_folder, "jobRecord.txt")
+# Check which configuration file exists and load it
+if home_config.is_file():
+    config_path = home_config
+elif local_config.is_file():
+    config_path = local_config
 else:
-    # Get the path of the Python script itself
-    script_dir = Path(__file__).resolve().parent
+    raise FileNotFoundError("Config list file not found: config.txt")
 
-    # Define the paths to the configuration files
-    home_config = Path.home() / ".smartSlurm/config/config.txt"
-    local_config = script_dir.parent / "config/config.txt"
+print(f'config file path:', config_path)
 
-    # Check which configuration file exists and load it
-    if home_config.is_file():
-        config_path = home_config
-    elif local_config.is_file():
-        config_path = local_config
-    else:
-        raise FileNotFoundError("Config list file not found: config.txt")
+# Load the smartSlurmJobRecordDir variable from the config file
+smartSlurmJobRecordDir = None
+with open(config_path, "r") as config_file:
+    for line in config_file:
+        if (line.startswith("export smartSlurmJobRecordDir=")):
+            smartSlurmJobRecordDir = line.strip().split("=", 1)[1].replace("$HOME", str(Path.home()))
+            break
 
-    print(f'config file path:', config_path)
+if not smartSlurmJobRecordDir:
+    raise ValueError("smartSlurmJobRecordDir variable not found in the config file.")
 
-    # Load the smartSlurmJobRecordDir variable from the config file
-    smartSlurmJobRecordDir = None
-    with open(config_path, "r") as config_file:
-        for line in config_file:
-            if (line.startswith("export smartSlurmJobRecordDir=")):
-                smartSlurmJobRecordDir = line.strip().split("=", 1)[1].replace("$HOME", str(Path.home()))
-                break
-
-    if not smartSlurmJobRecordDir:
-        raise ValueError("smartSlurmJobRecordDir variable not found in the config file.")
-
-    # Set the job file path using the loaded smartSlurmJobRecordDir
-    job_file = Path(smartSlurmJobRecordDir) / "jobRecord.txt"
+# Set the job file path using the loaded smartSlurmJobRecordDir
+job_file = Path(smartSlurmJobRecordDir) / "jobRecord.txt"
 
 print(f'file path:', job_file)
 
 # Declare global variables at the top of the script
-global headers, rows, unique_programs,unique_programs1, last_checked_program, tmpFile
-
-# Create a temporary file and copy the job_file content to it
-tmp_dir = tempfile.gettempdir()
-tmpFile = os.path.join(tmp_dir, "jobRecord_tmp.txt")
-shutil.copy(job_file, tmpFile)
-print(f"Temporary file created: {tmpFile}", flush=True)
+global headers, rows, unique_programs,unique_programs1, last_checked_program
 
 # Function to read job records from the file
 def read_job_records():
-    print(f'Reading job records from file: {tmpFile}', flush=True)
+    print(f'Reading job records from file: {job_file}', flush=True)
 
     # Read the CSV file without pandas
-    with open(tmpFile, "r") as f:
+    with open(job_file, "r") as f:
         reader = csv.reader(f)
         headers = next(reader)  # Read the header row
         print("Headers:", headers, flush=True)
@@ -120,8 +106,7 @@ app.layout = html.Div([
                 style={"margin": "5px", "backgroundColor": "lightgray"}
             ) for program in unique_programs
         ], style={"display": "flex", "flexWrap": "wrap"}), 
-        html.Button("Delete Selected Job", id="delete-btn", n_clicks=0, style={"margin": "10px"}),
-        html.Button("Save Records", id="save-btn", n_clicks=0, style={"margin": "10px"}),  # Add a save button below the delete button
+        html.Button("Delete Selected Job", id="delete-btn", n_clicks=0, style={"margin": "10px"})
     ], style={"width": "30%", "display": "inline-block", "verticalAlign": "top"}),
     html.Div([
         dcc.Graph(id="memory_plot", config={'displayModeBar': True}, style={"height": "600px", "xaxis": {"range": [-1000, 1e5]}, "yaxis": {"range": [-1000, 1e5]}})
@@ -177,10 +162,18 @@ def handle_deletion(n_clicks, selectedData):
     updated_rows = [row for row in rows if str(row[0]) not in job_ids_to_delete]
 
     print(f'filtered_rows for save:', len(updated_rows))
-    
+    # Backup the job record file
+    try:
+        mtime = time.strftime("%Y%m%d%H%M%S", time.localtime(job_file.stat().st_mtime))
+        backup_job_file = Path(smartSlurmJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
+        shutil.copy(job_file, backup_job_file)
+        print(f"Backup of job record file created: {backup_job_file}", flush=True)
+    except Exception as e:
+        print(f"Error creating backup of job record file: {e}", flush=True)
+
     # Update the job record file
     try:
-        with open(tmpFile, "w", newline="") as f:
+        with open(job_file, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             writer.writerows(updated_rows)
@@ -208,13 +201,12 @@ def handle_deletion(n_clicks, selectedData):
             return fig, rows
     
 
-        # Convert x-axis values to G (gigabytes) and y-axis values to G (gigabytes)
         fig = px.scatter(
             filtered_rows,
-            x=[float(row[1]) / (1024 * 1024) for row in filtered_rows],  # Convert Input size to G
-            y=[float(row[6]) / 1024 for row in filtered_rows],  # Convert Memory used to G
-            title=f"Input Size (G) vs. Memory Usage (G) for {last_checked_program}",
-            labels={"x": "Input Size (G)", "y": "Memory Usage (G)"},
+            x=[float(row[1]) for row in filtered_rows],  # Input size as float
+            y=[float(row[6]) for row in filtered_rows],  # Memory used as float
+            title=f"Input Size vs. Memory Usage for {last_checked_program}",
+            labels={"x": "Input Size", "y": "Memory Usage"},
             hover_data={"Job ID": [row[0] for row in filtered_rows]}  # Include job ID in hover data
         )
         fig.update_traces(marker=dict(size=12, color='blue'),
@@ -224,8 +216,8 @@ def handle_deletion(n_clicks, selectedData):
 
         # Dynamically adjust the x and y axis ranges to fit all data points
         if filtered_rows:
-            x_values = [float(row[1])/ (1024 * 1024) for row in filtered_rows]
-            y_values = [float(row[6])/1024 for row in filtered_rows]
+            x_values = [float(row[1]) for row in filtered_rows]
+            y_values = [float(row[6]) for row in filtered_rows]
             fig.update_layout(
                 xaxis=dict(range=[min(x_values) * 0.9, max(x_values) * 1.1]),  # Add padding to x-axis
                 yaxis=dict(range=[min(y_values) * 0.9, max(y_values) * 1.1])   # Add padding to y-axis
@@ -267,13 +259,12 @@ def update_plot_and_highlight_button(n_clicks_list, data):
 
     # Dynamically adjust the x and y axis ranges to fit all data points
     if filtered_rows:
-        # Convert x-axis values to G (gigabytes) and y-axis values to G (gigabytes)
         fig = px.scatter(
             filtered_rows,
-            x=[float(row[1]) / (1024 * 1024) for row in filtered_rows],  # Convert Input size to G
-            y=[float(row[6]) / 1024 for row in filtered_rows],  # Convert Memory used to G
-            title=f"Input Size (G) vs. Memory Usage (G) for {last_checked_program}",
-            labels={"x": "Input Size (G)", "y": "Memory Usage (G)"},
+            x=[float(row[1]) for row in filtered_rows],  # Input size as float
+            y=[float(row[6]) for row in filtered_rows],  # Memory used as float
+            title=f"Input Size vs. Memory Usage for {last_checked_program}",
+            labels={"x": "Input Size", "y": "Memory Usage"},
             hover_data={"Job ID": [row[0] for row in filtered_rows]}  # Include job ID in hover data
         )
         fig.update_traces(marker=dict(size=12, color='blue'),
@@ -281,8 +272,8 @@ def update_plot_and_highlight_button(n_clicks_list, data):
                         unselected=dict(marker=dict(opacity=0.5)))
         fig.update_layout(clickmode='event+select', dragmode='lasso')
         
-        x_values = [float(row[1])/ (1024 * 1024) for row in filtered_rows]
-        y_values = [float(row[6])/1024 for row in filtered_rows]
+        x_values = [float(row[1]) for row in filtered_rows]
+        y_values = [float(row[6]) for row in filtered_rows]
         fig.update_layout(
             xaxis=dict(range=[min(x_values) * 0.9, max(x_values) * 1.1]),  # Add padding to x-axis
             yaxis=dict(range=[min(y_values) * 0.9, max(y_values) * 1.1])   # Add padding to y-axis
@@ -307,28 +298,6 @@ def update_plot_and_highlight_button(n_clicks_list, data):
             button_styles.append({"margin": "5px", "backgroundColor": "lightgray"})  # Default style
    
     return fig, button_styles
-
-# Callback to handle saving rows to the job_file
-@app.callback(
-    Output("data-store", "data", allow_duplicate=True),
-    Input("save-btn", "n_clicks"),
-    State("data-store", "data"),
-    prevent_initial_call=True
-)
-def save_rows_to_file(n_clicks, data):
-   # Backup the job record file
-    try:
-        mtime = time.strftime("%Y%m%d%H%M%S", time.localtime(job_file.stat().st_mtime))
-        backup_job_file = Path(smartSlurmJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
-        shutil.copy(job_file, backup_job_file)
-        print(f"Backup of job record file created: {backup_job_file}", flush=True)
-    except Exception as e:
-        print(f"Error creating backup of job record file: {e}", flush=True)
-
-
-    shutil.copy(tmpFile, job_file)
-    print(f"Updated data is saved in: {job_file}", flush=True)
-    return data
 
 # Store selected point
 # @app.callback(
