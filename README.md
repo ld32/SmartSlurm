@@ -418,7 +418,7 @@ export PATH=$HOME/SmartSlurm/bin:$PATH
 
 # if you would like to see flowchat. Only need to run this once
 module load miniconda3/23.1.0
-mamba create -n smartSlumeEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 # Take a look at a regular example bash script
 cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
@@ -725,7 +725,7 @@ smartSession
 
 # if you would like to see flowchat. Only need to run this once
 module load miniconda3/23.1.0
-mamba create -n smartSlumeEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 source activate smartSlurmEnv
 
