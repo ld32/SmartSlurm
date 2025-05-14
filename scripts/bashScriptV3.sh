@@ -13,5 +13,7 @@ for i in {1..3}; do
   
 done
 
-#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0 
-cat $number.*.txt > all$number.txt; sleep 120
+# test what happens if input does not exist whe job is submitted
+input=all$number.txt; 
+#@2,1,mergeNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0 
+cat $number.*.txt > all$number.txt; findNumber.sh $number $input > final$number.txt 
