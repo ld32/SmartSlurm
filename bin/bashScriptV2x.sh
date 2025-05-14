@@ -1,1 +1,0 @@
-../scripts/bashScriptV2x.sh
