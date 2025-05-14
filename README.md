@@ -52,6 +52,9 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
         - [How about while loop?](#how-about-while-loop)
         - [Where is jobRecord.txt saved?](#where-is-jobrecord.txt-saved)
 
+- [Review and clean up job records and statistics](#Review-and-clean-up-job-records-and-statistics)
+
+
 - [sbatchAndTop](#sbatchAndTop)
 
 
@@ -412,6 +415,11 @@ git clone https://github.com/ld32/SmartSlurm.git
 # Setup path
 export PATH=$HOME/SmartSlurm/bin:$PATH  
 
+
+# if you would like to see flowchat. Only need to run this once
+module load miniconda3/23.1.0
+mamba create -n smartSlumeEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
 # Take a look at a regular example bash script
 cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
 
@@ -703,6 +711,31 @@ export defaultExtraMem=5      # in M. extra memory than the estinated memory
   
 =======
 
+
+# Review-and-clean-up-job-records-and-statistics
+## Review and clean up job records and statistics
+[Back to top](#SmartSlurm)
+
+```
+From you local computer (Please change username from myUserID to your user ID):
+alias smartSession='PORT=51234; CLUSTER_USER=myUserID; ssh -L $PORT:127.0.0.1:$PORT $CLUSTER_USER@o2.hms.harvard.edu -t "hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; srun --pty -p priority -t 8:0:0 --tunnel $PORT:$PORT bash -c \"hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; export PORT=$PORT; bash;\""'
+smartSession
+
+# after job start, run:
+
+# if you would like to see flowchat. Only need to run this once
+module load miniconda3/23.1.0
+mamba create -n smartSlumeEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
+source activate smartSlurmEnv
+
+# To review and edit default job records
+reviewJobRecords.py 
+
+# To review and edit certain job record file 
+reviewJobRecords.py path/to/your/jobRecord.txt
+
+====================
 
 # sbatchAndTop
 ## How to use sbatchAndTop

@@ -20,11 +20,12 @@ import glob
 import sys 
 import tempfile
 
-
-
 if len(sys.argv) == 2:
-    job_file = sys.argv[1]  # Get first argument as folder name
+    job_file = Path(sys.argv[1])  # Get first argument as folder name
     #job_file = os.path.join(log_folder, "jobRecord.txt")
+    smartSlurmJobRecordDir=os.path.dirname(job_file)
+    print(f"file path1:", smartSlurmJobRecordDir)
+
 else:
     # Get the path of the Python script itself
     script_dir = Path(__file__).resolve().parent
@@ -139,6 +140,15 @@ app.layout = html.Div([
 def delete_last_checked_program_files():
     stats_dir = os.path.join(smartSlurmJobRecordDir, "stats")
     file_pattern = os.path.join(stats_dir, f"{last_checked_program}.*")
+
+    for file_path in glob.glob(file_pattern):
+        try:
+            os.remove(file_path)
+            print(f"Deleted file: {file_path}", flush=True)
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {e}", flush=True)
+
+    file_pattern = os.path.join(stats_dir, f"extraMem.{last_checked_program}.*")
 
     for file_path in glob.glob(file_pattern):
         try:
