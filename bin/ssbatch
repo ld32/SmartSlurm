@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## notes: to estimate resource, need at least three jobs if no input size is given, and 5 jobs if there is input size given
+## notes: to estimate resource, need at least three jobs if no input size is given, and three jobs if there is input size given
 
 ## features for regular sbatch (when calling without -L)
 # Auto adjust partition according to run-time request if they does not match up
@@ -631,8 +631,7 @@ else
             if [ ! -z "$runningSingleJob" ]; then
 
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
-            else 
-
+            else
                 # !!! runAsPipeline jobs will land here !!!
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
                 # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
