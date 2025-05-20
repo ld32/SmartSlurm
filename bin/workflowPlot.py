@@ -78,7 +78,7 @@ def read_jobs(filename, log_folder='log_folder'):
                 continue
 
             job_id, dependencies, job_flag = parts[0], parts[1], parts[2]
-            node_labels[job_id] = f"{job_id}\\n{job_flag}"
+            node_labels[job_id] = f"{job_id}\\n{job_flag[:10]}"
 
             # Paths
             succ_file = os.path.join(log_folder, f"{job_flag}.success")
