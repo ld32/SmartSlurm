@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x
+set -x
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
@@ -89,6 +89,7 @@ memSacct=`echo $jobStat | cut -d" " -f5`
 node=`echo $jobStat | cut -d" " -f7`
 
 if [ -f $succFile ] ; then # or nextflow successful job
+    [ -z "$snakemakeSuccFlag" ] || touch "$snakemakeSuccFlag"
     jobStatus=COMPLETED
 elif [[ "$sacct" == *TIMEOUT* ]]; then
     jobStatus=OOT
@@ -762,10 +763,10 @@ else
 fi
 
 toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
-toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
 
 toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
-toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`

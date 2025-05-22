@@ -561,6 +561,8 @@ elif [ -z $partition ]; then
     adjustPartition $(( ( $min + 59 ) / 60 )) partition
 fi
 
+export snakemakeSuccFlag=''
+#export snakemakeFailFlag=''
 
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
@@ -653,6 +655,16 @@ else
         else
             
             if [ ! -z "$runningSingleJob" ]; then
+
+                export snakemakeSuccFlag="$(sed -n 's/.*touch "\([^"]*jobfinished\)".*/\1/p' $slurmScript)"
+                #export snakemakeFailFlag=`grep -o '".*\.jobfailed"' $slurmScript`
+                echoerr snakemakeSuccFlag: $snakemakeSuccFlag
+                #echoerr snakemakeFailFlag: $snakemakeFailFlag
+                echoerr before sed: $slurmScript
+                echoerr `cat $slurmScript`  
+                sed -i 's/&& touch "[^"]*jobfinished" || (touch "[^"]*jobfailed"; exit 1)//g' $slurmScript
+                echoerr after sed: $slurmScript
+                echoerr `cat $slurmScript` 
 
                 # snakemake should land here 
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job  
