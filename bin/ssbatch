@@ -655,8 +655,12 @@ else
         else
             
             if [ ! -z "$runningSingleJob" ]; then
-
+                
+                # double quotatons 
                 export snakemakeSuccFlag="$(sed -n 's/.*touch "\([^"]*jobfinished\)".*/\1/p' $slurmScript)"
+                
+                # single quotatons
+                [ -z "$snakemakeSuccFlag" ] && export snakemakeSuccFlag="$(sed -n "s/.*touch '\([^']*jobfinished\)'.*/\1/p" $slurmScript)"
                 #export snakemakeFailFlag=`grep -o '".*\.jobfailed"' $slurmScript`
                 echoerr snakemakeSuccFlag: $snakemakeSuccFlag
                 #echoerr snakemakeFailFlag: $snakemakeFailFlag
