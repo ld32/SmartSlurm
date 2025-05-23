@@ -315,8 +315,6 @@ adjustPartition() {
 cd $HOME
 git clone https://github.com/ld32/SmartSlurm.git  
 
-ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
-
 export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
