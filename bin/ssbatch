@@ -666,7 +666,13 @@ else
                 #echoerr snakemakeFailFlag: $snakemakeFailFlag
                 echoerr before sed: $slurmScript
                 echoerr `cat $slurmScript`  
+                
+                # double quotes
                 sed -i 's/&& touch "[^"]*jobfinished" || (touch "[^"]*jobfailed"; exit 1)//g' $slurmScript
+
+                # single quotes               
+                sed -i "s/&& touch '[^']*jobfinished' || (touch '[^']*jobfailed'; exit 1)//g" "$slurmScript"
+
                 echoerr after sed: $slurmScript
                 echoerr `cat $slurmScript` 
 
