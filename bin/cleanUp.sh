@@ -89,6 +89,7 @@ memSacct=`echo $jobStat | cut -d" " -f5`
 node=`echo $jobStat | cut -d" " -f7`
 
 if [ -f $succFile ] ; then # or nextflow successful job
+    [ -z "$snakemakeSuccFlag" ] || touch "$snakemakeSuccFlag"
     jobStatus=COMPLETED
 elif [[ "$sacct" == *TIMEOUT* ]]; then
     jobStatus=OOT
@@ -654,7 +655,6 @@ echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     ls -cr $smartSlurmLogDir/../../../*/*/*/*.out | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 else 
-
     ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
 fi    
 
@@ -725,8 +725,26 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 
 #fi
 
-minimumsize=9000
 
+# echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOB_ID.memCPU.txt
+
+rate=0.0013 # $0.0013 per G per hour 
+maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
+savedDollar=$(echo "$rate * $maxSaved / 1024 * $jMin / 60" | bc -l)
+
+maxUsed=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+#jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
+savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc -l)
+
+#echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
+savedMem=`awk -F',' '{sum += $4} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
+savedMem1=`awk -F',' '{sum += $6} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
+savedDollar3=$(echo "$rate * $savedMem / 1024 * $jMin / 60" | bc -l)
+savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
+
+
+minimumsize=9000
 actualsize=`wc -c $out || echo 0`
 
 [ -f $succFile ] && s="${overReserved}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
@@ -743,6 +761,12 @@ else
    toSend="$toSend\nJob log:\n`cat $out`"
    #toSend="$s\n$toSend"
 fi
+
+toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
+
+toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`
@@ -778,12 +802,35 @@ fi
 
 [ -z "$userEmail" ] || USER=$userEmail
 
+if [ -z "$snakemakeSuccFlag" ]; then    
+    #set -x 
+    module load miniconda3/23.1.0
+    source activate smartSlurmEnv
+    workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
+fi 
+
+#set +x 
 
 if [[ "$lessEmail" == "noEmail" ]]; then 
     echo noEmail
 elif [[ "$lessEmail" == "noSuccEmail" ]] && [[ "$s" == *Succ* ]]; then
     echo lessEmail: not sending email because job successful
  
+elif [ -f $smartSlurmLogDir/dag.png ]; then
+    #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
+    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
+            { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
+    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
+            { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
+    elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
+        { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
+    else 
+        echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
+        { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
+    fi
 else 
     #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
     if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then

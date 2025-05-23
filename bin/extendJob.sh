@@ -10,7 +10,7 @@ ext=$2
 
 [[ "$ext" == -* ]] && echo Time can not be negtive && usage 
 
-[[ "$jid" =~ ^[0-9]+$ ]] || { echo Job ID looks strange: $jid; usage; }
+[[ "$jid" =~ ^[0-9]+(_[0-9]+)?$ ]] || { echo "Job ID looks strange: $jid"; usage; }
 
 # from time string to seconds
 toS () { 
