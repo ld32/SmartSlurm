@@ -12,6 +12,7 @@ import os
 import subprocess
 import time
 import pickle
+import glob 
 
 # how to save into text file, so that bash script can read it?
 
@@ -99,6 +100,18 @@ def read_jobs(filename, log_folder='log_folder'):
             else:
                 job_status[job_id] = "unknown"
 
+            print(f"Job {job_id} status: {job_status[job_id]}")
+            #print(os.path.dirname(filename) + "/allJobs.requeue." + job_id + ".as.*"); 
+            # Check for requeued jobs
+            files = glob.glob(os.path.dirname(filename) + "/allJobs.requeue." + job_id + ".as.*")
+            if files:
+                job_status[job_id] = "requeued"
+                print(f"Requeueing job {job_id} with files: {files}")
+                # for file in files:
+                #     down_id = file.split('.')[-1]
+                #     edges.append((job_id, down_id))
+                #     dependents[job_id].add(down_id)
+                    
             # Handle dependencies
             if dependencies and dependencies.lower() != 'null':
                 for dep in dependencies.split(':'):
@@ -106,6 +119,7 @@ def read_jobs(filename, log_folder='log_folder'):
                         edges.append((dep, job_id))
                         dependents[dep].add(job_id)
 
+    # Check for jobs that are not in the job_status map
     return edges, job_status, node_labels, dependents
 
 

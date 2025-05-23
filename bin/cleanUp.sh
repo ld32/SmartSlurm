@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
@@ -802,10 +802,12 @@ fi
 
 [ -z "$userEmail" ] || USER=$userEmail
 
-#set -x 
-module load miniconda3/23.1.0
-source activate smartSlurmEnv
-workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
+if [ -z "$snakemakeSuccFlag" ]; then    
+    #set -x 
+    module load miniconda3/23.1.0
+    source activate smartSlurmEnv
+    workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
+fi 
 
 #set +x 
 
