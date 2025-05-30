@@ -215,13 +215,25 @@ if [ ! -z "$slurmScript" ]; then
   # get program (rule), input, threads from
   if [[ "$parentCmd" == *snakemake* ]]; then
     #properties='{"local": false, "params": {}, "input": ["data/genome.fa", "data/samples/A.fastq"], "rule": "bwa_map", "resources": {}, "output": ["mapped_reads/A.bam"], "cluster": {}, "threads": 2}'
+
+    # properties = {"type": "single", "rule": "hmmer", "local": false, "input": ["data_esl/translations/GCF_024224615.1.faa"], "output": ["data_esl/hmmer_results/tbl/GCF_024224615.1.tbl"], "wildcards": {"sample": "GCF_024224615.1"}, "params": {"hmm": "/n/data1/hms/dbmi/baym/kepler/ROP/04_ROP_genome_mining/hmm_models/PF01815.hmm"}, "log": [], "threads": 1, "resources": {"mem_mb": 1000, "mem_mib": 954, "disk_mb": 1000, "disk_mib": 954, "tmpdir": "<TBD>", "partition": "short", "time": "01:00:00"}, "jobid": 15, "cluster": {}}
+    
     properties=`grep "^# properties =" $slurmScript`
     echoerr Got snakemake parameter: $properties
     properties=${properties#\# properties =}
     
     [ -z "$program" ] && program=$(echo $properties | jq -r '.rule')
-    [ "$program" == null ] && program=$(echo $properties | jq -r '.groupid')
-  
+    
+
+     
+
+    # group job
+    if [ "$program" == null ]; then 
+        program=$(echo $properties | jq -r '.groupid')
+        echo SNAKEMAKE_GROUPID: $SNAKEMAKE_GROUPID 
+        echo SNAKEMAKE_GROUPJOB: $SNAKEMAKE_GROUPJOB
+        echo SNAKEMAKE_GROUPSIZE: $SNAKEMAKE_GROUPSIZE
+    fi 
     [ -z "$core" ] && core=$(echo $properties | jq -r '.threads')
     if [ -z "$inputs" ]; then 
         inputs=$(echo $properties | jq -r '.input | join(" ")') 
