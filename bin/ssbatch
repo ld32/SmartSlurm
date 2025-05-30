@@ -31,7 +31,7 @@
 
 parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
 
-echo 'parentCmd: ' $parentCmd >> &2
+echo 'parentCmd: ' $parentCmd >&2
 
 [[ "$parentCmd" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
 
