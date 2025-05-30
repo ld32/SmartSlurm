@@ -154,7 +154,7 @@ for (( i=0; i<$(($#)); i++ )); do
   		"-J" 			)   name="${array[$i+1]}" && array[$i+1]="";;
   		--job-name=* 	)   name="${array[$i]}" && name="${time/--job-name=/}";;
   		"-o" 			)   out="${array[$i+1]}" && array[$i+1]="";;
-  		--output=* 		)   out="${array[$i]}" && out="${out/--oupput=/}";;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--output=/}";;
   		"-e" 			)   err="${array[$i+1]}" && array[$i+1]="";;
   		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}";;
         "-A"            )   slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
