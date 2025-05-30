@@ -220,6 +220,8 @@ if [ ! -z "$slurmScript" ]; then
     properties=${properties#\# properties =}
     
     [ -z "$program" ] && program=$(echo $properties | jq -r '.rule')
+    [ "$program" == null ] && program=$(echo $properties | jq -r '.groupid')
+  
     [ -z "$core" ] && core=$(echo $properties | jq -r '.threads')
     if [ -z "$inputs" ]; then 
         inputs=$(echo $properties | jq -r '.input | join(" ")') 
@@ -663,8 +665,8 @@ else
                 
                 # single quotatons
                 [ -z "$snakemakeSuccFlag" ] && export snakemakeSuccFlag="$(sed -n "s/.*touch '\([^']*jobfinished\)'.*/\1/p" $slurmScript)"
-                export snakemakeFailFlag=`grep -o '".*\.jobfailed"' $slurmScript`
-                [ -z "$snakemakeFailFlag" ] && snakemakeFailFlag=`grep -o "'.*\.jobfailed'" $slurmScript`
+                export snakemakeFailFlag=`sed -n 's/.*touch "\([^"]*jobfailed\)".*/\1/p' $slurmScript`
+                [ -z "$snakemakeFailFlag" ] && snakemakeFailFlag=`sed -n 's/.*touch "\([^']*jobfailed\)'.*/\1/p' $slurmScript`
                 
                 
                 echoerr snakemakeSuccFlag: $snakemakeSuccFlag
