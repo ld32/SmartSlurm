@@ -97,8 +97,10 @@ elif [[ "$sacct" == *OUT_OF_ME* ]]; then
     jobStatus=OOM
 elif [[ "$sacct" == *FAILED* ]]; then
     jobStatus=Fail
+    [ -z "$snakemakeFailFlag" ] || touch "$snakemakeFailFlag"
 elif [[ "$sacct" == *CANCEL* ]]; then
     jobStatus=Canceled
+    [ -z "$snakemakeFailFlag" ] || touch "$snakemakeFailFlag"
 else
     tLog=`tail -n 22 $out | grep ^srun`
     if [[ "$tLog" == *"task 0: Out Of Memory"* ]] || [[ "$tLog" == *"Cannot allocate memory"* ]]; then
@@ -108,6 +110,7 @@ else
         scontrol show jobid -dd $SLURM_JOB_ID
     else
        jobStatus="Unknown"
+       [ -z "$snakemakeFailFlag" ] || touch "$snakemakeFailFlag"
    fi
 fi
 

@@ -562,7 +562,7 @@ elif [ -z $partition ]; then
 fi
 
 export snakemakeSuccFlag=''
-#export snakemakeFailFlag=''
+export snakemakeFailFlag=''
 
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
@@ -661,9 +661,12 @@ else
                 
                 # single quotatons
                 [ -z "$snakemakeSuccFlag" ] && export snakemakeSuccFlag="$(sed -n "s/.*touch '\([^']*jobfinished\)'.*/\1/p" $slurmScript)"
-                #export snakemakeFailFlag=`grep -o '".*\.jobfailed"' $slurmScript`
+                export snakemakeFailFlag=`grep -o '".*\.jobfailed"' $slurmScript`
+                [ -z "$snakemakeFailFlag" ] && snakemakeFailFlag=`grep -o "'.*\.jobfailed'" $slurmScript`
+                
+                
                 echoerr snakemakeSuccFlag: $snakemakeSuccFlag
-                #echoerr snakemakeFailFlag: $snakemakeFailFlag
+                echoerr snakemakeFailFlag: $snakemakeFailFlag
                 echoerr before sed: $slurmScript
                 echoerr `cat $slurmScript`  
                 
