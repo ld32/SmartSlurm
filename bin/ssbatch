@@ -225,15 +225,15 @@ if [ ! -z "$slurmScript" ]; then
     
     [ -z "$program" ] && program=$(echo $properties | jq -r '.rule')
     
-
+    # properties = {"type": "group", "groupid": "translate", "local": false, "input": ["/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033100295.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033122725.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033100235.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033122045.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033121265.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033114265.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033111965.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033105485.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033104825.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_024224615.1.fasta"], "output": ["data_esl/translations/GCF_033100295.1.faa", "data_esl/translations/GCF_033122725.1.faa", "data_esl/translations/GCF_033100235.1.faa", "data_esl/translations/GCA_033122045.1.faa", "data_esl/translations/GCF_033121265.1.faa", "data_esl/translations/GCF_033114265.1.faa", "data_esl/translations/GCA_033111965.1.faa", "data_esl/translations/GCA_033105485.1.faa", "data_esl/translations/GCA_033104825.1.faa", "data_esl/translations/GCF_024224615.1.faa"], "threads": 10, "resources": {"time": "01:00:00", "partition": "short", "mem_mib": 9540, "disk_mb": 10000, "disk_mib": 9540, "mem_mb": 10000}, "jobid": "7aec3796-6f36-58dc-99ad-92575a410130", "cluster": {}}
      
-
+    # when snakemake has group job, all the commands for each input will run in parallel, and multiple CPU is allocated to the job.
+    # !!! number of CPU is determined by the threads parameter, and the input is a list of files.
+ 
     # group job
     if [ "$program" == null ]; then 
         program=$(echo $properties | jq -r '.groupid')
-        echoerr SNAKEMAKE_GROUPID: $SNAKEMAKE_GROUPID 
-        echoerr SNAKEMAKE_GROUPJOB: $SNAKEMAKE_GROUPJOB
-        echoerr SNAKEMAKE_GROUPSIZE: $SNAKEMAKE_GROUPSIZE
+        
     fi 
     [ -z "$core" ] && core=$(echo $properties | jq -r '.threads')
     if [ -z "$inputs" ]; then 
