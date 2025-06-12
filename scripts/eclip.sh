@@ -17,8 +17,8 @@ eval `perl -Mlocal::lib=/n/data1/cores/bcbio/eclip/perl5`
 #     numpy=1.16.5
 #     seaborn
 # umi_tools=1.0.0
-module load miniconda3/23.1.0
-source activate /n/data1/cores/bcbio/eclip/eclipEnv
+module load conda/miniforge3/24.11.3-0
+conda activate /n/data1/cores/bcbio/eclip/eclipEnv
 
 # these two are manually installed following the instruction on software page
 export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbio/eclip/eCLIP/bin:$PATH 
@@ -394,7 +394,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
 
         #Clipper:  Takes results from samtools view.  Calls peaks on those files.  
         #@16,15,cliper,,,sbatch -c 1 -p short -t 2:0:0 --mem 8G 
-        sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
+        sh -c "conda deactivate; conda activate /n/data1/cores/bcbio/eclip/clipperEnv; \
         clipper --species hg19 \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
         --save-pickle \

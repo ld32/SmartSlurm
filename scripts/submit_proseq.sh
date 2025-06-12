@@ -111,7 +111,7 @@ fi
 # load modules
 module purge
 #module load conda2/4.2.13
-module load miniconda3/23.1.0
+module load conda/miniforge3/24.11.3-0
 module load gcc/6.2.0 python/2.7.12
 unset PYTHONPATH
 module load cutadapt/1.14
@@ -242,7 +242,7 @@ do
 
         # extract dual UMIs
         #@2,0,umiCutAdaptSeqtk,,fileR1.fileR2,sbatch -c 1 -p short -t 12:0:0 --mem 8G
-        rm $mapInputR1 $mapInputR2 2>/dev/null || : ; source activate $pythonPath; \
+        rm $mapInputR1 $mapInputR2 2>/dev/null || : ; conda activate $pythonPath; \
         umi_tools extract -L $outDir/logs/${sampleName}_umi_extract.log -p NNNNNN --bc-pattern2=NNNNNN -I $fileR1 -S $outDir/fastq/${sampleName}_R1_UMI_extract.fastq.gz --read2-in=$fileR2 --read2-out=$outDir/fastq/${sampleName}_R2_UMI_extract.fastq.gz; \
         conda deactivate; \
         cutadapt -f fastq -O 1 --match-read-wildcards -m 26 -a TGGAATTCTCGGGTGCCAAGGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG -A GATCGTCGGACTGTAGAACTCTGAAC -o $outDir/fastq/$sampleName.1.trim.paired.fastq -p $outDir/fastq/$sampleName.2.trim.paired.fastq $outDir/fastq/${sampleName}_R1_UMI_extract.fastq.gz $outDir/fastq/${sampleName}_R2_UMI_extract.fastq.gz 2>&1 | tee $outDir/logs/${sampleName}_cutadaptLog.out; \
@@ -286,7 +286,7 @@ do
     # UMI dedup
     if [[ "$no_dedup" != "true" ]]; then
         #@6,4.5,umiDedup6,,bowtieOut,sbatch -c 1 -p short -t 12:0:0 --mem 8G
-        source activate $pythonPath; \
+        conda activate $pythonPath; \
         rm $outDir/mapping/${spikePrefix}_dedup.bam* $outDir/mapping/${refPrefix}_dedup.bam* &>/dev/null || : ; \
         umi_tools dedup -L $outDir/logs/${spikePrefix}_dedup.log --paired -I $outDir/mapping/$spikePrefix.bam -S $outDir/mapping/${spikePrefix}_dedup.bam; \
         umi_tools dedup -L $outDir/logs/${refPrefix}_dedup.log --paired -I $outDir/mapping/${refPrefix}.bam -S $outDir/mapping/${refPrefix}_dedup.bam; \

@@ -4,7 +4,7 @@
 # mamba create -n smartSlurmEnv dash plotly pandas graphviz 
 
 # to run: 
-# source activate smartSlurmEnv
+# conda activate smartSlurmEnv
 # workflowPlot.py && dot -Tsvg jobs.dot -o dag.svg && display dag.svg 
 
 from collections import defaultdict

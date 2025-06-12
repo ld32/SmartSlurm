@@ -326,7 +326,7 @@ mamba env create --name snakemakeEnv --file $PWD/SmartSlurm/config/snakemakeEnv.
 
 # Review Snakefile, activate the snakemake env and run test
 module load miniconda3
-source activate snakemakeEnv
+conda activate snakemakeEnv
 export PATH=$PWD/SmartSlurm/bin:$PATH
 cat Snakefile
 snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -t 100 --mem 1G -p short"
@@ -364,7 +364,7 @@ mamba create -n  nextflowEnv -c bioconda -y nextflow
 # Review nextflow file, activate the nextflow env, and run test
 module load miniconda3
 export PATH=$HOME/SmartSlurm/bin:$PATH  
-source activate nextflowEnv
+conda activate nextflowEnv
 cp $HOME/SmartSlurm/bin/nextflow.nf .
 cp $HOME/SmartSlurm/config/nextflow.config .
 
@@ -418,7 +418,7 @@ export PATH=$HOME/SmartSlurm/bin:$PATH
 
 
 # if you would like to see flowchat. Only need to run this once
-module load miniconda3/23.1.0
+module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 # Take a look at a regular example bash script
@@ -725,10 +725,10 @@ smartSession
 # after job start, run:
 
 # if you would like to see flowchat. Only need to run this once
-module load miniconda3/23.1.0
+module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
-source activate smartSlurmEnv
+conda activate smartSlurmEnv
 
 # To review and edit default job records
 reviewJobRecords.py 

@@ -193,8 +193,8 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
                 #rm $logFolder/dag.svg
                 if [ ! -f $logFolder/dag.svg ]; then 
                     #set -x 
-                    module load miniconda3/23.1.0
-                    source activate smartSlurmEnv
+                    module load conda/miniforge3/24.11.3-0
+                    conda activate smartSlurmEnv
                     workflowPlot.py $logFolder &&  dot -Tsvg $logFolder/jobs.dot -o $logFolder/dag.svg
                 fi 
                 display $logFolder/dag.svg 

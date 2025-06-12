@@ -5,7 +5,7 @@
 # smartSession
 # after job start, run: 
 # module load miniconda3
-# source activate smartSlurmEnv 
+# conda activate smartSlurmEnv 
 # reviewJobRecords.py 
 
 import dash

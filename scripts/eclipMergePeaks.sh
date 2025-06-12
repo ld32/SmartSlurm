@@ -21,8 +21,8 @@ eval `perl -Mlocal::lib=/n/data1/cores/bcbio/eclip/perl5`
 #     seaborn
 # umi_tools=1.0.0
 export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbio/eclip/eCLIP/bin:$PATH
-module load miniconda3/23.1.0
-source activate /n/data1/cores/bcbio/eclip/eclipEnv
+module load conda/miniforge3/24.11.3-0
+conda activate /n/data1/cores/bcbio/eclip/eclipEnv
 
 # these two are manually installed following the instruction on software page
 
@@ -395,7 +395,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
     #Clipper:  Takes results from samtools view.  Calls peaks on those files.
 
     #@7,6,cliper,,,sbatch -c 20 -p short -t 12:0:0 --mem 10G
-    sh -c "source deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
+    sh -c "source deactivate; conda activate /n/data1/cores/bcbio/eclip/clipperEnv; \
     clipper --processors=20 --quiet --species hg19 \
     --bam $outDir/$dir/ip/EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
     --save-pickle \
@@ -441,7 +441,7 @@ module purge
 module load gcc/6.2.0 perl/5.24.0 miniconda3/23.1.0 samtools/1.9 R/3.3.3
 
 # contains cwltool and clipper
-source activate /n/data1/cores/bcbio/eclip/eclipEnvPython3.9
+conda activate /n/data1/cores/bcbio/eclip/eclipEnvPython3.9
 
 sed "s#eclipOut#$PWD/eclipOut#g" /n/data1/cores/bcbio/eclip/merge_peaks/wf/merge_peaks_2inputs.yaml > merge_peaks_2inputs.yaml
 

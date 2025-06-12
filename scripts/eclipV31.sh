@@ -20,8 +20,8 @@ eval `perl -Mlocal::lib=/n/data1/cores/bcbio/eclip/perl5`
 #     numpy=1.16.5
 #     seaborn
 # umi_tools=1.0.0
-module load miniconda3/23.1.0
-source activate /n/data1/cores/bcbio/eclip/eclipEnv
+module load conda/miniforge3/24.11.3-0
+conda activate /n/data1/cores/bcbio/eclip/eclipEnv
 
 # these two are manually installed following the instruction on software page
 export PATH=/n/data1/cores/bcbio/eclip/fastq-tools-0.8.3/bin:/n/data1/cores/bcbio/eclip/eCLIP/bin:$PATH 
@@ -388,7 +388,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
         #Input normalization: Compares the number of reads within the IP dir2 to the number of reads within the size-matched INPUT dir2 across Clipper-called peak clusters. This step is performed both within this pipeline as well as within the merge_peaks pipeline using the same perl scripts. 
 
         #@6,5,cliper,,,sbatch -c 12 -p short -t 12:0:0 --mem 20G 
-        sh -c "conda deactivate; source activate /n/data1/cores/bcbio/eclip/clipperEnv; \
+        sh -c "conda deactivate; conda activate /n/data1/cores/bcbio/eclip/clipperEnv; \
         clipper --processors=12 --quiet --species hg19 \
         --bam EXAMPLE_PE.rep2_clip.r1.fq.genome-mappedSo.rmDupSo.merged.r2.bam \
         --save-pickle \

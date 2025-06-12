@@ -807,8 +807,8 @@ fi
 
 if [ -z "$snakemakeSuccFlag" ]; then    
     #set -x 
-    module load miniconda3/23.1.0
-    source activate smartSlurmEnv
+    module load conda/miniforge3/24.11.3-0
+    conda activate smartSlurmEnv
     workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
 fi 
 
