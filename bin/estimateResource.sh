@@ -187,6 +187,8 @@ fi
 
 [ $mem -gt 254976 ] && mem=254976 && resAjust="$resAjust\n#Mem is reset to 249G. "
 
+[ $min -gt 43200 ] && min=43200 &&  resAjust="$resAjust\n#Min is reset to 4320 mins (one month). "
+
 if [[ $adjust == "adjust" ]]; then 
     echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
 fi  
