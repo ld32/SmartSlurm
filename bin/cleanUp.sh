@@ -193,7 +193,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
         #   less than 20 records                  # or current one is larger than all old data   # and not exist already
         if [ "$(echo $records | wc -l)" -lt 200 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
             #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
-                echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+                [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
                 echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
             #else
             #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
