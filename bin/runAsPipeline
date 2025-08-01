@@ -20,6 +20,8 @@ usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [paramet
 
 [ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
 
+export bashScriptPath=`dirname ${1%% *}`
+
 if [ -z "$2" ]; then 
     echolog Commandline sbatch option is empty. Please make sure all steps have sbatch options in your bash script.
 elif [[ "$2" != sbatch* ]]; then 
