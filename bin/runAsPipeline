@@ -509,6 +509,6 @@ echolog
 
 echolog -e ${GREEN}runAsPipeline${NC} finished. 
 echolog Thank you for using Smart Slurm. You can run:
-echolog -e "${GREEN}less .smartSlurm.log${NC} to see detail submission log.
-echolog -e ${GREEN}checkRun${NC} to check run status and submission logs, and
-echolog -e ${RED}cancellAllJobs${NC} to cancal all jobs surmitted from current directory. 
+echolog -e "${GREEN}less .smartSlurm.log${NC} to see detail submission log."
+echolog -e "${GREEN}checkRun${NC} to check run status and submission logs, and"
+echolog -e "${RED}cancellAllJobs${NC} to cancal all jobs surmitted from current directory."
