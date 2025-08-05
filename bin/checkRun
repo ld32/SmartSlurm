@@ -48,7 +48,10 @@ function loadData() {
     NC='\033[0m' # No Color
     GREEN='\033[0;32m'
     BLUE='\033[0;34m'
-
+    YELLOW='\033[0;33m'
+    ORANGE='\033[0;35m'
+    ORANGE='\033[0;33m'
+    
     records=""; count=1; all=y 
     for i in $logFolders; do
         
@@ -92,7 +95,9 @@ while true; do
         read -p "" x </dev/tty
         
         [[ "$x" == q ]] && break
-        
+
+        #[[ "$x" == qq ]] && exit 
+
         [[ "$x" == r ]] && loadData && continue
 
         if [[ "$x" == h ]]; then 
@@ -125,10 +130,10 @@ while true; do
                 toShow="$toShow\n${GREEN}Runn${NC} $line"
                 running=$((running + 1))
             elif [[ "$activeJobs" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-                toShow="$toShow\n${RED}Pend${NC} $line"
+                toShow="$toShow\n${YELLOW}Pend${NC} $line"
                 pending=$((pending + 1))
             elif [ -f $logFolder/$name.failed.requeued.1.time ]; then 
-                toShow="$toShow\n${RED}Requ${NC} $line"
+                toShow="$toShow\n${ORANGE}Requ${NC} $line"
                 requeue=$((requeue + 1))    
             else
                 toShow="$toShow\n${RED}Unkn${NC} $line"
@@ -154,7 +159,7 @@ while true; do
             
             [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
 Or ${RED}l${NC} to list all log file related to this job. Or "
-            echo -e "Select a failed step to check the .out log, ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit:"
+            echo -e "Select a failed step to check the .out log, ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit:"
             read -p "" xx </dev/tty;
         
             [[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
@@ -178,6 +183,8 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
             #     continue
             # fi 
             [[ "$xx" == q ]] && break
+
+            [[ "$xx" == qq ]] && exit
             
             [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
             
