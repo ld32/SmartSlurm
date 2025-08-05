@@ -3,8 +3,7 @@
 #set -x
 #set -u
 
-echolog() { echo -e "$@\n"; echo $@ >>.smartSlurm.log; }
-echolog1() { echo "$@" >> .smartSlurm.log; }
+echolog() { echo "$@" | tee -a .smartSlurm.log; }
 
 output="Running: `realpath $0`"
 
@@ -48,7 +47,7 @@ if [ ! -z "$6" ]; then
     if [[ "$6" == checkpoint ]]; then
         checkpoint=".Checkpoint"
     elif [[ "$6" == excludeFailedNodes ]]; then
-        echolog1 "Excluding failed nodes"
+        echolog "Excluding failed nodes"
     else 
         usage
     fi
@@ -61,16 +60,16 @@ fi
 #[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-")
 
 current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
-echolog1 runAsPipeline run date: $current_date
+echolog runAsPipeline run date: $current_date
 echolog "$output"
 
-#echolog1 `module list`
+module list
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
-    echolog1 Config file path: ~/.smartSlurm/config/config.txt
+    echolog Config file path: ~/.smartSlurm/config/config.txt
     source ~/.smartSlurm/config/config.txt
 else
-    echolog1 Config file path: $(dirname $0)/../config/config.txt
+    echolog Config file path: $(dirname $0)/../config/config.txt
     source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 fi
 
@@ -106,11 +105,11 @@ echo "#!/bin/sh" > $run
 echo "#from cmd: $0 $@" >> $run
 echo "#run from: `pwd`" >> $run
 
-echo "#set -x" >> $run
+echo "set -x" >> $run
 
 echo "echo Running \$0 \$@"  >> $run
 
-echo "module list >> .smartSlurm.log 2>&1" >> $run
+echo module list >> $run
 
 echo "xsubd=\"$2\"" >> $run
 
@@ -186,9 +185,9 @@ for t in `cat ${1%% *}`; do
     [ -z "$cmd" ] && oldspace="$space"
 
     if [[ "$i" == \#@* ]]; then
-        echolog1
-        echolog1 find job marker:
-        echolog1 $i
+        echolog
+        echolog find job marker:
+        echolog $i
 
         findjob="yes"
         x=${i#*\#@}
@@ -213,7 +212,7 @@ for t in `cat ${1%% *}`; do
 
         [ ! -z "$xsuba" ] && [[ "$xsuba" != sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
-        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echolog1 sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
+        [ ! -z "$xsuba" ] && { echo "${space}xsub=\"$xsuba $slurmAccount\"" >> $run; echolog sbatch options: $xsuba; } || echo "${space}xsub=\"\$xsubd\"" >> $run
         
         if [[ "$xsuba" == *\ --array=* ]]; then
             echolog Error: job array is not supported! $xsuba
@@ -239,9 +238,9 @@ for t in `cat ${1%% *}`; do
 
     elif [ ! -z $findjob ]; then
         [[ "$i" == \#* ]] && { findjob=""; echo "$t" >> $run; continue; }
-        echolog1
-        echolog1 find job:
-        echolog1 $i
+        echolog
+        echolog find job:
+        echolog $i
         [[ "$i" == ssbatch* ]] && echolog Error! Please remove ssbatch command from $1. && exit 1
 
         [ -z "$cmd" ] && cmd="${i%\\}" || cmd="$cmd ${i%\\}" 
@@ -253,7 +252,7 @@ for t in `cat ${1%% *}`; do
 
         #cmd="${cmd%% #*}" # remove comments
 
-        echolog1 $cmd --before parsing
+        echolog $cmd --before parsing
         #set -x
 
         # check to see if we need escape bash variables
@@ -274,7 +273,7 @@ for t in `cat ${1%% *}`; do
         #set +x
 
         cmd="$tmp"
-        echolog1 $cmd --after parseing
+        echolog $cmd --after parseing
         space="$oldspace"
         #
 
@@ -291,68 +290,55 @@ for t in `cat ${1%% *}`; do
 
         cmd=${cmd//\`/\\\`} # escape `
 
-        # escape double quota. bsub does not need this? not sure
-        #cmd=${cmd//\"/\\\\\"}
-
-        echolog1 cmd: ".$cmd."
+        #echolog cmd: ".$cmd."
 
         [ -z "$name" ] && name=${cmd%% *}
 
         cloper[$step]=$loper
-        # IFS=' '
-        # if [[ "$de" == *\.* ]]; then
-        #     for dep in ${de//\./ }; do
-        #         l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
-        #         ll=$(expr length ${cloper[$dep]} 2>/dev/null) || ll=0
-        #         if [ $l -ge $ll ]; then
-        #             sameLoop=""
-        #             break 
-        #         else
-        #             sameLoop="yes"
-        #         fi
-        #     done
-        # else
-        #     #echolog $step:${cloper[$step]}:$de:${cloper[$de]}:
-        #     l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
-        #     ll=$(expr length ${cloper[$de]} 2>/dev/null) || ll=0
-        #     [ $l -ge $ll ] && sameLoop="" || sameLoop="yes"
-        # fi
+        multipleJobs=yes
+        IFS=' '
+        if [[ "$de" == "0" ]]; then
+            multipleJobs=""
+        elif [[ "$de" == *\.* ]]; then
+            for dep in ${de//\./ }; do
+                l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
+                ll=$(expr length ${cloper[$dep]} 2>/dev/null) || ll=0
+                if [ $l -ge $ll ]; then
+                    multipleJobs=""
+                else
+                    multipleJobs="yes"
+                    break
+                fi
+            done
+        else
+            #echolog $step:${cloper[$step]}:$de:${cloper[$de]}:
+            l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
+            ll=$(expr length ${cloper[$de]} 2>/dev/null) || ll=0
+            [ $l -ge $ll ] && multipleJobs=""
 
-        #echo "debug: ${cloper[$step]} ${cloper[$de]} .$sameLoop. " >> $run
+        fi
+
+
+        #echo "debug: ${cloper[$step]} ${cloper[$de]} .$multipleJobs. " >> $run
         [ "$3" == "useTmp" ] && useTmp="reference: $ref"
 
-        echo -e "${space}echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.$name$loper  $useTmp >> .smartSlurm.log " >> $run
+        echo -e "${space}echo; echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.$name$loper  $useTmp " >> $run
         echo "${space}flag=${step}.$de.$name$loper"  >> $run
         echo "${space}flag=\${flag//\//_}" >> $run   # replace path / to _
 
         echo -e "${space}deps=\"\""  >> $run
-        #if [[ "$de" != "0" ]]; then
-            IFS=' ' # xxx
+        if [[ "$de" != "0" ]]; then
             if [[ "$de" == *\.* ]]; then
                 for dep in ${de//\./ }; do
-                    l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
-                    ll=$(expr length ${cloper[$dep]} 2>/dev/null) || ll=0
-                    if [ $l -eq $ll ]; then
-                        echo "${space}[ -z \"\${jobID[$dep]}\" ] || deps=\"\$deps:\${jobID[$dep]}\"" >> $run 
-                    else
-                        echo "${space}[ -z \"\${jobIDs[$dep]}\" ] || deps=\"\$deps:\${jobIDs[$dep]}\"" >> $run
-                        echo "${space}depWasUsed[$dep]=\"yes\"" >> $run 
-                    fi          
-                done 
-
+                    [ -z "$multipleJobs" ] && echo "${space}[ -z \"\${jobID[$dep]}\" ] || deps=\"\$deps:\${jobID[$dep]}\"" >> $run || echo "${space}[ -z \"\${jobIDs[$dep]}\" ] || deps=\"\$deps:\${jobIDs[$dep]}\"" >> $run
+                done
             else
-                l=$(expr length ${cloper[$step]} 2>/dev/null) || l=0
-                ll=$(expr length ${cloper[$de]} 2>/dev/null) || ll=0
-                if [ $l -eq $ll ]; then 
-                    echo "${space}[ -z \"\${jobID[$de]}\" ] || deps=\":\${jobID[$de]}\""  >> $run
-                else     
-                    echo "${space}[ -z \"\${jobIDs[$de]}\" ] || deps=\":\${jobIDs[$de]}\""  >> $run
-                    echo "${space}depWasUsed[$de]=\"yes\"" >> $run
-                fi
-            fi     
-        #fi
+                [ -z $multipleJobs ] && echo "${space}[ -z \"\${jobID[$de]}\" ] || deps=\":\${jobID[$de]}\""  >> $run || echo "${space}[ -z \"\${jobIDs[$de]}\" ] || deps=\":\${jobIDs[$de]}\""  >> $run
+            fi
+        fi
 
-        
+        # escape double quota. bsub does not need this? not sure
+        #cmd=${cmd//\"/\\\\\"}
 
         [ -z "$inputs" ] && inputs=none
         [ -z "$ref" ] && ref=none
@@ -387,16 +373,10 @@ for t in `cat ${1%% *}`; do
 
         [[ "$4" == run ]] && echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run  || echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
 
-        echo "${space}green=\"Got output from ssbatch: \\033[0;32m\$id\\033[0m\n\"" >> $run
-        echo "${space}red=\"Got output from ssbatch: \\033[0;31m\$id\\033[0m\n\"" >> $run
+        echo "${space}green=\"Got output from ssbatch: \\033[0;32m\$id\\033[0m\"" >> $run
+        echo "${space}red=\"Got output from ssbatch: \\033[0;31m\$id\\033[0m\"" >> $run
        
         #echo "${space}echo -e \"\$red \$green\"  ">> $run
-        
-        # clear jobIDs if the ids were used in the previous downstream step 
-        echo "${space}    if [ ! -z \"\${depWasUsed[$step]}\" ]; then" >> $run
-        echo "${space}        jobIDs[$step]=''" >> $run
-        echo "${space}        depWasUsed[$step]=\"\"" >> $run
-        echo "${space}    fi" >> $run
 
         # GREEN='\033[0;32m' RED='\033[0;31m' NC='\033[0m' # No Color 
         echo "${space}[[ \"\$id\" == *\"missingInputFile\"* ]] && echo -e \"\$red\" && exit ">> $run
@@ -419,19 +399,18 @@ for t in `cat ${1%% *}`; do
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run
 
-        # # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
-        # if [[ "$de" == *\.* ]]; then
-        #        for dep in ${de//\./ }; do
-        #             [[ "$sameLoop" == "yes" ]] && echo "${space}    startNewLoop[$dep]=\"yes\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"no\""  >> $run
-        #        done
-        # else
-        #        [[ "$sameLoop" == "yes" ]] && echo "${space}    startNewLoop[$de]=\"yes\""  >> $run || echo "    ${space}startNewLoop[$de]=\"no\""  >> $run
-        # fi
+        # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
+        if [[ "$de" == *\.* ]]; then
+               for dep in ${de//\./ }; do
+                    [[ $dep == 0 ]] && continue 
+                    [ -z "$multipleJobs" ] && echo "${space}    startNewLoop[$dep]=\"no\""  >> $run || echo "    ${space}startNewLoop[$dep]=\"\""  >> $run
+               done
+        elif [[ $de != 0 ]]; then
+               [ -z "$multipleJobs" ] && echo "${space}    startNewLoop[$de]=\"no\""  >> $run || echo "    ${space}startNewLoop[$de]=\"\""  >> $run
+        fi
 
-        #echo "${space}    [[ \"\${startNewLoop[$dep]}\" == \"yes\" ]] && jobIDs[$dep]=\"\" && startNewLoop[$step]=\"no\" " >> $run
-
-        echo "${space}    jobID[$step]=\$id"  >> $run # xxxx
-            
+        echo "${space}    [ -z \${startNewLoop[$step]} ] && jobIDs[$step]=\"\" && startNewLoop[$step]=\"no\" " >> $run
+        echo "${space}    jobID[$step]=\$id"  >> $run
         echo "${space}    [ -z \"\${jobIDs[$step]}\" ] && jobIDs[$step]=\$id || jobIDs[$step]=\${jobIDs[$step]}:\$id"  >> $run
 
         echo "${space}else" >> $run
@@ -451,19 +430,19 @@ for t in `cat ${1%% *}`; do
         #    space=${space%    }
         #    loper=${loper%.\$*}
         if [[ "$i" == \#loopStart:* ]]; then
-            echolog1; echolog1 find loop start: $i
+            echolog; echolog find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#\#loopStart:}; a=${a%% *}
             loper="$loper.\$$a"
             #loper="$loper.for"
             findLoopStart=yes
         elif [[ "$i" == done* ]]; then
-            echolog1
-            echolog1 find loop end: $i
+            echolog
+            echolog find loop end: $i
             #space=${space%    }
             loper=${loper%.\$*}
         elif [[ "$i" == for* ]]; then
-            echolog1; echolog1 find for loop start: $i
+            echolog; echolog find for loop start: $i
             [ ! -z "$firstRowBelowLoopStart" ] && firstRowBelowLoopStart="" && continue
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#* }; a=${a%% *}
@@ -489,7 +468,7 @@ done
 # go back to the original folder?
 #echo "cd \$cwd/.." >> $run
 #exit
-echo "echo All submitted jobs: " >> $run
+echo "echo; echo All submitted jobs: " >> $run
 #echo "cat \$cwd/\$smartSlurmLogDir/allJobs.txt" >> $run
 echo "awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
@@ -505,10 +484,8 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 GREEN='\033[0;32m'
 
-echolog  
-
-echolog -e ${GREEN}runAsPipeline${NC} finished. 
 echolog Thank you for using Smart Slurm. You can run:
-echolog -e "${GREEN}less .smartSlurm.log${NC} to see detail submission log.
+#echolog less .smartSlurm.log to see detail submission log.
 echolog -e ${GREEN}checkRun${NC} to check run status and submission logs, and
 echolog -e ${RED}cancellAllJobs${NC} to cancal all jobs surmitted from current directory. 
+echolog

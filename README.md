@@ -321,11 +321,11 @@ cp $HOME/SmartSlurm/bin/Snakefile .
 cp $HOME/SmartSlurm/config/config.yaml .
 
 # Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
-module load miniconda3
+module load conda/miniforge3/24.11.3-0
 mamba env create --name snakemakeEnv --file $PWD/SmartSlurm/config/snakemakeEnv.yaml
 
 # Review Snakefile, activate the snakemake env and run test
-module load miniconda3
+module load conda/miniforge3/24.11.3-0
 conda activate snakemakeEnv
 export PATH=$PWD/SmartSlurm/bin:$PATH
 cat Snakefile
@@ -358,11 +358,11 @@ git clone https://github.com/ld32/SmartSlurm.git
 ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
 
 # Create Nextflow conda env
-module load miniconda3
+module load conda/miniforge3/24.11.3-0
 mamba create -n  nextflowEnv -c bioconda -y nextflow
 
 # Review nextflow file, activate the nextflow env, and run test
-module load miniconda3
+module load conda/miniforge3/24.11.3-0
 export PATH=$HOME/SmartSlurm/bin:$PATH  
 conda activate nextflowEnv
 cp $HOME/SmartSlurm/bin/nextflow.nf .
@@ -420,6 +420,10 @@ export PATH=$HOME/SmartSlurm/bin:$PATH
 # if you would like to see flowchat. Only need to run this once
 module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
+Note: if you would like to share the env with group: 
+mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
 
 # Take a look at a regular example bash script
 cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
@@ -729,6 +733,11 @@ module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 conda activate smartSlurmEnv
+
+
+Note: if you would like to share the env with group: 
+mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+conda activate /shared/path/smartSlurmEnv
 
 # To review and edit default job records
 reviewJobRecords.py 
