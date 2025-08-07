@@ -5,7 +5,7 @@
 submttingLog=.smartSlurm.log
 
 if [[ $1 == "-h" ||  $i == "--help" ]]; then
-    echo "checkRun: This script can guild user to debug smartSlurm runs." 
+    echo "checkRun: This script can guide the user to debug smartSlurm runs." 
     exit 1; 
 fi
 if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -115,7 +115,7 @@ while true; do
     lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
     current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
-    toShow="Summery for jobs in allJobs.txt:"
+    toShow="Summary for jobs in allJobs.txt:"
     for line in $lines; do
         if [ ! -z "${line/ /}" ]; then
             id=${line%% *}; name=${line##* }
@@ -151,7 +151,7 @@ while true; do
             echo -e "$GREEN$count1 ${i#*\/}"
             count1=$((count1 + 1))
         done
-        echo Currently working folder: $logFolder and job: $failedJob
+        echo Current working folder: $logFolder and job: $failedJob
         if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
             echo Only one failed step. No need to select.
             xx=1
