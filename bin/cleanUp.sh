@@ -196,7 +196,7 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
                 [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
                 echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
             #else
-            #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+            #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
             #fi
             mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
         else
@@ -216,7 +216,7 @@ cat .command.log >> $out 2>/dev/null
 if [ ! -f $succFile ]; then
 
     if  [ -f "${out%.out}.likelyCheckpointDoNotWork" ] && [ $((srunM/totalM*100)) -lt 10 ]; then
-        echo -e "This step might not good to checkpoint?\nIt might because you did not give enouther memory. Please test run it with higher memmory:\n$flag" | mail -s "!!!!$SLURM_JOBID:$flag" $USER
+        echo -e "This step might not be good to checkpoint?\nOr maybe you did not give enough memory? Please test run it again with higher memory:\n$flag" | mail -s "!!!!$SLURM_JOBID:$flag" $USER
     fi
     touch $failFile
     # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
@@ -546,7 +546,7 @@ if [ ! -f $succFile ]; then
         fi
 
     else
-        echo Not sure why job failed. Not run out of time or memory. Pelase check youself.
+        echo Not sure why this job failed. Did not run out of time or memory. Please check for yourself.
         
         if [ ! -z "$excludeFailedNodes" ]; then 
             echo -n ,$SLURMD_NODENAME >> $smartSlurmJobRecordDir/stats/badNodes.$software.$ref
@@ -602,7 +602,7 @@ if [ ! -f $succFile ]; then
                         #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
                         #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
 
-                        echo Requeued successfully
+                        echo Re-queued successfully
                         [ -f $failFile ] && rm $failFile
 
                         s="FailBadNode.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
