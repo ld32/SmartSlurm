@@ -10,7 +10,224 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
    
    ![Untitled Diagram](https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7)
 
-      
+## Installation
+
+### Download SmartSlurm
+cd $HOME
+git clone https://github.com/ld32/SmartSlurm.git  
+
+### Set PATH
+export PATH=$HOME/SmartSlurm/bin:$PATH  
+
+### Optional: Conda environment to visualize jobs
+module load conda/miniforge3/24.11.3-0
+mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
+---
+
+# ssbatch: Smart sbatch
+[Back to top](#SmartSlurm)
+
+Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
+
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="50%">
+
+Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
+
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMem.png" width="50%">
+
+Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
+
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png" width="50%">
+
+Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
+
+## Features
+[Back to top](#SmartSlurm)
+
+1) Auto adjust memory and run-time according to statistics from earlier jobs
+2) Auto choose partition according to run-time request
+3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
+4) (Optional) Generate a checkpoint before the job runs out of time or memory, and use the checkpoint to re-run jobs.
+5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
+
+## Usage
+[Back to top](#SmartSlurm)
+
+### Syntax
+```
+ssbatch [SBATCH_OPTIONS] -P PROGRAM [-I INPUTS] [-F FLAG] --wrap="COMMAND"
+ssbatch [SBATCH_OPTIONS] -P PROGRAM [-I INPUTS] [-F FLAG] SCRIPT.sh
+
+
+### Options
+| Option | Description | Required |
+|--------|-------------|----------|
+| `-P PROGRAM` | Program name for resource estimation | Yes |
+| `-I INPUTS` | Input files/directories or `jobSize:N` | No |
+| `-F FLAG` | Unique job identifier | No |
+| `--wrap="CMD"` | Command to execute | Yes* |
+| Standard sbatch options | Memory, time, partition, etc. | Yes |
+
+*Either `--wrap` or script file required
+```
+### Example workflow
+``` bash
+# Download 
+cd $HOME
+git clone https://github.com/ld32/SmartSlurm.git  
+
+# Setup path
+export PATH=$HOME/SmartSlurm/bin:$PATH  
+
+# Create 5 files with numbers for testing
+createNumberFiles.sh
+
+# Run 3 jobs to get memory and run-time statistics for script findNumber.sh
+# findNumber is just a random name. You can use anything you like.
+
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers1.txt"
+
+ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers3.txt"
+
+ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers5.txt"
+
+# After the 3 jobs finish ssbatch can auto-adjust memory and run-time based on input file size
+# Notice: this command submits the job to short partition, and reserves 21M memory 
+# and 13 minute run-time 
+ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers2.txt"
+
+# You can have multiple inputs: 
+ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt"
+
+# If input file is not given using option -I. ssbatch will choose the memory 
+# and run-time threshold so that 90% jobs can finish successfully
+ssbatch -P findNumber -F find21 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers2.txt"
+
+# check job status: 
+checkRun
+
+# cancel all jobs submitted from the current directory
+cancelAllJobs 
+
+# rerun jobs: 
+# when re-run a job with the same program and same input(s), if the previous run was successful, 
+# ssbatch will ask to confirm you do want to re-run
+ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
+    --wrap="findNumber.sh 12345 numbers1.txt"
+
+# To remove ssbatch from PATH: 
+source unExport; unExport
+```
+---
+
+### Utilities
+#### checkRun
+Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. Provides status updates, log access, and workflow visualization.
+
+#####  Usage
+- Run from directory where runAsPipeline was executed
+- Requires .smartSlurm.log file to be present
+`checkRun`
+
+##### Main Menu Options
+1, 2, 3...    View selected log file or folder
+s             Show SLURM script (for last selected job)
+l             List all files (for last selected job)
+w             Display workflow chart (see below)
+q             Return to main menu
+qq            Exit completely
+
+##### Workflow Visualization  
+Requires smartSlurmEnv conda environment
+
+module load conda/miniforge3/24.11.3-0
+conda activate smartSlurmEnv
+
+Use `w` option to generate DAG charts showing job dependencies.
+
+#### cancelAllJobs
+Cancels all active and pending runAsPipeline jobs initiated from the current working directory
+
+---
+
+## runAsPipeline
+Workflow manager for ssbatch.
+
+### Features
+- **Dependency Management**: Jobs wait for prerequisites to complete
+- **Resource Optimization**: Each step uses ssbatch for intelligent resource allocation  
+- **Smart Reruns**: Unchanged scripts reuse existing pipeline, successful jobs skip by default
+
+### Syntax
+runAsPipeline "SCRIPT [ARGS]" ["SBATCH_OPTIONS"] {useTmp|noTmp} [run] [noEmail|noSuccEmail] [checkpoint|excludeFailedNodes]
+
+### Options
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `SCRIPT [ARGS]` | Bash script with job annotations | Required |
+| `SBATCH_OPTIONS` | Default SLURM options for all jobs | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
+| `{useTmp\|noTmp}` | Enable/disable temp storage sync | Required |
+| `run` | Submit jobs (omit for test mode) | Test mode |
+| `noEmail\|noSuccEmail` | Email notification control | All emails |
+| `checkpoint\|excludeFailedNodes` | Special execution modes | None |
+
+### Workflow execution stages
+1. **Parse #@ delmited job blocks** to identify job steps and dependencies
+2. **Generate SLURM scripts** for each job with ssbatch-calculated resource requests
+3. **Set up dependencies** using SLURM dependency management
+4. **Submit jobs**
+
+### Building Workflows
+A runAsPipeline script recognizes two types of lines.
+1.  Normal shellscript commands that are excecuted when the script is called
+2.  sbatch jobs preceeded by `#@` that are processed **after** all normal commands are executed
+
+Commands to be submitted in the same ssbatch process must be formatted as a single logical line preceeded by this parameter string:
+`#@stepID,dependIDs,sofwareName,reference,input,sbatchOptions`
+
+| Field | Description | Example | Required |
+|-------|-------------|---------|----------|
+| STEP | Unique integer | `1`, `2`, `3` | yes |
+| DEPENDENCY | dot-separate multiple dependencies | `0`, `1`, `1.2.3` | no |
+| NAME | Job name prefix | `findNumber` | yes |
+| REFERENCE | Reference files for temp sync | `genome.fa`, `db1.db2` | no |
+| INPUTS | Input files/directories (size used for resource estimation) | `sample.fastq`, `input1.input2` | yes |
+| SBATCH_OPTIONS | default sbatch options | sbatch -p short -c 4 --mem 8G -t 2:0:0  | yes |
+
+### Loops
+runAsPipeline handles loops differently than standard bash execution. While the loop structure is preserved, commands with `#@` job annotations are extracted and submitted as sbatch jobs.
+
+**1. Example Incorrectly placed file existence check:**
+```DO NOT RUN:  *Always fails because it runs before any jobs execute*
+for sample in sample1 sample2; do
+    #@1,0,process,,sample
+    process_sample.sh ${sample}.fq > ${sample}.result
+    
+    # This check happens BEFORE job #@1 runs - file doesn't exist yet!
+    if [ -f ${sample}.result ]; then
+        echo "Sample ${sample} already processed" >> log.txt
+        status="skip"
+    else
+        status="process"  
+    fi
+    
+    #@2,1,summarize,,sample
+    echo "Sample ${sample}: ${status}" >> summary.txt  # Always says "process"
+done
+```
+
+### Tips
+1. Keep execution order in mind.
+2. Functions defined in the main part of the script must be exported (`export -f function`) in order for them to be available inside sbatch blocks.
+
+---      
 
 # SmartSlurm
 
@@ -58,90 +275,7 @@ SmartSlurm is an automated computational tool designed to estimate and optmize r
 - [sbatchAndTop](#sbatchAndTop)
 
 
-# Smart sbatch
-[Back to top](#SmartSlurm)
 
-Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png)
-
-Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMem.png)
-
-Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png)
-
-Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
-
-## ssbatch features:
-[Back to top](#SmartSlurm)
-
-1) Auto adjust memory and run-time according to statistics from earlier jobs
-2) Auto choose partition according to run-time request
-3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
-4) (Optional) Generate a checkpoint before the job runs out of time or memory, and use the checkpoint to re-run jobs.
-5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
-
-## How to use ssbatch
-[Back to top](#SmartSlurm)
-
-``` bash
-# Download 
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
-
-# Setup path
-export PATH=$HOME/SmartSlurm/bin:$PATH  
-
-# Create 5 files with numbers for testing
-createNumberFiles.sh
-
-# Run 3 jobs to get memory and run-time statistics for script findNumber.sh
-# findNumber is just a random name. You can use anything you like.
-
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt"
-
-ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers3.txt"
-
-ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers5.txt"
-
-# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts 
-# memory and run-time according input file size
-# Notice: this command submits the job to short partition, and reserves 21M memory 
-# and 13 minute run-time 
-ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers2.txt"
-
-# You can have multiple inputs: 
-ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt"
-
-# If input file is not given using option -I. ssbatch will choose the memory 
-# and run-time threshold so that 90% jobs can finish successfully
-ssbatch -P findNumber -F find21 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers2.txt"
-
-# check job status: 
-checkRun
-
-# cancel all jobs submitted from the current directory
-cancelAllJobs 
-
-# rerun jobs: 
-# when re-run a job with the same program and same input(s), if the previous run was successful, 
-# ssbatch will ask to confirm you do want to re-run
-ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt"
-
-# To remove ssbatch from PATH: 
-source unExport; unExport
-
-```
 
 ## How does ssbatch work    
 [Back to top](#SmartSlurm)
