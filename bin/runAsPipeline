@@ -19,7 +19,7 @@ done
 
 usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> [sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .] <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [noEmail/noSuccEmail, default is all emails.]"; exit 1; }
 
-[ -f ${1%% *} ] || { echolog bash script file not exist: .${1%% *}... Exiting...; usage; }
+[ -f ${1%% *} ] || { echolog bash script file does not exist: .${1%% *}... Exiting...; usage; }
 
 if [ -z "$2" ]; then 
     echolog Commandline sbatch option is empty. Please make sure all steps have sbatch options in your bash script.
@@ -206,7 +206,7 @@ for t in `cat ${1%% *}`; do
         inputs=${arrIN[4]}
         xsuba=${arrIN[5]}  # sbatch options
 
-        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echolog Job marker \"$i\" is wrong. The first three parameters can not be empty. Please refer README.md for correct format! && exit
+        ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echolog Job marker \"$i\" is wrong. The first three parameters cannot be empty. Please refer README.md for correct format! && exit
 
         # if it is old format bash job annotation without inputs
         [[ "$name$ref$inputs" == *sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
@@ -509,6 +509,6 @@ echolog
 
 echolog -e ${GREEN}runAsPipeline${NC} finished. 
 echolog Thank you for using Smart Slurm. You can run:
-echolog -e "${GREEN}less .smartSlurm.log${NC} to see detail submission log."
-echolog -e "${GREEN}checkRun${NC} to check run status and submission logs, and"
-echolog -e "${RED}cancellAllJobs${NC} to cancal all jobs surmitted from current directory."
+echolog -e "${GREEN}less .smartSlurm.log${NC} to see detailed submission log."
+echolog -e "${GREEN}checkRun${NC} to check run status and submission logs"
+echolog -e "${RED}cancelAllJobs${NC} to cancel all jobs submitted from current directory."
