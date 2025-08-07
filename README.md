@@ -73,6 +73,11 @@ Standard sbatch options   Memory, time, partition, etc.        Yes
 
 *Either --wrap or script file required
 ```
+## ssbatch utilities
+### unExport
+Remove smartslurm from your PATH without exiting your session.  ssbatch aliases sbatch while it is in your path so unExport is useful if you do not want ssbatch functionality.
+`source unExport; unExport`
+
 ### Example usage
 ``` bash
 # Download 
@@ -690,8 +695,6 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as Smart Slurm pipeline
 
-
-
 In case you wonder how it works, here is a simple example to explain.
 
 ## How does smart pipeline work
@@ -710,9 +713,9 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
     Yes. Please us this: 
     
-    someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.
+    `someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.`
     
-    #@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G
+    `#@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G`
 
 ### Can I have -c x? 
 
@@ -726,96 +729,55 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
   When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
 
-  Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt     
+  Notice `$smartSlurmLogDir` is defined in `SmartSlurm/config/config.txt`   
 
 ### Can I receieve less email or no email? 
 
   Sure. Please run: 
 
-  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail
+  `runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail`
 
   or
 
-  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail
+ `runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail`
 
 ### Can I eliminate the command line sbatch options?  
 
   Sure. If all the steps in the bash script have sbatch options. Please run: 
 
-  runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+  `runAsPipeline "bashScriptV2.sh 123" "" useTmp run`
 
   or
 
-  runAsPipeline "bashScriptV2.sh 123" useTmp run
+  `runAsPipeline "bashScriptV2.sh 123" useTmp run`
 
 ### Does runAsPipeline run the commands in the modified script in original order?
 
-  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. 
-  
-  With runAsPipeline, the commands still run from top to bottom, except for the commands directly below #@. 
-  
-  Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
-
-### How about while loop?
-
- For for loop, runAsPipeline can directly use the given variable as loop variable. For example: 
-
- For file in `ls someFolder`; do
-
- The value of variable will be use as loop variable, and later become part of job flag.
-
- If you have a while loop of string format. Please add #loopStart:someVariable  above the while keyword  such as: 
-
- #loopStart:f1
- 
- {
- 
- while read -r f1 f2 f3 f4; do
- 
- ...
+  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. With runAsPipeline, the commands still run from top to bottom, except for the commands directly below `#@`. Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
 
 ### Where is jobRecord.txt saved?
 
-As mentioned in SmartSlurm/config/config.txt: 
+As mentioned in SmartSlurm/config/config.txt, a job record folder can be shared with a group of users or users can have their own copy of config as: `~/.smartSlurm/config/config.txt`.  User can modify their copy any way they want. User's setting overwrite the group settting. 
 
-Job record folder can be shared with a group of users.
-
-Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
-
-User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
-
-export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+`export smartSlurmJobRecordDir=/data/groupABC/smartSlurm`
 
 Or: 
 
-export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+`export smartSlurmJobRecordDir=$HOME/.smartSlurm`
 
-There are also other default settings as well: 
-
-export smartSlurmLogDir=smartSlurmLog
-
-Input folder name:
-
-export smartSlurmInputDir=inputSmartSlurm
-
-Output folder path:
-
-export smartSlurmOutputDir=$PWD/outputSmartSlurm
-
+There are also other default settings as well:  `export smartSlurmLogDir=smartSlurmLog`
+Input folder name:                              `export smartSlurmInputDir=inputSmartSlurm`
+Output folder path:                             `export smartSlurmOutputDir=$PWD/outputSmartSlurm`
+```
 export firstBatchCount=5
-
 export defaultMem=4096  # in M
-
 export defaultTime=120  # in min
-
 export defaultExtraTime=5     # in min. extra minutes than the estimated time
-
 export defaultExtraMem=5      # in M. extra memory than the estinated memory
-  
+```
 =======
 
 
-# Review-and-clean-up-job-records-and-statistics
 ## Review and clean up job records and statistics
 [Back to top](#SmartSlurm)
 
@@ -842,18 +804,18 @@ reviewJobRecords.py
 
 # To review and edit certain job record file 
 reviewJobRecords.py path/to/your/jobRecord.txt
-
+```
 ====================
 
-# sbatchAndTop
-## How to use sbatchAndTop
+### sbatchAndTop
+**How to use sbatchAndTop**
 [Back to top](#SmartSlurm)
-
-```
+```bash
 cd ~    
 git clone git@github.com:ld32/SmartSlurm.git  
 export PATH=$HOME/SmartSlurm/bin:$PATH    
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
+
 
 # Such as:    
 sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2" 
@@ -864,3 +826,4 @@ sbatchAndTop job.sh
 
 ## sbatchAndTop features:
 1) Submit slurm job using ssbatch (scroll up to see ssbatch features) and run scontrol top on the job
+```
