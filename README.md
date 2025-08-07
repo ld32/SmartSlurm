@@ -1,38 +1,3 @@
-- [Introduction](#introduction)
-  - [Installation](#installation)
-
-- [ssbatch = Smart sbatch](#ssbatch:-smart-sbatch)
-  - [features](#ssbatch-features)
-  - [How does ssbatch work](#how-does-ssbatch-work)
-    - [Smart sbatch FAQ](#smart-sbatch-faq) 
-        - [Is -F optional?](#is--f-optional) 
-        - [Is -P optional?](#is--p-optional) 
-        - [Is -I optional?](#is--i-optional)
-        - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
-        - [Can I have -c or other sbatch options?](#can-i-have--c-or-other-sbatch-options)
-        - [How about multiple inputs?](#how-about-multiple-inputs)
-        - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
-        - [How does the memory and time formulas are calculated?](#how-does-the-memory-and-time-formulas-are-calculated)
-        - [Where is the memory and time formulas saved?](#where-is-the-memory-and-time-formulas-saved)
-        - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
-        - [How ssbatch recognizes whether jobs have been previously run?](#how-ssbatch-recognizes-whether-jobs-have-been-previously-run)
-
-- [runAsPipeline](#runaspipeline)
-  - [Features](#runaspipeline-features)
-  - [Support Utilities]
-     - [checkRun](#checkrun)
-     - [cancelAllJobs](#cancelalljobs)
-     - [reviewJobRecords](#Review-and-clean-up-job-records-and-statistics)
-  - [Tutorial](#smart-pipeline-tutorial)
-  - [runAsPipeline FAQ](#runaspipeline-faq) 
-     - [How many completed jobs are needed to get estimated resources?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-
-
-- [ssbatch with other pipeline managers]        
-   - [ssbatch with Snakemake](#Use-ssbatch-in-Snakemake-pipeline)
-   - [ssbatch with Cromwell](#Use-ssbatch-in-Cromwell-pipeline])
-   - [ssbatch with Nextflow](#Use-ssbatch-in-Nextflow-pipeline)
-
-=============================
 # Introduction
 SmartSlurm is an automated computational tool designed to estimate and optmize resouces for Slurm jobs. There are two major parts:
 
