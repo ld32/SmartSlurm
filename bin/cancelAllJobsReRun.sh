@@ -28,10 +28,10 @@ if [ ! -z "${ids/ /}" ]; then
     IFS=' '
     echo the following jobs are not finished yet:
     echo -e "$notDone"
-    echo -e "Do you want to cancell all running jobs? " >&2
-    echo -e "y:        Cancel all pending/running jobs and re-run the whole pipiline (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
+    echo -e "Do you want to cancel all running jobs? " >&2
+    echo -e "y:        Cancel all pending/running jobs and re-run the whole pipeline (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
     echo -e "n:        Not cancel the pending/running jobs, only submit other jobs (will ask if you want to re-run successfuly finished jobs if there are any)." >&2
-    echo -e "Enter:    Quit, don't anything." >&2
+    echo -e "Enter:    Quit, don't do anything." >&2
     read -p "" x </dev/tty
 
     if [[ "$x" == "y" ]]; then
