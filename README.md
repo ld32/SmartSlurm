@@ -1,92 +1,88 @@
-=============================
 # Introduction
 SmartSlurm is an automated computational tool designed to estimate and optmize resouces for Slurm jobs. There are two major parts:
 
-1. ssbatch: An sbatch wrapper with a custom function to estimate memory RAM and time based on several factors (i.e., program type, input size,previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and sending an optional email notification.
- 
-2. runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency.
+1. **ssbatch**
+An sbatch wrapper with a custom function that estimates job memory (RAM) and time requirements based on program type, input data size, and previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and optionally sending detailed notification emails.
 
-   Here is how it works:
+Unlike many other pipeline managers which can have complicated setup requirements, ssbatch is written in bash shellscript.  This allows for simple installation on bash/SLURM systems (just clone the repo), and straightforward to integrate with existing comandline tools and pipelines.
+
+3. **runAsPipeline**
+A pipeline manager for ssbatch.  Parses bash scripts to find user defined commands and calls ssbatch to submit jobs to slurm. Handles job dependencies and provides tools to monitor and troubleshoot jobs.
    
-   ![Untitled Diagram](https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7)
+<div align="center">
+<img src="https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7" width="85%">
+</div>
 
-      
-
-# SmartSlurm
-
-- [Smart sbatch](#smart-sbatch)
-    - [ssbatch features](#ssbatch-features)
-    - [How to use ssbatch](#how-to-use-ssbatch)
-    - [How does ssbatch work](#how-does-ssbatch-work) 
-    - [Smart sbatch FAQ](#smart-sbatch-faq) 
-        - [Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-3-jobs-finish-before-my-future-jobs-get-an-estimated-resource)
-        - [Is -F optional?](#is--f-optional) 
-        - [Is -P optional?](#is--p-optional) 
-        - [Is -I optional?](#is--i-optional)
-        - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
-        - [Can I have -c or other sbatch options?](#can-i-have--c-or-other-sbatch-options)
-        - [How about multiple inputs?](#how-about-multiple-inputs)
-        - [What is the logic to get unique job flag?](#what-is-the-logic-to-get-unique-job-flag)
-        - [How does the memory and time formulas are calculated?](#how-does-the-memory-and-time-formulas-are-calculated)
-        - [Where is the memory and time formulas saved?](#where-is-the-memory-and-time-formulas-saved)
-        - [What is the logic to estimate memory and time?](#what-is-the-logic-to-estimate-memory-and-time)
-        - [How ssbatch recognizes whether jobs have been previously run?](#how-ssbatch-recognizes-whether-jobs-have-been-previously-run)
-        
-- [Use ssbatch in Snakemake pipeline](#Use-ssbatch-in-Snakemake-pipeline)
-
-- [Use ssbatch in Cromwell pipeline](#Use-ssbatch-in-Cromwell-pipeline])
-
-- [Use ssbatch in Nextflow pipeline](#Use-ssbatch-in-Nextflow-pipeline)
-
-- [Run bash script as smart pipeline using smart sbatch](#Run-bash-script-as-smart-pipeline-using-smart-sbatch)
-    - [Smart pipeline features](#smart-pipeline-features)
-    - [How to use smart pipeline](#how-to-use-smart-pipeline)
-    - [How does smart pipeline work](#how-does-smart-pipeline-work)
-    - [runAsPipeline FAQ](#runaspipeline-faq) 
-        - [Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource?](#do-i-need-to-wait-for-the-first-5-jobs-finish-before-my-future-jobs-get-an-estimated-resource?)
-        - [Can -I directly take file size or job size?](#can--i-directly-take-file-size-or-job-size)
-        - [Can I have -c x](#can-i-have--c-x)
-        - [How about multiple inputs](#how-about-multiple-inputs)
-        - [How runAsPipeline recognizes whether jobs have been previously run?](#how-runAsPipeline-recognizes-whether-jobs-have-been-previously-run)
-        - [Does runAsPipeline run the commands in the modified script in original order?](#does-runAsPipeline-run-the-commands-in-the-modified-script-in-original-order)
-        - [How about while loop?](#how-about-while-loop)
-        - [Where is jobRecord.txt saved?](#where-is-jobrecord.txt-saved)
-
-- [Review and clean up job records and statistics](#Review-and-clean-up-job-records-and-statistics)
-
-
-- [sbatchAndTop](#sbatchAndTop)
-
-
-# Smart sbatch
+## Features
 [Back to top](#SmartSlurm)
-
-Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png)
-
-Figure 1 - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMem.png)
-
-Figure 2 - ssbatch runs the first five jobs using the default **memory**. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.
-
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png)
-
-Figure 3 - ssbatch runs the first five jobs using the default **time**. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.
-
-## ssbatch features:
-[Back to top](#SmartSlurm)
-
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
 3) Auto re-run failed OOM (out of memory) and OOT (out of run-time) jobs
 4) (Optional) Generate a checkpoint before the job runs out of time or memory, and use the checkpoint to re-run jobs.
 5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
 
-## How to use ssbatch
+## Installation
+```
+# Download SmartSlurm
+cd $HOME
+git clone https://github.com/ld32/SmartSlurm.git  
+
+# Set PATH
+export PATH=$HOME/SmartSlurm/bin:$PATH  
+
+# Optional: Conda environment to visualize jobs
+module load conda/miniforge3/24.11.3-0
+mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+```
+---
+
+# ssbatch: Smart sbatch
 [Back to top](#SmartSlurm)
 
+Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipeline](https://github.com/ENCODE-DCC/atac-seq-pipeline), with the intention of automatically modifing the job's partition based on the cluster's configuration and available partitions. This removed the need for a user to modify the original workflow. Later, ssbatch was improved to include more features.
+
+
+<em><b>Figure 1</b> - Illustrates that memory usage is roughly correlated with the input size. Therefore, the input size can be use as a proxy to allocate memory when submitting new jobs.</em>
+<div align="center">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="50%">
+</div>
+
+
+<em><b>Figure 2</b> - ssbatch runs the first five jobs using the default <b>memory</b>. Then, based on these initials jobs, it estimates memory for future jobs. As a result, the amount of wasted memory is dramatially decreased for the future jobs.</em>
+<div align="center">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartMem.png" width="50%">
+</div>
+
+
+<em><b>Figure 3</b> - ssbatch runs the first five jobs using the default <b>time</b>. Subsequently, the allocation of resources, specifcally time, is dramatically improved for the following jobs.</em>
+<div align="center">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png" width="50%">
+</div>
+
+## Usage
+[Back to top](#SmartSlurm)
+
+```
+ssbatch [SBATCH_OPTIONS] -P PROGRAM [-I INPUTS] [-F FLAG] --wrap="COMMAND"
+ssbatch [SBATCH_OPTIONS] -P PROGRAM [-I INPUTS] [-F FLAG] SCRIPT.sh
+
+# Options
+Option                    Description                           Required
+------------------------  ------------------------------------  ---------
+-P PROGRAM                Program name for resource estimation  Yes
+-I INPUTS                 Input files/directories or jobSize:N  No
+-F FLAG                   Unique job identifier                 No
+--wrap="CMD"              Command to execute                    Yes*
+Standard sbatch options   Memory, time, partition, etc.        Yes
+
+*Either --wrap or script file required
+```
+## ssbatch utilities
+### unExport
+Remove smartslurm from your PATH without exiting your session.  ssbatch aliases sbatch while it is in your path so unExport is useful if you do not want ssbatch functionality.
+`source unExport; unExport`
+
+### Example usage
 ``` bash
 # Download 
 cd $HOME
@@ -110,8 +106,7 @@ ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
     --wrap="findNumber.sh 12345 numbers5.txt"
 
-# After the 3 jobs finish, when submitting more jobs, ssbatch auto adjusts 
-# memory and run-time according input file size
+# After the 3 jobs finish ssbatch can auto-adjust memory and run-time based on input file size
 # Notice: this command submits the job to short partition, and reserves 21M memory 
 # and 13 minute run-time 
 ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
@@ -140,73 +135,372 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
 
 # To remove ssbatch from PATH: 
 source unExport; unExport
-
 ```
 
-## How does ssbatch work    
+## How does ssbatch work?
 [Back to top](#SmartSlurm)
 
-1) Auto adjust memory and run-time according to statistics from earlier jobs
+### Important Files
 
-$smartSlurmJobRecordDir/jobRecord.txt contains job memory and run-time records. There are three important columns: 
-   
-   1st column is the job ID
-   
-   2rd column is the input size
-   
-   7th column is the actual memory usage
-   
-   8th column is the actual time usage
-   
-The data from the three columns are plotted and statistics  
-__________________________________________________________________________________________________________________   
+#### jobRecords.txt
+Located in `~/.SmartSlurm` by default.
+A record of job memory and run-time records for all successful jobs.   The contents of the file look like this:
+
+```bash
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference
 
 46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,findNumber,none
-
 46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,findNumber,none
-
 46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,findNumber,none
+```
 
-\#Here is the input size vs memory plot for findNumber: 
+The most important columns are 2, 7, and 8.
 
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png)
+|column|description|
+---|---
+1 | jobID
+**2** | **input size**
+3 | mem
+4 | time
+5 | mem
+6 | time
+**7** | **actual memory usage**
+**8** | **actual time usage**
+9 | status
+10 | userID
+11 | path
+12 | software
+13 | reference
 
-\#Here is the input size vs run-time plot for findNumber: 
+---------------------
+### config.txt
+located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
 
-![](https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png)
+Users can make their own copy of config.txt in `~/.smartSlurm/config`.  If present, this copy is used in preference to the shared copy allowing users to customize their own parameters in a shared environment.
 
-2) Auto choose partition according to run-time request
+```bash
+...
+export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+export smartSlurmLogDir=smartSlurmLog
 
-smartSlrm/config/config.txt contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs: 
+...
+export partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours
+export partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
+export partition3TimeLimit=720 # run-time > 5 days and <= 30 days
 
-\# General partitions, ordered by maximum allowed run-time in hours 
+adjustPartition() {...}
+```
 
-partition1Name=short; partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours 
+**1. Resource estimation**
+jobRecords columns 2, 7 and 8 are plotted and a linear fit is used to estimate resources for additional jobs.  Plots are generated to visualize the fitted data. 
 
-partition2Name=medium; partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
+<div align="center">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png" width="45%" style="display: inline-block; margin-right: 2%;">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="45%" style="display: inline-block; margin-left: 2%;">
+</div>
 
-partition3Name=long; partition3TimeLimit=720 # run-time > 5 days and <= 30 days
+**2. Automatically choose partition depending on run-time request**
+Depending on resources required, runAsPipeline selects the appropriate partition.  Partition names and resource limits can be modified in config.txt
 
-...        
+**3 Auto re-run jobs that fail with Out Of Memory (OOM) and Out Of run-Time (OOT) states**
+At the end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checks memory and time usage, saves the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If the job fails, ssbatch re-submit with double memory or double time, clear up the statistic formula, so that later jobs will re-caculate statistics, 
 
-\#function 
+**4. Checkpoint**
+If the checkpoint feature is enabled, before the job run out of memory or time, ssbatch generate a checkpoint and resubmit the job.
 
-adjustPartition() {         
-    ... # please open the file to see the content         
-} ; export -f adjustPartition 
+**5. Richly informative emails**
+Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.  `$smartSlurmJobRecordDir/bin/cleanUp.sh` also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
 
-3) Auto re-run failed jobs with Out Of Memory (OOM) and Out Of run-Time (OOT) states
+---
+
+# runAsPipeline
+Workflow manager for ssbatch.
+
+## runAsPipeline Features
+- **Dependency Management**: Jobs wait for prerequisites to complete
+- **Resource Optimization**: Each step uses ssbatch for intelligent resource allocation  
+- **Smart Reruns**: Unchanged scripts reuse existing pipeline, successful jobs skip by default
+
+### Usage
+runAsPipeline "SCRIPT [ARGS]" ["SBATCH_OPTIONS"] {useTmp|noTmp} [run] [noEmail|noSuccEmail] [checkpoint|excludeFailedNodes]
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `SCRIPT [ARGS]` | Bash script with job annotations | Required |
+| `SBATCH_OPTIONS` | Default SLURM options for all jobs | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
+| `{useTmp\|noTmp}` | Enable/disable temp storage sync | Required |
+| `run` | Submit jobs (omit for test mode) | Test mode |
+| `noEmail\|noSuccEmail` | Email notification control | All emails |
+| `checkpoint\|excludeFailedNodes` | Special execution modes | None |
+
+## Utilities
+### checkRun
+Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. Provides status updates, log access, and workflow visualization.
+
+#### Usage
+- Run from directory where runAsPipeline was executed
+- Requires .smartSlurm.log file to be present
+`checkRun`
+
+#### Menu Options
+
+|Option | Description |
+|-----------|-------------|
+|`1, 2, 3...`  |  View selected log file or folder|
+|`s`           |  Show SLURM script (for last selected job)|
+|`l`           |  List all files (for last selected job)|
+|`w`           |  Display workflow chart (see below)|
+|`q`           |  Return to main menu|
+|`qq`          |  Exit completely|
+
+#### Workflow Visualization  
+Requires smartSlurmEnv conda environment
+
+module load conda/miniforge3/24.11.3-0
+conda activate smartSlurmEnv
+
+Use `w` option to generate DAG charts showing job dependencies.
+
+### cancelAllJobs
+Cancels all active and pending runAsPipeline jobs initiated from the current working directory
+
+______________________________________________
+
+### Building Workflows
+A runAsPipeline script recognizes two types of lines.
+1.  Normal shellscript commands that are excecuted when the script is called
+2.  sbatch jobs preceeded by `#@` that are processed **after** all normal commands are executed
+
+Commands to be submitted in the same ssbatch process must be formatted as a single logical line preceeded by this parameter string:  `#@stepID,dependIDs,sofwareName,reference,input,sbatchOptions`
+
+| Field | Description | Example | Required |
+|-------|-------------|---------|----------|
+| STEP | Unique integer | `1`, `2`, `3` | yes |
+| DEPENDENCY | dot-separate multiple dependencies | `0`, `1`, `1.2.3` | no |
+| NAME | Job name prefix | `findNumber` | yes |
+| REFERENCE | Reference files for temp sync | `genome.fa`, `db1.db2` | no |
+| INPUTS | Input files/directories (size used for resource estimation) | `sample.fastq`, `input1.input2` | yes |
+| SBATCH_OPTIONS | default sbatch options | sbatch -p short -c 4 --mem 8G -t 2:0:0  | yes (unless default resources are specified for all jobs in script) |
+
+### Loops
+runAsPipeline handles loops differently than standard bash execution. While the loop structure is preserved, commands with `#@` job annotations are extracted and submitted as sbatch jobs.
+
+`for` loops
+runAsPipeline can directly use the given variable as loop variable. For example:
+
+`For file in ls someFolder; do`
+
+The value of the `file` variable will be used as the loop variable, and later become part of the runAsPipeline job flag.
+
+`while` loops are different 
+ If you have a while loop operating on a list of strings, please specify the loop variable prior to the `while` keyword using `#loopStart:someVariable`.  For example:
+```bash
+#loopStart:f1
+{
+while read -r f1 f2 f3 f4; do
+...
+```
+
+**1. Example of an incorrectly placed file existence check**
+```bash
+DO NOT RUN:  *Always fails because it runs before any jobs execute*
+for sample in sample1 sample2; do
+    #@1,0,process,,sample
+    process_sample.sh ${sample}.fq > ${sample}.result
     
-    At the end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checks memory and time usage, saves the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If the job fails, ssbatch re-submit with double memory or double time, clear up the statistic formula, so that later jobs will re-caculate statistics, 
-
-4) Checkpoint
+    # This check happens BEFORE job #@1 runs - file doesn't exist yet!
+    if [ -f ${sample}.result ]; then
+        echo "Sample ${sample} already processed" >> log.txt
+        status="skip"
+    else
+        status="process"  
+    fi
     
-    If the checkpoint feature is enabled, before the job run out of memory or time, ssbatch generate a checkpoint and resubmit the job.
+    #@2,1,summarize,,sample
+    echo "Sample ${sample}: ${status}" >> summary.txt  # Always says "process"
+done
+```
 
-5) More informative emails: Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.
+### Tips
+1. Keep execution order in mind.
+2. Functions defined in the main part of the script must be exported (`export -f function`) in order for them to be available inside sbatch blocks.
 
-    $smartSlurmJobRecordDir/bin/cleanUp.sh also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
+### Smart pipeline tutorial
+[Back to top](#SmartSlurm)
+
+``` bash
+# Take a look at a regular example bash script in the SmartSlurm directory
+cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
+
+# Below is the content of a regular bashScriptV1.sh 
+ 1 #!/bin/sh
+ 2
+ 3 number=$1
+ 4
+ 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit 1
+ 6
+ 7 for i in {1..5}; do
+ 8
+ 9     input=numbers$i.txt
+10
+11     findNumber.sh 1234 $input > $number.$i.txt
+12
+13 done
+14
+15 cat $number.*.txt > all$number.txt
+
+# Notes about bashScriptV1.sh: 
+#The script first finds a certain number given from commandline in file numbers1.txt until numbers5.txt in row 11, then merges the results into all.txt in row 15 
+
+# In order to tell the Smart Pipeline which step/command we want to submit as Slurm jobs, 
+# we add comments above the commands also some helping commands:  
+cat $HOME/SmartSlurm/scripts/bashScriptV2.sh
+
+# Below is the content of bashScriptV2.sh
+ 1 #!/bin/sh
+ 2
+ 3 number=$1
+ 4
+ 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit     1
+ 6
+ 7 for i in {1..5}; do
+ 8
+ 9     input=numbers$i.txt
+10
+11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
+12     findNumber.sh 1234 $input > $number.$i.txt
+13
+14 done
+15
+16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
+17 cat $number.*.txt > all$number.txt
+   
+```
+
+#### Notice what was added to the regular bash script in the second example:
+[Back to top](#SmartSlurm)
+
+Step 1 is denoted by #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 2:0:0 (line 11 above), which means this is step 1 that depends on no other step, run software findNumber, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
+
+Step 2 is denoted by #@2,1,findNumber,,input (line 16), which means that this is step1 that depends on step1, and the step runs software mergeNumber with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
+
+Notice the format of step annotation is #@stepID,dependIDs,sofwareName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
+
+Here are two more examples:
+
+```bash
+#@4,1.3,map,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
+
+#@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
+```
+
+#### Test run the modified bash script as a pipeline
+[Back to top](#SmartSlurm)
+
+```bash
+runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp
+```
+
+This command will generate new bash script of the form slurmPipeLine.checksum.sh in log folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated. If it is not changed, we don not re-create the pipeline script.
+
+Because the `run` command was omitted, runAsPipeline will only test the script, meaning it does not submit job and only shows a fake job id like 1234 for each step. If you were to append run at the end of the command, the pipeline would be submitted to the Slurm scheduler.
+
+Ideally, with useTmp, the software should run faster using local by copying input data to /tmp disk space for database/reference than the network storage. For this small example, the difference is negligible but could be significant with large files. If you don't need /tmp, you can use the noTmp option.  With useTmp, the pipeline runner copy related data to /tmp, and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
+
+Sample output from the test run
+
+Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
+runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp
+
+# here are the outputs:
+[Back to top](#SmartSlurm)
+
+```bash
+runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
+
+runAsPipeline run date: 2024-04-28_16-03-36_4432
+Running: /home/ld32/SmartSlurm/bin/runAsPipeline /home/ld32/SmartSlurm/scripts/bashScriptV2.sh 1234
+    sbatch -p short -c 1 --mem 4G -t 50:0 noTmp run
+
+Converting /home/ld32/SmartSlurm/scripts/bashScriptV2.sh to 
+    /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
+
+find for loop start: for i in {1..5}; do
+
+find job marker:
+#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
+
+find job:
+findNumber.sh 1234 $input > $number.$i.txt
+findNumber.sh 1234 $input > $number.$i.txt --before parseing
+findNumber.sh 1234 $input > $number.$i.txt --after parseing
+
+find  end: done
+
+find job marker:
+#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
+sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
+
+find job:
+cat $number.*.txt > all$number.txt
+cat $number.*.txt > all$number.txt --before parsing
+cat $number.*.txt > all$number.txt --after parseing
+/home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.
+    7ae574.run.sh /home/ld32/SmartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
+Running /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.7ae574.run.sh 
+    /home/ld32/SmartSlurm/scripts/bashScriptV2.sh
+
+---------------------------------------------------------
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.1
+Got output from ssbatch: Submitted batch job 69308
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.2
+Got output from ssbatch: Submitted batch job 69309
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.3
+Got output from ssbatch: Submitted batch job 69310
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.4
+Got output from ssbatch: Submitted batch job 69311
+
+step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.5
+Got output from ssbatch: Submitted batch job 69312
+
+step: 2, depends on: 1, job name: mergeNumber, flag: 2.1.mergeNumber
+Got output from ssbatch: Submitted batch job 69313
+
+All submitted jobs:
+
+job_id       depend_on              job_flag     software    reference  inputs
+69308       null                  1.0.findNumber.1 findNumber none       ,numbers1.txt
+69309       null                  1.0.findNumber.2 findNumber none       ,numbers2.txt
+69310       null                  1.0.findNumber.3 findNumber none       ,numbers3.txt
+69311       null                  1.0.findNumber.4 findNumber none       ,numbers4.txt
+69312       null                  1.0.findNumber.5 findNumber none       ,numbers5.txt
+69313       69308:69309:69310:69311:69312  2.1.mergeNumber mergeNumber none       none
+---------------------------------------------------------
+Please check .smartSlurm.log for detail logs.
+
+You can use the command:
+ls -l log
+
+This command list all the logs created by the pipeline runner. *.sh 
+    files are the slurm scripts for each step, *.out files are output files 
+    for each step, *.success files means job successfully finished for each 
+    step and *.failed means job failed for each steps.
+
+You can use the command to cancel running and pending jobs:
+cancelAllJobs 
+
+```
+
+
+---      
+
+# SmartSlurm
+
 
 ## Smart Sbatch FAQ
 [Back to top](#SmartSlurm)
@@ -405,216 +699,23 @@ Because of the decreased resource demand, the jobs can start earlier, and in tur
 8) If user has more than one Slurm account, adding -A or —account= to command line to let all jobs to use that Slurm account
 9) When adding new input data and re-run the workflow, affected successfully finished jobs will be auto re-run.Run bash script as Smart Slurm pipeline
 
-## How to use smart pipeline
-[Back to top](#SmartSlurm)
-
-``` bash
-# Download if it is not downlaod yet
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
-
-# Setup path
-export PATH=$HOME/SmartSlurm/bin:$PATH  
-
-
-# if you would like to see flowchat. Only need to run this once
-module load conda/miniforge3/24.11.3-0
-mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-Note: if you would like to share the env with group: 
-mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-
-# Take a look at a regular example bash script
-cat $HOME/SmartSlurm/scripts/bashScriptV1.sh
-
-# Below is the content of a regular bashScriptV1.sh 
- 1 #!/bin/sh
- 2
- 3 number=$1
- 4
- 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit 1
- 6
- 7 for i in {1..5}; do
- 8
- 9     input=numbers$i.txt
-10
-11     findNumber.sh 1234 $input > $number.$i.txt
-12
-13 done
-14
-15 cat $number.*.txt > all$number.txt
-
-
-# Notes about bashScriptV1.sh: 
-#The script first finds a certain number given from commandline in file numbers1.txt until numbers5.txt in row 11, then merges the results into all.txt in row 15 
-
-# In order to tell the Smart Pipeline which step/command we want to submit as Slurm jobs, 
-# we add comments above the commands also some helping commands:  
-cat $HOME/SmartSlurm/scripts/bashScriptV2.sh
-
-# Below is the content of bashScriptV2.sh
- 1 #!/bin/sh
- 2
- 3 number=$1
- 4
- 5 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <numbert>" && exit     1
- 6
- 7 for i in {1..5}; do
- 8
- 9     input=numbers$i.txt
-10
-11     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
-12     findNumber.sh 1234 $input > $number.$i.txt
-13
-14 done
-15
-16 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
-17 cat $number.*.txt > all$number.txt
-   
-```
-
-## Notice that there are a few things added to the script here:
-[Back to top](#SmartSlurm)
-
-Step 1 is denoted by #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 2:0:0 (line 11 above), which means this is step 1 that depends on no other step, run software findNumber, use the value of $i as unique job identifier for this this step, does not use any reference files, and file $input is the input file, needs to be copied to the /tmp directory if user want to use /tmp. The sbatch command tells the pipeline runner the sbatch parameters to run this step.
-
-Step 2 is denoted by #@2,1,findNumber,,input (line 16), which means that this is step1 that depends on step1, and the step runs software mergeNumber with no reference file, does not need unique identifier because there is only one job in the step, and use $input as input file. Notice, there is no sbatch here,  so the pipeline runner will use default sbatch command from command line (see below).   
-
-Notice the format of step annotation is #@stepID,dependIDs,sofwareName,reference,input,sbatchOptions. Reference is optional, which allows the pipeline runner to copy data (file or folder) to local /tmp folder on the computing node to speed up the software. Input is optional, which is used to estimate memory/run-time for the job. sbatchOptions is also optional, and when it is missing, the pipeline runner will use the default sbatch command given from command line (see below).
-
-Here are two more examples:
-
-#@4,1.3,map,,in,sbatch -p short -c 1 -t 2:0:0  #Means step4 depends on step1 and step3, this step run software 'map', there is no reference data to copy, there is input $in and submits this step with sbatch -p short -c 1 -t 2:0:0
-
-#@3,1.2,align,db1.db2   # Means step3 depends on step1 and step2, this step run software 'align', $db1 and $db2 are reference data to be copied to /tmp , there is no input and submit with the default sbatch command (see below).
-
-# Test run the modified bash script as a pipeline
-[Back to top](#SmartSlurm)
-
-```
-runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp
-
-```
-
-This command will generate new bash script of the form slurmPipeLine.checksum.sh in log folder. The checksum portion of the filename will have a MD5 hash that represents the file contents. We include the checksum in the filename to detect when script contents have been updated. If it is not changed, we don not re-create the pipeline script.
-
-This runAsPipeline command will run a test of the script, meaning does not really submit jobs. It will only show a fake job id like 1234 for each step. If you were to append run at the end of the command, the pipeline would be submitted to the Slurm scheduler.
-
-Ideally, with useTmp, the software should run faster using local /tmp disk space for database/reference than the network storage. For this small query, the difference is small, or even slower if you use local /tmp. If you don't need /tmp, you can use noTmp.
-
-With useTmp, the pipeline runner copy related data to /tmp, and all file paths will be automatically updated to reflect a file's location in /tmp when using the useTmp option. 
-Sample output from the test run
-
-Note that only step 2 used -t 2:0:0, and all other steps used the default -t 10:0. The default walltime limit was set in the runAsPipeline command, and the walltime parameter for step 2 was set in the bash_script_v2.sh script.
-runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp
-
-# here are the outputs:
-[Back to top](#SmartSlurm)
-
-```
-runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
-
-
-runAsPipeline run date: 2024-04-28_16-03-36_4432
-Running: /home/ld32/SmartSlurm/bin/runAsPipeline /home/ld32/SmartSlurm/scripts/bashScriptV2.sh 1234
-    sbatch -A rccg -p short -c 1 --mem 4G -t 50:0 noTmp run
-
-Converting /home/ld32/SmartSlurm/scripts/bashScriptV2.sh to 
-    /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.eccd33a67760d5928f1c4cfea17ae574.run.sh
-
-find for loop start: for i in {1..5}; do
-
-find job marker:
-#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
-
-find job:
-findNumber.sh 1234 $input > $number.$i.txt
-findNumber.sh 1234 $input > $number.$i.txt --before parsing
-findNumber.sh 1234 $input > $number.$i.txt --after parseing
-
-find  end: done
-
-find job marker:
-#@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
-sbatch options: sbatch -p short -c 1 --mem 4G -t 50:0
-
-find job:
-cat $number.*.txt > all$number.txt
-cat $number.*.txt > all$number.txt --before parsing
-cat $number.*.txt > all$number.txt --after parseing
-/home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.
-    7ae574.run.sh /home/ld32/SmartSlurm/scripts/bashScriptV2.sh is ready to run. Starting to run ...
-Running /home/ld32/scratch/SmartSlurmTest/log/slurmPipeLine.7ae574.run.sh 
-    /home/ld32/SmartSlurm/scripts/bashScriptV2.sh
-
----------------------------------------------------------
-
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.1
-Got output from ssbatch: Submitted batch job 69308
-
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.2
-Got output from ssbatch: Submitted batch job 69309
-
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.3
-Got output from ssbatch: Submitted batch job 69310
-
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.4
-Got output from ssbatch: Submitted batch job 69311
-
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.5
-Got output from ssbatch: Submitted batch job 69312
-
-step: 2, depends on: 1, job name: mergeNumber, flag: 2.1.mergeNumber
-Got output from ssbatch: Submitted batch job 69313
-
-All submitted jobs:
-
-job_id       depend_on              job_flag     software    reference  inputs
-69308       null                  1.0.findNumber.1 findNumber none       ,numbers1.txt
-69309       null                  1.0.findNumber.2 findNumber none       ,numbers2.txt
-69310       null                  1.0.findNumber.3 findNumber none       ,numbers3.txt
-69311       null                  1.0.findNumber.4 findNumber none       ,numbers4.txt
-69312       null                  1.0.findNumber.5 findNumber none       ,numbers5.txt
-69313       69308:69309:69310:69311:69312  2.1.mergeNumber mergeNumber none       none
----------------------------------------------------------
-Please check .smartSlurm.log for detail logs.
-
-You can use the command:
-ls -l log
-
-This command list all the logs created by the pipeline runner. *.sh 
-    files are the slurm scripts for each step, *.out files are output files 
-    for each step, *.success files means job successfully finished for each 
-    step and *.failed means job failed for each steps.
-
-You can use the command to cancel running and pending jobs:
-cancelAllJobs 
-
-```
-
 In case you wonder how it works, here is a simple example to explain.
 
 ## How does smart pipeline work
 [Back to top](#SmartSlurm)
-
-runAsPipeline goes through the bash script, read the for loop and job decorators, 
-    set up slurm script for each step and job dependencies, and submit the jobs.  
+runAsPipeline goes through the bash script, read the for loop and job decorators, set up slurm script for each step and job dependencies, and submit the jobs.  
 
 ## runAsPipeline FAQ 
-
 ### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
-
-    No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the othe jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
+No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the other jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
 
 ### Can -I directly take file size or job size? 
 
     Yes. Please us this: 
     
-    someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.
+    `someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.`
     
-    #@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G
+    `#@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G`
 
 ### Can I have -c x? 
 
@@ -628,96 +729,54 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
 
   When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
 
-  Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt     
+  Notice `$smartSlurmLogDir` is defined in `SmartSlurm/config/config.txt`   
 
 ### Can I receieve less email or no email? 
 
   Sure. Please run: 
 
-  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail
+  `runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail`
 
   or
 
-  runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail
+ `runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noEmail`
 
 ### Can I eliminate the command line sbatch options?  
 
   Sure. If all the steps in the bash script have sbatch options. Please run: 
 
-  runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+  `runAsPipeline "bashScriptV2.sh 123" "" useTmp run`
 
   or
 
-  runAsPipeline "bashScriptV2.sh 123" useTmp run
+  `runAsPipeline "bashScriptV2.sh 123" useTmp run`
 
 ### Does runAsPipeline run the commands in the modified script in original order?
-
-  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. 
-  
-  With runAsPipeline, the commands still run from top to bottom, except for the commands directly below #@. 
-  
-  Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
-
-### How about while loop?
-
- For for loop, runAsPipeline can directly use the given variable as loop variable. For example: 
-
- For file in `ls someFolder`; do
-
- The value of variable will be use as loop variable, and later become part of job flag.
-
- If you have a while loop of string format. Please add #loopStart:someVariable  above the while keyword  such as: 
-
- #loopStart:f1
- 
- {
- 
- while read -r f1 f2 f3 f4; do
- 
- ...
+No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. With runAsPipeline, the commands still run from top to bottom, except for the commands directly below `#@`. Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
 
 ### Where is jobRecord.txt saved?
 
-As mentioned in SmartSlurm/config/config.txt: 
+As mentioned in SmartSlurm/config/config.txt, a job record folder can be shared with a group of users or users can have their own copy of config as: `~/.smartSlurm/config/config.txt`.  User can modify their copy any way they want. User's setting overwrite the group settting. 
 
-Job record folder can be shared with a group of users.
-
-Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
-
-User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
-
-export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
+`export smartSlurmJobRecordDir=/data/groupABC/smartSlurm`
 
 Or: 
 
-export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+`export smartSlurmJobRecordDir=$HOME/.smartSlurm`
 
-There are also other default settings as well: 
-
-export smartSlurmLogDir=smartSlurmLog
-
-Input folder name:
-
-export smartSlurmInputDir=inputSmartSlurm
-
-Output folder path:
-
-export smartSlurmOutputDir=$PWD/outputSmartSlurm
-
+There are also other default settings as well:  `export smartSlurmLogDir=smartSlurmLog`
+Input folder name:                              `export smartSlurmInputDir=inputSmartSlurm`
+Output folder path:                             `export smartSlurmOutputDir=$PWD/outputSmartSlurm`
+```
 export firstBatchCount=5
-
 export defaultMem=4096  # in M
-
 export defaultTime=120  # in min
-
 export defaultExtraTime=5     # in min. extra minutes than the estimated time
-
 export defaultExtraMem=5      # in M. extra memory than the estinated memory
-  
+```
 =======
 
 
-# Review-and-clean-up-job-records-and-statistics
 ## Review and clean up job records and statistics
 [Back to top](#SmartSlurm)
 
@@ -728,12 +787,11 @@ smartSession
 
 # after job start, run:
 
-# if you would like to see flowchat. Only need to run this once
+# if you would like to see flowchart. Only need to run this once
 module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 conda activate smartSlurmEnv
-
 
 Note: if you would like to share the env with group: 
 mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
@@ -744,18 +802,18 @@ reviewJobRecords.py
 
 # To review and edit certain job record file 
 reviewJobRecords.py path/to/your/jobRecord.txt
-
+```
 ====================
 
-# sbatchAndTop
-## How to use sbatchAndTop
+### sbatchAndTop
+**How to use sbatchAndTop**
 [Back to top](#SmartSlurm)
-
-```
+```bash
 cd ~    
 git clone git@github.com:ld32/SmartSlurm.git  
 export PATH=$HOME/SmartSlurm/bin:$PATH    
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
+
 
 # Such as:    
 sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2" 
@@ -766,3 +824,4 @@ sbatchAndTop job.sh
 
 ## sbatchAndTop features:
 1) Submit slurm job using ssbatch (scroll up to see ssbatch features) and run scontrol top on the job
+```
