@@ -1,9 +1,13 @@
 # Introduction
 SmartSlurm is an automated computational tool designed to estimate and optmize resouces for Slurm jobs. There are two major parts:
 
-1. ssbatch: An sbatch wrapper with a custom function to estimate memory RAM and time based on several factors (i.e., program type, input size,previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and sending an optional email notification.
- 
-2. runAsPipeline: It parses bash script to find user defined commands and call ssbatch to submit jobs to slurm. It take care of job dependency.
+1. **ssbatch**
+An sbatch wrapper with a custom function that estimates job memory (RAM) and time requirements based on program type, input data size, and previous job records). Once the memory and time values are estimated, jobs are submitted to the scheduler while keeping a record of the jobs history and optionally sending detailed notification emails.
+
+Unlike many other pipeline managers which can have complicated setup requirements, ssbatch is written in bash shellscript.  This allows for simple installation on bash/SLURM systems (just clone the repo), and straightforward to integrate with existing comandline tools and pipelines.
+
+3. **runAsPipeline**
+A pipeline manager for ssbatch.  Parses bash scripts to find user defined commands and calls ssbatch to submit jobs to slurm. Handles job dependencies and provides tools to monitor and troubleshoot jobs.
    
 <div align="center">
 <img src="https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7" width="85%">
@@ -136,9 +140,9 @@ source unExport; unExport
 ## How does ssbatch work?
 [Back to top](#SmartSlurm)
 
-**Important Files**
+### Important Files
 
-**jobRecords.txt**
+#### jobRecords.txt
 Located in `~/.SmartSlurm` by default.
 A record of job memory and run-time records for all successful jobs.   The contents of the file look like this:
 
@@ -169,7 +173,7 @@ The most important columns are 2, 7, and 8.
 13 | reference
 
 ---------------------
-**config.txt**
+### config.txt
 located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
 
 Users can make their own copy of config.txt in `~/.smartSlurm/config`.  If present, this copy is used in preference to the shared copy allowing users to customize their own parameters in a shared environment.
@@ -233,7 +237,7 @@ runAsPipeline "SCRIPT [ARGS]" ["SBATCH_OPTIONS"] {useTmp|noTmp} [run] [noEmail|n
 ### checkRun
 Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. Provides status updates, log access, and workflow visualization.
 
-####  Usage
+#### Usage
 - Run from directory where runAsPipeline was executed
 - Requires .smartSlurm.log file to be present
 `checkRun`
@@ -699,15 +703,11 @@ In case you wonder how it works, here is a simple example to explain.
 
 ## How does smart pipeline work
 [Back to top](#SmartSlurm)
-
-runAsPipeline goes through the bash script, read the for loop and job decorators, 
-    set up slurm script for each step and job dependencies, and submit the jobs.  
+runAsPipeline goes through the bash script, read the for loop and job decorators, set up slurm script for each step and job dependencies, and submit the jobs.  
 
 ## runAsPipeline FAQ 
-
 ### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
-
-    No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the othe jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
+No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the other jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
 
 ### Can -I directly take file size or job size? 
 
@@ -752,8 +752,7 @@ runAsPipeline goes through the bash script, read the for loop and job decorators
   `runAsPipeline "bashScriptV2.sh 123" useTmp run`
 
 ### Does runAsPipeline run the commands in the modified script in original order?
-
-  No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. With runAsPipeline, the commands still run from top to bottom, except for the commands directly below `#@`. Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
+No.  If you directly run the script without runAsPipeline, the commands run from top to bottom one by one. With runAsPipeline, the commands still run from top to bottom, except for the commands directly below `#@`. Those commands are submitted as slurm jobs, and when the jobs run, the commands run.
 
 ### Where is jobRecord.txt saved?
 
@@ -788,12 +787,11 @@ smartSession
 
 # after job start, run:
 
-# if you would like to see flowchat. Only need to run this once
+# if you would like to see flowchart. Only need to run this once
 module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 
 conda activate smartSlurmEnv
-
 
 Note: if you would like to share the env with group: 
 mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
