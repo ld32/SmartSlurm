@@ -794,7 +794,7 @@ mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas grap
 conda activate smartSlurmEnv
 
 Note: if you would like to share the env with group: 
-mamba create -n /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+mamba create -p /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
 conda activate /shared/path/smartSlurmEnv
 
 # To review and edit default job records

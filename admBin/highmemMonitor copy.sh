@@ -1,10 +1,11 @@
 #!/bin/bash
 
 set -x 
-#set -e
+set -e
 
-# highmemMonitor.sh - A script to monitor high memory usage processes
-# Usage: ./highmemMonitor.sh [threshold]
+# hihhmemMonitor.sh - A script to monitor high memory usage processes
+# Usage: ./hihhmemMonitor.sh [threshold]
+
 
 function toS ()  {
     set +x 
@@ -25,18 +26,12 @@ function toS ()  {
     seconds=$((10#$day * 24 * 60 * 60 + 10#$hour * 60 * 60  + 10#$min * 60 + 10#$sec ))
     echo $seconds
 }
-
 date=$(date +%Y-%m-%dT)
 
 #users=$(getent group hpc_highmem_users | cut -d: -f4 | tr ',' ' ')
-users="yt145 "; #mdp817 ye12 ers288 npp10 mez150 doa456"
+users="yt145 mdp817 ye12 ers288 npp10 mez150 doa456"
 
-echo "Users in highmem_user group: $users"
-
-# Initialize CSV file with header
-csv_file="highmemReport.all.users.${date}.csv"
-echo "User,TotalJobs,MemRes_VeryLow_Count,MemRes_VeryLow_Pct,MemRes_Low_Count,MemRes_Low_Pct,MemRes_Medium_Count,MemRes_Medium_Pct,MemRes_High_Count,MemRes_High_Pct,MemEff_VeryLow_Count,MemEff_VeryLow_Pct,MemEff_Low_Count,MemEff_Low_Pct,MemEff_Medium_Count,MemEff_Medium_Pct,MemEff_High_Count,MemEff_High_Pct,CPUEff_VeryLow_Count,CPUEff_VeryLow_Pct,CPUEff_Low_Count,CPUEff_Low_Pct,CPUEff_Medium_Count,CPUEff_Medium_Pct,CPUEff_High_Count,CPUEff_High_Pct,LowEfficiencyAlert" > "$csv_file"
-
+echo "Users in hihhmem_user group: $users"
 for user in $users; do
   echo "Processing user: $user"
   
@@ -45,29 +40,17 @@ for user in $users; do
       # find highmem partition job with starting time less than 1 month ago
       echo "highmemJobs.$user.$date.txt not found, creating it now..."
       # check if sacct command is available
-      if ! command -v sacct &> /dev/null; then
-          echo "sacct command not found, please install Slurm accounting tools."
-          exit 1
-      fi
 
-      # also save in pipe delimited format for easier parsing
-      sacct --format=user,jobid,jobidraw,JobName%22,state%14,NodeList%20,Start%20,Timelimit%14,Elapsed%14,CPUTime,TotalCPU,AllocTres%25,MaxRSS,ExitCode --partition=highmem --starttime=$(date -d '1 month ago' +%Y-%m-%dT%H:%M:%S) -u $user --units=M --parsable2 --noheader > highmemJobs.$user.$date.txt
-      
-      # let only run scacct once to save time
-      # use sed to replace | with \t
-      sed -e 's/|/\t/g' highmemJobs.$user.$date.txt > highmemJobs.$user.$date.csv
+      sacct --format=user,jobid,jobidraw,JobName%22,state%14,NodeList%20,Start%20,Timelimit%14,Elapsed%14,CPUTime,TotalCPU,AllocTres%25,MaxRSS,ExitCode --partition=highmem --starttime=$(date -d '1 month ago' +%Y-%m-%dT%H:%M:%S) -u $user --units=M --parsable2 > highmemJobs.$user.$date.txt
 
   fi 
 
   if [ ! -s "highmemJobs.$user.$date.txt" ]; then
-    echo "No high memory jobs found for user $user in the last month. We will remove your access to highmem partition soon." | mail -s "High Memory Job Alert - No Jobs" "lingsheng_dong@hms.harvard.edu"
-    
-    # Add row to CSV for users with no jobs
-    echo "$user,0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,No" >> "$csv_file"
+    echo "No high memory jobs found for user $user in the last month. We will remove your access to highmem partition soon."\
+     | mail -s "High Memory Job Alert" "lingsheng_dong@hms.harvard.edu"
   else
     echo "High memory jobs for user $user have been logged to highmemJobs.$user.$date.txt"
 
-  
     total_jobs=0
     
     # Memory reservation categories
@@ -88,13 +71,12 @@ for user in $users; do
     cpu_eff_medium=0      # 50-75%
     cpu_eff_high=0        # > 75%
     
-    declare -A job_max_rss job_total_cpu job_alloc_mem job_alloc_cpu job_state job_name job_elapsed
+    declare -A job_max_rss job_total_cpu job_alloc_mem job_alloc_cpu job_state job_name
     
-    while IFS="|" read user jobid jobidraw JobName state nodelist start timelimit elapsed cputime totalcpu alloctres maxrss xcode; do
-      echo "Processing job line: $user | $jobid | $JobName | $state | $nodelist | $start | $timelimit | $elapsed | $cputime | $totalcpu | $alloctres | $maxrss | $xcode"
+    while IFS="|" read u jobid jobidraw JobName state nodelist start timelimit elapsed cputime totalcpu alloctres maxrss xcode; do
 
-      [ -z "$user" ] || total_jobs=$((total_jobs +1))
-      [ $total_jobs -gt 3 ] && break;  
+      total_jobs=$((total_jobs +1))
+      [ $total_jobs -le 2 ] && continue # first two rows are headers 
       
       # Skip if no job ID (header or empty line)
       [[ -z "$jobid" ]] && continue
@@ -131,7 +113,6 @@ for user in $users; do
         job_alloc_cpu[$base_jobid]=$cpu
         job_state[$base_jobid]=$state
         job_name[$base_jobid]=$JobName
-        job_elapsed[$base_jobid]=$elapsed_sec
       fi
       
     done < highmemJobs.$user.$date.txt
@@ -142,7 +123,6 @@ for user in $users; do
       used_mem_mb=${job_max_rss[$base_jobid]}
       totalcpu_sec=${job_total_cpu[$base_jobid]}
       cpu=${job_alloc_cpu[$base_jobid]}
-      elapsed_sec=${job_elapsed[$base_jobid]}
       
       # Convert to GB for easier reading
       req_mem_gb=$(echo "scale=2; $req_mem_mb / 1024" | bc)
@@ -160,13 +140,11 @@ for user in $users; do
         mem_efficiency=100
       fi
       
-      # Calculate CPU efficiency
-      if [[ $cpu -gt 0 ]] && [[ $totalcpu_sec -gt 0 ]] && [[ $elapsed_sec -gt 0 ]]; then
+      # Calculate CPU efficiency (this is tricky - need walltime * cores)
+      # For now, let's use a simpler approach based on allocated vs used CPU time
+      if [[ $cpu -gt 0 ]] && [[ $totalcpu_sec -gt 0 ]]; then
+        # This is a simplified CPU efficiency - you might need to adjust based on actual walltime
         cpueffic=$(echo "scale=2; $totalcpu_sec / ($cpu * $elapsed_sec) * 100" | bc 2>/dev/null || echo "0")
-        # Cap at 100%
-        if (( $(echo "$cpueffic > 100" | bc -l) )); then
-          cpueffic=100
-        fi
       else
         cpueffic=0
       fi
@@ -231,7 +209,9 @@ for user in $users; do
     cpu_medium_pct=$(echo "scale=1; $cpu_eff_medium * 100 / $total_jobs" | bc)
     cpu_high_pct=$(echo "scale=1; $cpu_eff_high * 100 / $total_jobs" | bc)
 
-    # Create detailed report for individual file
+    # Create detailed report
+
+    # make this report one row and save to highememReport.all.users.csv
     report="User: $user
 Total highmem jobs: $total_jobs
 
@@ -253,6 +233,8 @@ CPU Efficiency Breakdown:
 - Medium (50-75%): $cpu_eff_medium jobs (${cpu_medium_pct}%)
 - High (>75%): $cpu_eff_high jobs (${cpu_high_pct}%)
 "
+# Detailed Job Data:
+# $(cat highmemJobs.$user.$date.txt)"
 
     echo "$report" > highmemReport.$user.$date.txt
     
@@ -266,50 +248,16 @@ CPU Efficiency Breakdown:
     cpu_combined_int=${cpu_combined_low%.*}
     mem_eff_combined_int=${mem_eff_combined_low%.*}
     
-    # Determine if alert should be sent
-    alert_flag="No"
     if [ $mem_res_combined_int -gt 50 ] || [ $cpu_combined_int -gt 50 ] || [ $mem_eff_combined_int -gt 50 ]; then
-      alert_flag="Yes"
       echo "Low Resource Efficiency Alert for user $user" >> highmemReport.$user.$date.txt
       echo "$report" | mail -s "High Memory Job Alert - $user" "lingsheng_dong@hms.harvard.edu"
     fi
-    
-    # Add row to CSV file
-    echo "$user,$total_jobs,$mem_res_very_low,$mem_res_very_low_pct,$mem_res_low,$mem_res_low_pct,$mem_res_medium,$mem_res_medium_pct,$mem_res_high,$mem_res_high_pct,$mem_eff_very_low,$mem_very_low_pct,$mem_eff_low,$mem_low_pct,$mem_eff_medium,$mem_medium_pct,$mem_eff_high,$mem_high_pct,$cpu_eff_very_low,$cpu_very_low_pct,$cpu_eff_low,$cpu_low_pct,$cpu_eff_medium,$cpu_medium_pct,$cpu_eff_high,$cpu_high_pct,$alert_flag" >> "$csv_file"
-
-
-
-  else
-    # Add row to CSV for users with no valid jobs
-    echo "$user,0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,No" >> "$csv_file"
   fi
-  
   echo "Report generated for user $user: highmemReport.$user.$date.txt"
   
   #break 
 done
 
-# Sort CSV by alert status and low efficiency (put problematic users first)
-echo "Sorting users by efficiency issues..."
-{
-  head -n 1 "$csv_file"  # Keep header
-  tail -n +2 "$csv_file" | sort -t',' -k27,27r -k12,12nr -k20,20nr  # Sort by Alert, then by MemEff_Low_Pct desc, then CPUEff_Low_Pct desc
-} > "${csv_file}.sorted"
+# please order all users and make sure low efficiency users are no the top of the list
 
-#mv "${csv_file}.sorted" "$csv_file"
-
-echo "CSV report generated: $csv_file"
-echo "Users with efficiency issues are listed at the top"
-
-# Generate summary statistics
-total_users=$(tail -n +2 "$csv_file" | wc -l)
-users_with_alerts=$(tail -n +2 "$csv_file" | cut -d',' -f27 | grep -c "Yes" || echo 0)
-
-echo ""
-echo "=== SUMMARY ==="
-echo "Total users analyzed: $total_users"
-echo "Users requiring attention: $users_with_alerts"
-echo "CSV report saved to: $csv_file"
-
-echo "Summary plot generated: highmemReport_summary_${date}.png"
 echo "High memory monitoring completed."

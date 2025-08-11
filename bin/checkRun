@@ -79,7 +79,7 @@ while true; do
     else 
         echo  -e "$records"
     fi 
-    
+
     if [ $count -eq 2 ] && [ -z "$x" ]; then
         
         echo Only one logFolder. No need to select.
@@ -148,7 +148,7 @@ while true; do
         IFS=$'\n'
         #set -x 
         for i in `echo -e "$toShow" | tail -n +2`; do
-            echo -e "$GREEN$count1 ${i#*\/}"
+            echo -e "$GREEN$count1${ne} ${i#*\/}"
             count1=$((count1 + 1))
         done
         echo Current working folder: $logFolder and job: $failedJob
@@ -157,12 +157,11 @@ while true; do
             xx=1
         else  #Or ${RED}r${NC} to run the job command. 
             
-            [ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log.
-Or ${RED}l${NC} to list all log file related to this job. Or "
+            #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
             echo -e "Select a failed step to check the .out log, ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit:"
             read -p "" xx </dev/tty;
         
-            [[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
+            #[[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
 
             # if [[ "$xx" == r ]]; then 
             #     #set -x 
@@ -186,7 +185,7 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
 
             [[ "$xx" == qq ]] && exit
             
-            [[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
+            #[[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
             
             if [[ "$xx" == w ]]; then 
 
@@ -212,10 +211,36 @@ Or ${RED}l${NC} to list all log file related to this job. Or "
 
         fi
         
-        failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $NF}'`
-        
-        less $logFolder/$failedJob.out
+        #set -x 
+        failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $4}'`
 
-        #set +x 
+        toShow1="Available logs:"; 
+        for j in `ls smartSlurmLog/$failedJob*`; do
+            toShow1="$toShow1\n$j" 
+        done
+
+        while true; do 
+            count2=1
+            echo "Available logs:"
+            for i in `echo -e "$toShow1" | tail -n +2`; do
+                echo -e "${GREEN}$count2${NC} $i"
+                count2=$((count2 + 1))
+            done
+            echo 
+
+            if [ $count2 -gt 1 ]; then
+                echo "Please select the log file to view or type ${RED}q${NC} to go back, or ${RED}qq${NC} to quit:"
+                read -p "" xxx </dev/tty
+                
+                [[ "$xxx" == q ]] && break
+                [[ "$xxx" == qq ]] && exit
+                [[ "$xxx" =~ ^[0-9]+$ && "$xxx" -lt $count2 && "$xxx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count2";  continue; }
+            
+                file=`echo -e "$toShow1" | tail -n +2 | head -n $xxx | tail -n1`
+                less $file 
+            else 
+                break
+            fi
+        done 
     done
 done
