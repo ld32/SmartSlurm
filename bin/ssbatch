@@ -430,13 +430,13 @@ resAjust="#Depend on: $depsID\n"
         elif [ -z "$runningSingleJob" ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] || [ ! -z "$runningSingleJob" ] ; then
     
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
-            echoerr $flag was done before, do you want to re-run it?
-            echoerr -e "y:        To re-run this job, press y, then enter key."
-            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key."
-            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key."
-            echoerr -e "enter:    To not re-run this job, directly press enter key."
-            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key."
-            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key."
+            echoerr -e "\n!!! $flag was done before, do you want to re-run it?\n"
+            echoerr -e "y:        To re-run this job, press y, then enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key.\n"
+            echoerr -e "enter:    To not re-run this job, directly press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key.\n"
             read -p "" x </dev/tty
 
             echoerr You typed: \"$x\"

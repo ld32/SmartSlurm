@@ -51,7 +51,8 @@ function loadData() {
     YELLOW='\033[0;33m'
     ORANGE='\033[0;35m'
     ORANGE='\033[0;33m'
-    
+    GREY='\033[0;37m'
+
     records=""; count=1; all=y 
     for i in $logFolders; do
         
@@ -215,7 +216,7 @@ while true; do
         failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $4}'`
 
         toShow1="Available logs:"; 
-        for j in `ls smartSlurmLog/$failedJob*`; do
+        for j in `ls $logFolder/$failedJob*`; do
             toShow1="$toShow1\n$j" 
         done
 
@@ -223,13 +224,25 @@ while true; do
             count2=1
             echo "Available logs:"
             for i in `echo -e "$toShow1" | tail -n +2`; do
-                echo -e "${GREEN}$count2${NC} $i"
+                if [[ "$i" == *.adjust ]]; then 
+                   echo -e "${GREY}$count2 adjust                  -- (adj. res. for adjument log)${NC}"; 
+                elif [[ "$i" == *.out ]]; then 
+                   echo -e "${GREEN}$count2 out                    -- (stdout/stderr)${NC}"
+                elif [[ "$i" == *.out.* ]]; then
+                   echo -e "${GREY}$count2 ${i#*.out.}                  -- job ID${NC}"
+                elif [[ "$i" == *.sh ]]; then
+                   echo -e "${GREEN}$count2 sh                     -- (runAsPipeline converted script)${NC}"
+                elif [[ "$i" == *.success ]]; then 
+                   echo -e "${GREY}$count2 success                -- (reports exit status.  no contents)${NC}"
+                elif [[ "$i" == *.failed ]]; then
+                   echo -e "${GREY}$count2 failed                 -- (reports exit status.  no contents)${NC}"
+                fi
                 count2=$((count2 + 1))
             done
             echo 
 
             if [ $count2 -gt 1 ]; then
-                echo "Please select the log file to view or type ${RED}q${NC} to go back, or ${RED}qq${NC} to quit:"
+                echo -e "Please select the log file to view or type ${RED}q${NC} to go back, or ${RED}qq${NC} to quit:"
                 read -p "" xxx </dev/tty
                 
                 [[ "$xxx" == q ]] && break
