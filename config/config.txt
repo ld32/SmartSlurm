@@ -27,6 +27,8 @@ export defaultExtraMem=5      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 
+export condaEnvPath=$HOME/.conda/envs/smartSlurmEnv
+
 # Genernal partions, ordered by maximum allowed run-time in hours
 export partition1Name=short
 export partition2Name=medium

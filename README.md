@@ -33,6 +33,7 @@ export PATH=$HOME/SmartSlurm/bin:$PATH
 # Optional: Conda environment to visualize jobs
 module load conda/miniforge3/24.11.3-0
 mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+ 
 ```
 ---
 
@@ -793,8 +794,9 @@ mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas grap
 
 conda activate smartSlurmEnv
 
-Note: if you would like to share the env with group: 
+Note: if you would like to share the env with group please use this command, and also modify the env path in config.txt: 
 mamba create -p /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
 conda activate /shared/path/smartSlurmEnv
 
 # To review and edit default job records
