@@ -827,3 +827,16 @@ sbatchAndTop job.sh
 ## sbatchAndTop features:
 1) Submit slurm job using ssbatch (scroll up to see ssbatch features) and run scontrol top on the job
 ```
+=====================
+
+### upgrade
+**How to upgrade**
+[Back to top](#SmartSlurm)
+
+User might have modify his/her copy of config.txt. To avoid overwritting it, please use upgrade.sh to upgrade
+
+```bash
+upgrade.sh    
+
+
+```
