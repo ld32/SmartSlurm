@@ -13,7 +13,7 @@ A pipeline manager for ssbatch.  Parses bash scripts to find user defined comman
 <img src="https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7" width="85%">
 </div>
 
-## Features
+## Feature Summary
 [Back to top](#SmartSlurm)
 1) Auto adjust memory and run-time according to statistics from earlier jobs
 2) Auto choose partition according to run-time request
@@ -36,6 +36,8 @@ mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas grap
  
 ```
 ---
+
+
 
 # ssbatch: Smart sbatch
 [Back to top](#SmartSlurm)
@@ -60,6 +62,28 @@ Smart Sbatch (ssbatch) was originally designed to run the [ENCODE ATAC-seq pipel
 <img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/barchartTime.png" width="50%">
 </div>
 
+## Feature Details
+**1. Resource estimation**
+jobRecords columns 2, 7 and 8 are plotted and a linear fit is used to estimate resources for additional jobs.  Plots are generated to visualize the fitted data. 
+
+<div align="center">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png" width="45%" style="display: inline-block; margin-right: 2%;">
+<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="45%" style="display: inline-block; margin-left: 2%;">
+</div>
+
+**2. Automatically choose partition depending on run-time request**
+Depending on resources required, runAsPipeline selects the appropriate partition.  Partition names and resource limits can be modified in config.txt
+
+**3 Auto re-run jobs that fail with Out Of Memory (OOM) and Out Of run-Time (OOT) states**
+At the end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checks memory and time usage, saves the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If the job fails, ssbatch re-submit with double memory or double time, clear up the statistic formula, so that later jobs will re-caculate statistics, 
+
+**4. Checkpoint**
+If the checkpoint feature is enabled, before the job run out of memory or time, ssbatch generate a checkpoint and resubmit the job.
+
+**5. Richly informative emails**
+Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.  `$smartSlurmJobRecordDir/bin/cleanUp.sh` also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
+
+
 ## Usage
 [Back to top](#SmartSlurm)
 
@@ -78,20 +102,9 @@ Standard sbatch options   Memory, time, partition, etc.        Yes
 
 *Either --wrap or script file required
 ```
-## ssbatch utilities
-### unExport
-Remove smartslurm from your PATH without exiting your session.  ssbatch aliases sbatch while it is in your path so unExport is useful if you do not want ssbatch functionality.
-`source unExport; unExport`
 
-### Example usage
+### Example Usage
 ``` bash
-# Download 
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
-
-# Setup path
-export PATH=$HOME/SmartSlurm/bin:$PATH  
-
 # Create 5 files with numbers for testing
 createNumberFiles.sh
 
@@ -137,16 +150,13 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
 # To remove ssbatch from PATH: 
 source unExport; unExport
 ```
+## Configuration and Data Files
 
-## How does ssbatch work?
-[Back to top](#SmartSlurm)
+### jobRecords.txt
+A record of job memory and run-time records for all successful jobs.
+Located in `~/.SmartSlurm` (default) or custom location may be set in `config.txt`
 
-### Important Files
-
-#### jobRecords.txt
-Located in `~/.SmartSlurm` by default.
-A record of job memory and run-time records for all successful jobs.   The contents of the file look like this:
-
+#### Format
 ```bash
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference
 
@@ -174,8 +184,9 @@ The most important columns are 2, 7, and 8.
 13 | reference
 
 ---------------------
+
 ### config.txt
-located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
+Located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
 
 Users can make their own copy of config.txt in `~/.smartSlurm/config`.  If present, this copy is used in preference to the shared copy allowing users to customize their own parameters in a shared environment.
 
@@ -192,37 +203,58 @@ export partition3TimeLimit=720 # run-time > 5 days and <= 30 days
 adjustPartition() {...}
 ```
 
-**1. Resource estimation**
-jobRecords columns 2, 7 and 8 are plotted and a linear fit is used to estimate resources for additional jobs.  Plots are generated to visualize the fitted data. 
+---
 
-<div align="center">
-<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png" width="45%" style="display: inline-block; margin-right: 2%;">
-<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="45%" style="display: inline-block; margin-left: 2%;">
-</div>
+## Utilities
+### unExport
+Remove smartslurm from your PATH without exiting your session.  ssbatch aliases sbatch while it is in your path so unExport is useful if you do not want ssbatch functionality.
+`source unExport; unExport`
 
-**2. Automatically choose partition depending on run-time request**
-Depending on resources required, runAsPipeline selects the appropriate partition.  Partition names and resource limits can be modified in config.txt
+### reviewJobRecords.py
+An interactive Python tool to visualize jobRecords data and remove rows if desired.
 
-**3 Auto re-run jobs that fail with Out Of Memory (OOM) and Out Of run-Time (OOT) states**
-At the end of the job, $smartSlurmJobRecordDir/bin/cleanUp.sh checks memory and time usage, saves the data in to log $smartSlurmJobRecordDir/myJobRecord.txt. If the job fails, ssbatch re-submit with double memory or double time, clear up the statistic formula, so that later jobs will re-caculate statistics, 
+#### Usage
+```bash
+# From you local computer (Please change username from myUserID to your user ID):
+alias smartSession='PORT=51234; CLUSTER_USER=myUserID; ssh -L $PORT:127.0.0.1:$PORT $CLUSTER_USER@o2.hms.harvard.edu -t "hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; srun --pty -p priority -t 8:0:0 --tunnel $PORT:$PORT bash -c \"hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; export PORT=$PORT; bash;\""'
 
-**4. Checkpoint**
-If the checkpoint feature is enabled, before the job run out of memory or time, ssbatch generate a checkpoint and resubmit the job.
+# In an Xterm window
+smartSession
 
-**5. Richly informative emails**
-Slurm has a limited email notification mechanism, which only includes a subject line. In contrast, ssbatch attaches the content of the sbatch script, as well as the output and error log, to the email.  `$smartSlurmJobRecordDir/bin/cleanUp.sh` also sends an email to user. Attached are the Slurm script, the sbatch command used, and the contents of the output and error log files.
+# After login and srun job start, run:
+module load conda/miniforge3/24.11.3-0
+
+#-- First time only --#
+#  A: Create Conda env for one user
+mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+
+#  B: or shared env
+mamba create -p /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+# >>> Don't forget to update path to conda env in config.txt <<< #
+
+# Activate smartSlurmEnv
+conda activate smartSlurmEnv   # or conda activate /shared/path/smartSlurmEnv
+
+# Launch reviewJobRecords
+# If no path to jobRecords is provided, reviewJobRecords will look in the default location
+python3 /path/to/SmartSlurm/bin/reviewJobRecords.py [path/to/your/jobRecord.txt]
+
+# Paste the Dash URL into a web browser
+Dash is running on http://127.0.0.1:51234/
+```
+The graphical interface that loads lets you view, select (lasso), delete and export records.  This is a convenient way to remove outliers or bad records that could skew resource estimation.
 
 ---
 
 # runAsPipeline
 Workflow manager for ssbatch.
 
-## runAsPipeline Features
+## Features
 - **Dependency Management**: Jobs wait for prerequisites to complete
 - **Resource Optimization**: Each step uses ssbatch for intelligent resource allocation  
 - **Smart Reruns**: Unchanged scripts reuse existing pipeline, successful jobs skip by default
 
-### Usage
+## Usage
 runAsPipeline "SCRIPT [ARGS]" ["SBATCH_OPTIONS"] {useTmp|noTmp} [run] [noEmail|noSuccEmail] [checkpoint|excludeFailedNodes]
 
 | Parameter | Description | Default |
@@ -243,7 +275,7 @@ Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. P
 - Requires .smartSlurm.log file to be present
 `checkRun`
 
-#### Menu Options
+##### Menu Options
 
 |Option | Description |
 |-----------|-------------|
@@ -254,7 +286,7 @@ Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. P
 |`q`           |  Return to main menu|
 |`qq`          |  Exit completely|
 
-#### Workflow Visualization  
+##### Workflow Visualization  
 Requires smartSlurmEnv conda environment
 
 module load conda/miniforge3/24.11.3-0
@@ -267,7 +299,7 @@ Cancels all active and pending runAsPipeline jobs initiated from the current wor
 
 ______________________________________________
 
-### Building Workflows
+## Building Workflows
 A runAsPipeline script recognizes two types of lines.
 1.  Normal shellscript commands that are excecuted when the script is called
 2.  sbatch jobs preceeded by `#@` that are processed **after** all normal commands are executed
@@ -500,13 +532,10 @@ cancelAllJobs
 
 ---      
 
-# SmartSlurm
-
-
-## Smart Sbatch FAQ
+# ssbatch FAQ
 [Back to top](#SmartSlurm)
 
-### Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource? 
+## Do I need to wait for the first 3 jobs finish before my future jobs get an estimated resource? 
 
     Yes for ssbatch. ssbatch directly submits the job without pending. 
     
@@ -514,32 +543,34 @@ cancelAllJobs
     5 directly run, but put other jobs on pending until the first 5 finish, 
     then release the others with estimated resounce, please use runAsPipeline.
 
-### Is -F optional? 
+## Is -F optional? 
 
     Yes. If -F is not given, program + input will become the unique flag for the job.
 
-### Is -P optional? 
+## Is -P optional? 
 
-    Yes. If -P is not given, slurm script name or wrap command will be used as program name.
+    Yes. If `-P` is not given, slurm script name or wrap command will be used as program name.
 
-### Is -I optional? 
+## `-I` flag 
+### Optional?
+    Yes. But If `-I` is not given, resource estimation will be based on program name only. 
 
-    Yes. But If -I is not given, resource estimation will be based on program name only. 
-
-### Can -I directly take file size or job size? 
+### Can `-I` directly take file size or job size? 
     Yes. Please use this: 
 
-    ssbatch -I jobSize:12 ... # Here 12 is the input size. It can be any integer.
+    `ssbatch -I jobSize:12 ...` # Here 12 is the input size. It can be any integer.
+    `#@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G`
 
 ### Can I have -c or other sbatch options? 
-
     Yes. All regular sbatch options are OK to have.
 
-### How about multiple inputs? 
+### Multiple inputs? 
+    Yes. You can have:
+    `-I "input1.txt input2.txt"`
+    OR
+    `input="input1.txt input2.txt" or #@2,1,find,,input1.input2,sbstch ...`
 
-    Yes. You can have -I "input1.txt input2.txt".
-
-### What is the logic to get unique job flag?
+## How are unique job flag generated?
     Has -F jobUniqueFlag?
 
       If yes, use jobUniqueFlag as job flag.
@@ -556,7 +587,7 @@ cancelAllJobs
           
           Otherwise, create a unique job flag, such as program+randomSring.
 
-### How does the memory and time formulas are calculated? 
+## How does are memory and time formulas calculated? 
 
     If job successfully finished: 
 
@@ -573,7 +604,7 @@ cancelAllJobs
 
 ### Where is the memory and time formulas saved?
 
-   It is in folder: $smartSlurmJobRecordDir/stats. Here $smartSlurmJobRecordDir is defined in SmartSlurm/config/config.txt      
+   It is in folder: `$smartSlurmJobRecordDir/stats`. Here `$smartSlurmJobRecordDir` is defined in `SmartSlurm/config/config.txt`
 
 ### What is the logic to estimate memory and time?
 
@@ -596,13 +627,17 @@ cancelAllJobs
 
         Otherwise: use 90th percentile as estimated value and submit job
         
-### How ssbatch recognizes whether jobs have been previously run?
+## How ssbatch recognizes whether jobs have been previously run?
 
   When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
 
   Notice $smartSlurmLogDir is defined in SmartSlurm/config/config.txt 
         
-# Use ssbatch in Snakemake pipeline
+## Is smartSlurm compatible with other pipeline managers?
+
+Yes!
+
+### Snakemake
 [Back to top](#SmartSlurm)
 
 ``` bash
@@ -634,7 +669,7 @@ source unExport; unExport
 
 ```
 
-# Use ssbatch in Cromwell pipeline
+### Cromwell
 [Back to top](#SmartSlurm)
 
 ``` bash
@@ -642,7 +677,7 @@ Coming soon
 
 ```
 
-# Use ssbatch in Nextflow pipeline
+#### Nextflow
 [Back to top](#SmartSlurm)
 
 ``` bash
@@ -677,7 +712,7 @@ process.clusterOptions = '--account=mySlurmAcc'
 nextflow run nextflow.nf -profile slurm
 
 ```
-# Run bash script as smart pipeline using smart sbatch
+# How to Run bash script as smart pipeline using smart sbatch
 [Back to top](#SmartSlurm)
 
 Smart pipeline was originally designed to run bash scripts as a pipeline in a Slurm cluster. We added dynamic memory and run-time features to it and now call it Smart pipeline. The runAsPipeline script converts an input bash script to a pipeline that easily submits jobs to the Slurm scheduler for you.
@@ -706,26 +741,11 @@ In case you wonder how it works, here is a simple example to explain.
 [Back to top](#SmartSlurm)
 runAsPipeline goes through the bash script, read the for loop and job decorators, set up slurm script for each step and job dependencies, and submit the jobs.  
 
-## runAsPipeline FAQ 
-### Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
+# runAsPipeline FAQ 
+## Do I need to wait for the first 5 jobs finish before my future jobs get an estimated resource? 
 No. If the jobd don't depend on other job, runAsPipeline will submit all jobs at once, but only let the first jobs run, the other jobs wait for the first 5 finish to get some statistics, then estimate memory and time, then release them to run. 
 
-### Can -I directly take file size or job size? 
-
-    Yes. Please us this: 
-    
-    `someVariableName=jobSize:12  # here 12 is the input size. It can be any integer.`
-    
-    `#@1,0,runshard,,someVariableName,sbatch -p short -c 4 -t 0-12:00 --mem 8G`
-
-### Can I have -c x? 
-
-    Yes. All regular sbatch options are OK to have.
-
-### How about multiple inputs? 
-
-    Yes. You can have input="input1.txt input2.txt" or #@2,1,find,,input1.input2,sbstch ...
-
+   
 ### How runAsPipeline recognizes whether jobs have been previously run?
 
   When a job successuflly finihes, the software create a file $jobFlag.success in folder smartSlurmLogDir. 
@@ -776,36 +796,6 @@ export defaultExtraTime=5     # in min. extra minutes than the estimated time
 export defaultExtraMem=5      # in M. extra memory than the estinated memory
 ```
 =======
-
-
-## Review and clean up job records and statistics
-[Back to top](#SmartSlurm)
-
-```
-From you local computer (Please change username from myUserID to your user ID):
-alias smartSession='PORT=51234; CLUSTER_USER=myUserID; ssh -L $PORT:127.0.0.1:$PORT $CLUSTER_USER@o2.hms.harvard.edu -t "hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; srun --pty -p priority -t 8:0:0 --tunnel $PORT:$PORT bash -c \"hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; export PORT=$PORT; bash;\""'
-smartSession
-
-# after job start, run:
-
-# if you would like to see flowchart. Only need to run this once
-module load conda/miniforge3/24.11.3-0
-mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-conda activate smartSlurmEnv
-
-Note: if you would like to share the env with group please use this command, and also modify the env path in config.txt: 
-mamba create -p /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-conda activate /shared/path/smartSlurmEnv
-
-# To review and edit default job records
-reviewJobRecords.py 
-
-# To review and edit certain job record file 
-reviewJobRecords.py path/to/your/jobRecord.txt
-```
-====================
 
 ### sbatchAndTop
 **How to use sbatchAndTop**
