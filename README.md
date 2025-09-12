@@ -150,13 +150,17 @@ ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
 # To remove ssbatch from PATH: 
 source unExport; unExport
 ```
-## Configuration and Data Files
+## Configuration Files
 
-### jobRecords.txt
-A record of job memory and run-time records for all successful jobs.
-Located in `~/.SmartSlurm` (default) or custom location may be set in `config.txt`
+### jobRecords and stats
+Location:  `~/.SmartSlurm` (unless otherwise specified by `config.txt`).  Contains two items:
 
-#### Format
+1. **jobRecords.txt**:  A table of memory and run-time records for all successful jobs.
+2. **stats/**:  A directory containing pre-calculated resource estimation fit lines
+
+If stats directory is deleted, regressions will be recalculated next time jobs are run.
+
+#### jobRecord format
 ```bash
 1jobID,2inputSize,3mem,4time,5mem,6time,7mem,8time,9status,10useID,11path,12software,13reference
 
