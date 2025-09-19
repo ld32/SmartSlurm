@@ -91,6 +91,8 @@ node=`echo $jobStat | cut -d" " -f7`
 if [ -f $succFile ] ; then # or nextflow successful job
     [ -z "$snakemakeSuccFlag" ] || touch "$snakemakeSuccFlag"
     jobStatus=COMPLETED
+elif [[ "$sacct" == *TIMEOUT* ]] && [[ "$sacct" == *OUT_OF_ME* ]]; then
+    jobStatus=OOMOOT    
 elif [[ "$sacct" == *TIMEOUT* ]]; then
     jobStatus=OOT
 elif [[ "$sacct" == *OUT_OF_ME* ]]; then
@@ -170,6 +172,10 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
         overText="$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT"
 	#echo -e "`pwd`\n$out\n$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT" | mail -s "Over reserved $SLURM_JOBID" $USER
         echo $overText
+
+        # delete the .stat files, so that next time will re-generate
+        mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+
     fi
   fi
 fi
@@ -202,6 +208,17 @@ if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
         else
             echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
         fi
+
+        # the last column is date. first get he mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
+        # if more than 10, then delete the stat file ( will re-generate next time to estimate)
+        if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
+            tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
+            newRecords=`awk -F"," -v a=$2 -v b=$3 -v t="$tFile" '{ split($20, a, " "); if( a[2] > t && $12 == a && $13 == b) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+            if [ $newRecords -gt 10 ]; then
+                mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
+            fi
+        fi
+
         #cat $smartSlurmJobRecordDir/jobRecord.txt
 fi
 echo Final mem: $srunM M, time: $min mins
@@ -220,92 +237,143 @@ if [ ! -f $succFile ]; then
     fi
     touch $failFile
     # if checkpoint due to low memory or checkpoint failed due to memory, or actually out of memory
-    if  [ -f "${out%.out}.likelyCheckpointOOM" ] || [[ "$jobStatus" == "OOM" ]]; then
+    [ -f "${out%.out}.likelyCheckpointOOM" ] && jobStatus=OOM 
 
-        jobStatus=OOM
 
-        #set -x
-        echo Will re-queue after sending email...
+    # Handle OOM, OOT, and OOMOOT cases
+    if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        #if [[ "${skipEstimate}" == n ]]; then
-            echo old extraMem:
+        # need keey record how many job oot and oom for this software and ref
+        # if there are more than 3 in the last hour, set the newMemFactor and newTimeFactor higher to avoid multiple re-queue loop
+        echo $record >> $smartSlurmJobRecordDir/jobRecord.oot.oom.txt
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.txt | wc -l`
+        echo recentFails in the last hour for $software $ref: $recentFails
+
+        echo "Will re-queue after sending email... Job Status: $jobStatus"
+
+        # Handle memory adjustment for OOM or OOMOOT
+        if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
+            echo "Processing memory adjustment for $jobStatus"
+            echo "old extraMem:"
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
             extraMemN=$(( totalM - srunM + 1 ))
-
             maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
             [ -z "$maxExtra" ] && maxExtra=5
             [ $extraMemN -gt $maxExtra ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref && maxExtra=$extraMemN
 
-            echo new extraMem:
+            echo "new extraMem:"
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
-        #else
-        #    maxExtra=5
-        #fi
 
-        mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
-        (
-        #set -x;
-        if [ $totalM -lt 100 ]; then
-            totalM=100
-            newFactor=8
-        elif [ $totalM -lt 200 ]; then
-            totalM=200
-            newFactor=5
-        elif [ $totalM -lt 512 ]; then
-            totalM=512
-            newFactor=4
-        elif [ $totalM -lt 1024 ]; then
-            totalM=1024
-            newFactor=3
-        elif [ $totalM -lt 10240 ]; then
-            newFactor=2
-        elif [ $totalM -lt 51200 ]; then
-            newFactor=1.5
+            mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
+            
+            # Calculate new memory
+            if [ $totalM -lt 100 ]; then
+                totalM=100
+                newMemFactor=8
+            elif [ $totalM -lt 200 ]; then
+                totalM=200
+                newMemFactor=5
+            elif [ $totalM -lt 512 ]; then
+                totalM=512
+                newMemFactor=4
+            elif [ $totalM -lt 1024 ]; then
+                totalM=1024
+                newMemFactor=3
+            elif [ $totalM -lt 10240 ]; then
+                newMemFactor=2
+            elif [ $totalM -lt 51200 ]; then
+                newMemFactor=1.5
+            else
+                newMemFactor=1.2
+            fi
+
+            if [ $recentFails -gt 3 ]; then
+                newMemFactor=$( echo "$newMemFactor * 4" | bc )
+                echo recentFails is $recentFails, set newMemFactor to $newMemFactor
+            fi
+            mem=`echo "($totalM*$newMemFactor*1.2+$maxExtra*2)/1" | bc`
+            echo "Calculated new memory: $mem M"
         else
-            newFactor=1.2
+            # For OOT only, keep existing memory
+            mem=$totalM
         fi
 
+        # Handle time adjustment for OOT or OOMOOT  
+        if [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
+            echo "Processing time adjustment for $jobStatus"
+            
+            # Calculate new time
+            if [ $min -lt 20 ]; then
+                min=20
+                newTimeFactor=2
+            elif [ $min -lt 30 ]; then
+                min=30
+                newTimeFactor=4
+            elif [ $min -lt 60 ]; then
+                min=60
+                newTimeFactor=3
+            elif [ $min -lt 120 ]; then
+                min=120
+                newTimeFactor=2
+            elif [ $min -lt 480 ]; then
+                min=480
+                newTimeFactor=1.5
+            else
+                newTimeFactor=1.2
+            fi
 
+            if [ $recentFails -gt 3 ]; then
+                newTimeFactor=$( echo "$newTimeFactor * 4" | bc )
+                echo recentFails is $recentFails, set newTimeFactor to $newTimeFactor
+            fi
 
-        mem=`echo "($totalM*$newFactor*1.2+$maxExtra*2)/1" | bc`
-        
-        # testing here
-        #mem=1000
+            min=`echo "($min*$newTimeFactor*1.2)/1" | bc`
+            echo "Calculated new time: $min minutes"
+        fi
 
-        echo Trying to requeue with $mem M
-        echo $inputSize $mem $totalT $maxExtra > ${out%.out}.adjust
-
-        #[[ "$USER" == ld32 ]] && hostName=login00 || hostName=o2.hms.harvard.edu
-        #set -x
-        #if `ssh $hostName "scontrol requeue $SLURM_JOBID; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;"`; then
-        #echo "scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem;" > $smartSlurmLogDir/$flag.requeueCMD
-
-        hours=$((($totalT + 59) / 60))
+        # Calculate partition and time format
+        hours=$((($min + 59) / 60))
         adjustPartition $hours $partition
+        
+        seconds=$(($min * 60))
+        time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 
+        echo $inputSize $mem $min $maxExtra > ${out%.out}.adjust
+
+        # Set up environment variables for requeue command
         export myPartition=$partition
-        export myTime=$totalT
+        export myTime=$time
         export myMem=${mem}M
+
         requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
         requeueCmd=${requeueCmd#*submit the job: }
         requeueCmd=${requeueCmd/ -H/}
         requeueCmd=${requeueCmd//\$myPartition/$myPartition}
         requeueCmd=${requeueCmd//\$myTime/$myTime}
         requeueCmd=${requeueCmd//\$myMem/$myMem}
+        requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' )
 
-		requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
-        for try in {1..5}; do
-            if [ ! -f $failFile.requeued.$try.mem ]; then
-                #sleep 2
-                touch $failFile.requeued.$try.mem
+        # Attempt to requeue with retry logic
+        for try in {1..3}; do
+            # Create different flag files for different failure types
+            #flagFile="$failFile.requeued.$try"
+            case "$jobStatus" in
+                "OOM") flagFile="$failFile.requeued.$try.mem" ;;
+                "OOT") flagFile="$failFile.requeued.$try.time" ;;
+                "OOMOOT") flagFile="$failFile.requeued.$try.oomoot" ;;
+            esac
+
+            if [ ! -f "$flagFile" ]; then
+                touch "$flagFile"
                 
-                echo cmd: $requeueCmd
-
+                echo "Attempt $try - cmd: $requeueCmd"
                 newJobID=`$requeueCmd`
 
                 if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
-                    echo "# mem=$myMem time=$myTime " >> $script
+                    echo "# mem=$myMem time=$myTime reason=$jobStatus" >> $script
+                    
+                    # Update dependent jobs
                     IFS=$'\n'
                     for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
                         job=${line%% *}
@@ -318,52 +386,49 @@ if [ ! -f $succFile ]; then
                         else
                             tmp=""; IFS=$' '
                             for t in ${deps//:/ }; do
-                                 [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
+                                [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
                             done
                             [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
                         fi
+                        
                         if [ ! -z "$deps" ]; then
                             scontrol update jobid=$job $deps
                             flg=`echo $line | awk '{print $3}'`
                             echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
                         fi
-
-
                     done
 
-                    #if `sh $PWD/$smartSlurmLogDir/$flag.requeueCMD; rm $PWD/$smartSlurmLogDir/$flag.requeueCMD;`; then
-                    #rm $smartSlurmLogDir/$flag.requeueCMD #;  then
-                    #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
-                    #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
-
-                    echo Requeued successfully
+                    echo "Requeued successfully"
                     [ -f $failFile ] && rm $failFile
 
-                    s="OOM.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
+                    # Send notification email with specific failure type
+                    case "$jobStatus" in
+                        "OOM") s="OOM.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" ;;
+                        "OOT") s="OOT.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" ;;
+                        "OOMOOT") s="OOMOOT.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" ;;
+                    esac
+                    
                     echo -e "" | mail -s "$s" $USER
                     [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
 
                     touch $out.$newJobID
-
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
 
+                    # Lock mechanism for job ID adjustments
                     while true; do
                         if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
                             break
                         else 
                             folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
                             current_time=$(date +%s)
-
                             if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
                                 touch $smartSlurmLogDir/job.adjusting.lock 
                                 break
                             fi    
                         fi
-                        echo waiting for lock to adjust job ids 
+                        echo "waiting for lock to adjust job ids"
                         sleep 1
                     done  
-
-
 
                     sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
                     rm -r $smartSlurmLogDir/job.adjusting.lock
@@ -373,174 +438,16 @@ if [ ! -f $succFile ]; then
                     break
 
                 else
-                    echo re-submit failed;
+                    echo "re-submit failed on attempt $try"
                 fi
-                set +x
             fi
-        done;
-        set +x;
-        ) &
+        done
 
-        # delete stats and redo them
+        # Clean up statistics files
         if [ "$inputs" == "none" ]; then
             mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
         else
-            # remove bad records
-            # todo: all need to delete some resords form jobRecords.txt!!!
-            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
-                # .  $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat
-                # Finala=`printf "%.15f\n" $Finala`
-                # Finalb=`printf "%.15f\n" $Finalb`
-                # Maximum=`printf "%.15f\n" $Maximum`
-                # echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
-
-                # awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $7)) {print}}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt1
-                # echo diff output:
-                # diff $smartSlurmJobRecordDir/jobRecord.txt $smartSlurmJobRecordDir/jobRecord.txt1
-                # mv $smartSlurmJobRecordDir/jobRecord.txt1 $smartSlurmJobRecordDir/jobRecord.txt
-                mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
-            fi
-        fi
-    elif [[ "$jobStatus" == "OOT" ]]; then
-#set -x
-        if [ $min -lt 20 ]; then
-            min=20
-            newFactor=2
-        elif [ $min -lt 30 ]; then
-            min=30
-            newFactor=4
-        elif [ $min -lt 60 ]; then
-            min=60
-            newFactor=3
-        elif [ $min -lt 120 ]; then
-            min=120
-            newFactor=2
-        elif [ $min -lt 480 ]; then
-            min=480
-            newFactor=1.5
-        else
-            newFactor=1.2
-        fi
- 
-        #newFactor=2
-        min=`echo "($min*$newFactor*1.2)/1" | bc`
-        echo Trying to requeue $try with $min minutes
-        echo $inputSize $totalM $min $maxExtra > ${out%.out}.adjust
-
-        hours=$((($min + 59) / 60))
-        adjustPartition $hours $partition
-        seconds=$(($min * 60))
-
-        # https://chat.openai.com/chat/80e28ff1-4885-4fe3-8f21-3556d221d7c6
-
-        time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
-        export myPartition=$partition
-        export myTime=$time
-        export myMem=${totalM}M
-        requeueCmd=`grep "Command used to submit the job:" $script | tail -n 1`
-        requeueCmd=${requeueCmd#*submit the job: }
-        requeueCmd=${requeueCmd//\$myPartition/$myPartition}
-        requeueCmd=${requeueCmd//\$myTime/$myTime}
-        requeueCmd=${requeueCmd//\$myMem/$myMem}
-        requeueCmd=${requeueCmd/ -H/}
-        requeueCmd=$( echo $requeueCmd | sed -E 's/-d afterok:[0-9]+//g' ) #-d afterok:38023271
-
-        for try in {1..5}; do
-            if [ ! -f $failFile.requeued.$try.time ]; then
-                touch $failFile.requeued.$try.time
-                
-                echo cmd: $requeueCmd
-
-		        newJobID=`$requeueCmd`
-
-                if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
-                    echo "# mem=$myMem time=$myTime " >> $script
-                    IFS=$'\n'
-                    for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
-                        job=${line%% *}
-                        deps=`echo $line | awk '{print $2}'`
-
-                        if [[ $deps == null ]]; then
-                            deps=""
-                        elif [[ $deps == ${deps/:/} ]]; then
-                            deps="Dependency=afterok:$newJobID"
-                        else
-                            tmp=""; IFS=$' '
-                            for t in ${deps//:/ }; do
-                                 [ "$SLURM_JOBID" == "$t" ] && tmp=$tmp:$newJobID || tmp=$tmp:$t
-                            done
-                            [ -z "$tmp" ] && deps="" || deps="Dependency=afterok$tmp"
-                        fi
-                        if [ ! -z "$deps" ]; then
-                            scontrol update jobid=$job $deps
-                            flg=`echo $line | awk '{print $3}'`
-                            echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
-                        fi
-                    done
-
-                    #if `sh $PWD/$smartSlurmLogDir/$flag.requeueCMD; rm $PWD/$smartSlurmLogDir/$flag.requeueCMD;`; then
-                    #rm $smartSlurmLogDir/$flag.requeueCMD #;  then
-                    #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
-                    #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
-
-                    echo Requeued successfully
-                    [ -f $failFile ] && rm $failFile
-
-                    s="OOT.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
-                    echo -e "" | mail -s "$s" $USER
-                    [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
-
-                    touch $out.$newJobID
-
-                    cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
-                    while true; do
-                        if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
-                            break
-                        else 
-                            folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
-                            current_time=$(date +%s)
-
-                            if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
-                                touch $smartSlurmLogDir/job.adjusting.lock 
-                                break
-                            fi    
-                        fi
-                        echo waiting for lock to adjust job ids 
-                        sleep 1
-                    done                     
-
-                    sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
-                    rm -r $smartSlurmLogDir/job.adjusting.lock
-                    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
-                    echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
-                    break
-                
-                else 
-                    echo re-submit failed;
-                fi    
-            fi
-        done
-        set +x 
-
-         # delete stats and redo them
-        if [[ "$inputs" == "none" ]]; then
-            mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
-
-            #[ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput ] && mv $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput.$(stat -c %y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput | tr " " ".")
-        else
-             # remove bad records
-             # todo: all need to delete some resords form jobRecords.txt!!!
-            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
-                # .  $smartSlurmJobRecordDir/stats/$software.$ref.time.stat
-                # Finala=`printf "%.15f\n" $Finala`
-                # Finalb=`printf "%.15f\n" $Finalb`
-                # Maximum=`printf "%.15f\n" $Maximum`
-                # echo Finala: $Finala Finalb: $Finalb Maximum: $Maximum
-
-                # awk -F"," -v a=$2 -v b=$3 -v c=$Finala -v d=$Finalb '{ if ( ! ($12 == a && $13 == b && $2 * c + d > $8 ) ) {print}}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt1
-                # echo diff output:
-                # diff $smartSlurmJobRecordDir/jobRecord.txt $smartSlurmJobRecordDir/jobRecord.txt1
-                # mv $smartSlurmJobRecordDir/jobRecord.txt1 $smartSlurmJobRecordDir/jobRecord.txt
+            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
                 mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
             fi
         fi

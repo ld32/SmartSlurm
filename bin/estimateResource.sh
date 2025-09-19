@@ -44,7 +44,7 @@ if [ $inputs == none ]; then
         grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7, $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput
 
         # make plot and calculate statistics
-        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.timeMem.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.timeMem.stat.noInput
+        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
 
         rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
     fi
@@ -52,7 +52,7 @@ if [ $inputs == none ]; then
     # at least 3 records
     if [ $rows -ge 3 ]; then
 
-        cutoffRow=$(( ($row - 1)  / 10  + 1)) # 90th percentile
+        cutoffRow=$(( ($rows - 1)  / 10  + 1)) # 90th percentile
 
         mem=`cut -d' ' -f1 $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
 
