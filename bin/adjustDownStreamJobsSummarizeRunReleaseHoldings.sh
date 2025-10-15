@@ -79,7 +79,11 @@ else
 
             echo looking partition for hour: $hours
 
-            adjustPartition $hours partition
+            #find original partition 
+            # todo: should save the partition in the allJobs.txt
+            partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+
+            adjustPartition $hours $partition
 
             seconds=$(($min * 60))
 

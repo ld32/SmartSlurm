@@ -22,8 +22,8 @@ export firstBatchCount=5
 export defaultMem=4096  # in M
 export defaultTime=120  # in min
 
-export defaultExtraTime=5     # in min. extra minutes than the estimated time
-export defaultExtraMem=5      # in M. extra memory than the estinated memory
+export defaultExtraTime=10     # in min. extra minutes than the estimated time
+export defaultExtraMem=1000      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 
@@ -47,19 +47,21 @@ export partition6Name=priority    # only allow two job running at the same time
 export partition7Name=highmem     # run-time <= 30 days, special partision
 export partition8Name=interactive
 export partition9Name=mpi
-export partition10Name=
+export partition10Name=gpu_quad
+export partition11Name=gpu
 
 export partition6TimeLimit=720 # run-time <= 30 days
 export partition7TimeLimit=720 # run-time <= 30 days
 export partition8TimeLimit=12  # run-time <= 12 hours
 export partition9TimeLimit=720 # run-time <= 30 days
 export partition10TimeLimit=
+export partition11TimeLimit=
 
 adjustPartition() {
     [ -z "$1" ] && { echo -e "Usage: $0 <hours> [partition (optional)]. \nReturn: adjustedPartition"; return; }
     hours=$1
     partitionO=$2
-    for i in {6..10}; do
+    for i in {6..11}; do
         partition=partition${i}Name
         partition=${!partition}
         [ -z "$partition" ] && continue
