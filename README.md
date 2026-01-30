@@ -175,7 +175,7 @@ The most important columns are 2, 7, and 8.
 
 ---------------------
 ### config.txt
-located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
+located in `smartSlurm/config/config.txt` contains partition time limit and bash function adjustPartition to adjust partition/mem/time for sbatch jobs.  It also sets default paths to jobRecords.txt, conda environment, among other parameters.
 
 Users can make their own copy of config.txt in `~/.smartSlurm/config`.  If present, this copy is used in preference to the shared copy allowing users to customize their own parameters in a shared environment.
 

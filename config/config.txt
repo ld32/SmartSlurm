@@ -22,8 +22,8 @@ export firstBatchCount=5
 export defaultMem=4096  # in M
 export defaultTime=120  # in min
 
-export defaultExtraTime=5     # in min. extra minutes than the estimated time
-export defaultExtraMem=5      # in M. extra memory than the estinated memory
+export defaultExtraTime=10     # in min. extra minutes than the estimated time
+export defaultExtraMem=1000      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 
@@ -35,45 +35,104 @@ export partition2Name=medium
 export partition3Name=long
 export partition4Name=
 export partition5Name=
-
-export partition1TimeLimit=12  # run-time > 0 hours and <= 12 hours
-export partition2TimeLimit=120 # run-time > 12 hours and <= 5 days
-export partition3TimeLimit=720 # run-time > 5 days and <= 30 days
-export partition4TimeLimit=
-export partition5TimeLimit=
-
-# Special pertitions with special restrictions
-export partition6Name=priority    # only allow two job running at the same time
-export partition7Name=highmem     # run-time <= 30 days, special partision
-export partition8Name=interactive
-export partition9Name=mpi
+export partition6Name=
+export partition7Name=
+export partition8Name=
+export partition9Name=
 export partition10Name=
 
-export partition6TimeLimit=720 # run-time <= 30 days
-export partition7TimeLimit=720 # run-time <= 30 days
-export partition8TimeLimit=12  # run-time <= 12 hours
-export partition9TimeLimit=720 # run-time <= 30 days
+export partition1MemLimit=249000  
+export partition2MemLimit=249000 
+export partition3MemLimit=249000
+export partition4MemLimit=
+export partition5MemLimit=
+export partition6MemLimit=
+export partition7MemLimit=
+export partition8MemLimit=
+export partition9MemLimit=
+export partition10MemLimit=
+
+export partition1TimeLimit=720  # run-time <= 720 minutes(12 hours)
+export partition2TimeLimit=7200 # run-time <= 7200 minutes(5 days)
+export partition3TimeLimit=43200 # run-time > 5 days and <= 30 days
+export partition4TimeLimit=
+export partition5TimeLimit=
+export partition6TimeLimit=
+export partition7TimeLimit=
+export partition8TimeLimit=
+export partition9TimeLimit=
 export partition10TimeLimit=
 
+
+# Special pertitions with special restrictions
+export partition11Name=priority    # only allow two job running at the same time
+export partition12Name=highmem     # run-time <= 30 days, special partision
+export partition13Name=interactive
+export partition14Name=gpu
+export partition15Name=gpu_quad
+export partition16Name=
+export partition17Name=
+export partition18Name=
+export partition19Name=
+export partition20Name=
+
+export partition11MemLimit=249000
+export partition12MemLimit=999000
+export partition13MemLimit=249000
+export partition14MemLimit=249000
+export partition15MemLimit=249000
+export partition16MemLimit=
+export partition17MemLimit=
+export partition18MemLimit=
+export partition19MemLimit=
+export partition20MemLimit=
+
+
+export partition11TimeLimit=43200 # run-time <= 30 days
+export partition12TimeLimit=43200 # run-time <= 30 days
+export partition13TimeLimit=720   # run-time <= 12 hours
+export partition14TimeLimit=43200 # run-time <= 30 days
+export partition15TimeLimit=
+export partition16TimeLimit=
+export partition17TimeLimit=
+export partition18TimeLimit=
+export partition19TimeLimit=
+export partition20TimeLimit=
+
 adjustPartition() {
-    [ -z "$1" ] && { echo -e "Usage: $0 <hours> [partition (optional)]. \nReturn: adjustedPartition"; return; }
-    hours=$1
-    partitionO=$2
-    for i in {6..10}; do
+    [ -z "$1" ] && { echo -e "Usage: $0 <mem (M)> <time (min)> <partition>\nReturn: \$mem, \$min and \$partition"; return; }
+    mem=$1
+    min=$2
+    partitionO=$3 
+    for i in {11..20}; do
         partition=partition${i}Name
         partition=${!partition}
+        
         [ -z "$partition" ] && continue
         if [[ "$partition" ==  "$partitionO" ]]; then
+            memLimit=$partition${i}MemLimit
+            memLimit=${!memLimit}
+            [ "$mem" -gt "$memLimit" ] && mem="Over:$mem:$memLimit" 
+    
+            timeLimit=$partition${i}TimeLimit
+            timeLimit=${!timeLimit}
+            [ "$min" -gt "$timeLimit" ] && min="Over:$min:$timeLimit"
             return
         fi
     done
 
-    for i in {1..5}; do
+    for i in {1..10}; do
         partition=partition${i}Name
         [ -z ""${!partition}"" ] && continue
         partitionTime=partition${i}TimeLimit
         if [ $hours -le  "${!partitionTime}" ]; then
             partition=${!partition}
+            memLimit=$partition${i}MemLimit
+            memLimit=${!memLimit}
+            [ "$mem" -gt "$memLimit" ] && mem="Over:$mem:$memLimit" 
+            timeLimit=$partition${i}TimeLimit
+            timeLimit=${!timeLimit}
+            [ "$min" -gt "$timeLimit" ] && min="Over:$min:$timeLimit"
             break
         fi
     done

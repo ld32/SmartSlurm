@@ -164,17 +164,24 @@ fi
 
 #set -x
 # totalM=200; totalT=200; srunM=1000; min=200;
-overReserved=""; overText=""; ratioM=""; ratioT=""
+overEstimate=""; overText=""; ratioM=""; ratioT=""
 if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
   if [[ "$jobStatus" == COMPLETED ]]; then
     if [ "$totalM" -gt $((srunM * 2)) ] && [ $srunM -ge 1024 ]; then
-        overReserved="O:"
+        overEstimate="O:"
         overText="$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT"
 	#echo -e "`pwd`\n$out\n$SLURM_JOBID over-reserved resounce M: $srunM/$totalM T: $min/$totalT" | mail -s "Over reserved $SLURM_JOBID" $USER
         echo $overText
 
         # delete the .stat files, so that next time will re-generate
         mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+
+        # get current extraMem
+        currentExtraMem=0
+        [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && currentExtraMem=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
+
+
+
 
     fi
   fi
@@ -186,41 +193,35 @@ ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|b
 record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`" 
 echo dataToPlot,$record
 
-if [[ $jobStatus == "COMPLETED" ]]; then # && [[ "${skipEstimate}" == n ]]; then
-        records=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' | sort -u -n`
-        #timeRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
-        #memRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $7 }}' | sort -u -nr | tr '\n' ' '`
-        #timeRecords=`grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $8 }}' | sort -u -nr | tr '\n' ' '`
+# delete rows other than 1 week and not COMPLETED
+awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t || $9 == "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
 
-        #maxMem=`cat $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "`
-        #maxTime=`cat $smartSlurmJobRecordDir/stats/$software.$ref.time.stat.noInput  2>/dev/null | sort -nr | tr '\n' ' ' | cut -f 1 -d " "
-        #if [ "$(echo $memRecords | wc -w)" -lt 20 ] || [ "${memRecords%% *}" -lt "${srunM%.*}" ] || [ "${timeRecords%% *}" -lt "$min" ]; then
+records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
 
-        #   less than 20 records                  # or current one is larger than all old data   # and not exist already
-        if [ "$(echo $records | wc -l)" -lt 200 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
-            #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
-                [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
-                echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
-            #else
-            #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
-            #fi
-            mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
-        else
-            echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
-        fi
-
-        # the last column is date. first get he mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
-        # if more than 10, then delete the stat file ( will re-generate next time to estimate)
-        if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
-            tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
-            newRecords=`awk -F"," -v a=$2 -v b=$3 -v t="$tFile" '{ split($20, a, " "); if( a[2] > t && $12 == a && $13 == b) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
-            if [ $newRecords -gt 10 ]; then
-                mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
-            fi
-        fi
-
-        #cat $smartSlurmJobRecordDir/jobRecord.txt
+#   less than 500 records             # or current one is larger than all old data   # and not exist already
+if [ "$(echo $records | wc -l)" -lt 500 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
+    #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
+        [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+    #else
+    #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+    #fi
+    mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+else
+    echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
 fi
+
+
+# the last column is date. first get he mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
+# if more than 10, then delete the stat file ( will re-generate next time to estimate)
+if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
+    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
+    newRecords=`awk -F"," -v a=$2 -v b=$3 -v t="$tFile" '{ split($20, a, " "); if( a[2] > t && $12 == a && $13 == b) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+    if [ $newRecords -gt 10 ]; then
+        mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
+    fi
+fi
+
 echo Final mem: $srunM M, time: $min mins
 
 # for nextflow log
@@ -552,6 +553,11 @@ if [ ! -f $succFile ]; then
     #    ( sleep 2;  scontrol requeue $SLURM_JOBID; ) &
     #fi
 
+# job was successful
+else 
+
+
+
 fi
 
 #if [[ x == y ]]; then 
@@ -657,7 +663,7 @@ savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
 minimumsize=9000
 actualsize=`wc -c $out || echo 0`
 
-[ -f $succFile ] && s="${overReserved}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
+[ -f $succFile ] && s="${overEstimate}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
 
 if [ "${actualsize% *}" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
