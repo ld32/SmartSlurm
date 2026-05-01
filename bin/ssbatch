@@ -48,6 +48,7 @@ elif [ -z "$runningSingleJob" ]; then
 # single job without runAsPipeline
 else 
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
+    echoerr1() { echo "$@" >> .smartSlurm.log; }
 fi 
 
 output="Running: `realpath $0` $@"
