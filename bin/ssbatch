@@ -584,7 +584,7 @@ fi
 export snakemakeSuccFlag=''
 export snakemakeFailFlag=''
 
-realSbatch=`which -a sbatch | grep -v Smart`
+realSbatch=`which -a sbatch | grep -v SmartSlurm`
 
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
