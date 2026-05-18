@@ -1,7 +1,6 @@
 #!/bin/sh
 
-#set -x
-set -euo pipefail
+
 
 echolog() { echo -e "$@\n"; echo $@ >>.smartSlurm.log; }
 
@@ -47,6 +46,7 @@ else
     export lessEmail="$5"
 fi 
 
+
 if [ ! -z "$6" ]; then
     if [[ "$6" == checkpoint ]]; then
         checkpoint=".Checkpoint"
@@ -59,6 +59,14 @@ else
     checkpoint=""
 fi
 
+
+[[ "$4" == run ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.sh
+
+[[ "$5" == checkpoint ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.checkpoint.sh
+
+set -x
+set -o pipefail
+
 [ -f .smartSlurm.log ] && mv .smartSlurm.log .smartSlurm.log.$(stat -c '%.19z' .smartSlurm.log | cut -c 6- | tr " " . | tr ":" "-")
 
 #[ -f log.out ] && mv log.out log.out.$(stat -c '%.19z' log.out | tr " " . | tr ":" "-")
@@ -70,6 +78,17 @@ echolog "$output"
 #echolog1 `module list`
 
 if [ -f ~/.smartSlurm/config/config.txt ]; then
+
+    if [ -f $(dirname $0)/../config/config.txt ]; then 
+        if [ ~/.smartSlurm/config/config.txt -nt "$(dirname "$0")/../config/config.txt" ]; then
+            echolog1 "~/.smartSlurm/config/config.txt is newer than $(dirname "$0")/../config/config.txt, using ~/.smartSlurm/config/config.txt"
+        else
+            echo "Error: ~/.smartSlurm/config/config.txt is older than $(dirname "$0")/../config/config.txt, using ~/.smartSlurm/config/config.txt"
+            echo "Do you need to update it? Exiting..."
+            exit 1
+        fi 
+    fi 
+
     echolog1 Config file path: ~/.smartSlurm/config/config.txt
     source ~/.smartSlurm/config/config.txt
 else
@@ -86,10 +105,6 @@ mkdir -p $smartSlurmLogDir
 checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
 
 run=$smartSlurmLogDir/slurmPipeLine.$checkSum.sh
-
-[[ "$4" == run ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.sh
-
-[[ "$5" == checkpoint ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.checkpoint.sh
 
 if [ -f "$run" ]; then
     thisCmd="#cmd: $0 $@"
@@ -122,7 +137,7 @@ echo "module list >> .smartSlurm.log 2>&1" >> $run
 echo early_exit=true >> $run
 
 # Trap EXIT signal to print a warning if early_exit is true
-echo "trap 'if $early_exit; then echo "WARNING: Script exited early! Please review!!!"; fi' EXIT" >> $run
+echo "trap 'if \$early_exit; then echo "WARNING: Script exited early! Please review!!!"; fi' EXIT" >> $run
 
 echo "xsubd=\"$2\"" >> $run
 

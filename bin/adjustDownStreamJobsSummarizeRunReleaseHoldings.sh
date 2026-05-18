@@ -75,15 +75,15 @@ else
             #echo Got estimation inputsize: $inputSize mem: $mem  time: $min
 
             #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $smartSlurmLogDir/$name.out
-            hours=$((($min + 59) / 60))
+            #hours=$((($min + 59) / 60))
 
-            echo looking partition for hour: $hours
+            #echo looking partition for hour: $hours
 
             #find original partition 
             # todo: should save the partition in the allJobs.txt
             partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
 
-            adjustPartition $hours $partition
+            adjustPartition $mem $min $partition
 
             seconds=$(($min * 60))
 
@@ -162,11 +162,13 @@ for line in $lines; do
                     if [[ $mem != 0 ]] && [[ $min != 0 ]]; then
                         #set -x
 
-                        hours=$((( min + 59 ) / 60 ))
+                        #hours=$((( min + 59 ) / 60 ))
 
-                        echo looking partition for hour: $hours
+                        #echo looking partition for hour: $hours
 
-                        adjustPartition $hours partition
+                        partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+
+                        adjustPartition $mem $min $partition
 
                         seconds=$(( min * 60 ))
 

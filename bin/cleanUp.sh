@@ -334,8 +334,10 @@ if [ ! -f $succFile ]; then
         fi
 
         # Calculate partition and time format
-        hours=$((($min + 59) / 60))
-        adjustPartition $hours $partition
+        #hours=$((($min + 59) / 60))
+        #partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+
+        adjustPartition $mem $min $partition
         
         seconds=$(($min * 60))
         time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`

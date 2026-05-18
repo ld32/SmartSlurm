@@ -547,7 +547,7 @@ echo -e "$resAjust" >> $outFlag
 # mem=20   # M
 if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then 
 
-    adjustPartition $(( ( $min + 59 ) / 60 )) $partition
+    adjustPartition $mem $min $partition
 
     seconds=$(( $min * 60 ))
 
@@ -555,7 +555,7 @@ if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then
 
     time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 elif [ -z $partition ]; then     
-    adjustPartition $(( ( $min + 59 ) / 60 )) partition
+    adjustPartition $mem $min partition
 fi
 
 

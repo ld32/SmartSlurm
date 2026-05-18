@@ -2,11 +2,11 @@
 
 echoerr() { echo "$@" 1>&2; }
 
-usage() { echoerr -e "Usage: \nestimateMemTime.sh bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
+usage() { echoerr -e "Usage: \ncalculateMemTime.sh bowtie2 hg19 inputs\nReturn mem in M and time in minutes."; exit 1; }
 
 #set -x  
 
-echoerr Running: estimateMemTime.sh $@
+echoerr Running: $0 $@
 
 # if [ -z "$smartSlurmJobRecordDir" ]; then 
 #     if [ -f ~/.smartSlurm/config/config.txt ]; then
@@ -21,7 +21,7 @@ ref=$2
 inputSize=$3
  
 
-echoerr Estimating mem:
+echoerr Calculating mem:
 memFormu=memFormu:
 if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
     
@@ -61,7 +61,7 @@ else
 fi
 
 
-echoerr Estimating time: 
+echoerr Calculating time: 
 timeFormu=timeFormu:
 
 if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
