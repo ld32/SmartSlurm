@@ -24,8 +24,7 @@ A pipeline manager for ssbatch.  Parses bash scripts to find user defined comman
 ## Installation
 ```
 # Download SmartSlurm
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
 # Set PATH
 export PATH=$HOME/SmartSlurm/bin:$PATH  
@@ -86,13 +85,14 @@ Remove smartslurm from your PATH without exiting your session.  ssbatch aliases 
 ### Example usage
 ``` bash
 # Download 
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm 
 
 # Setup path
 export PATH=$HOME/SmartSlurm/bin:$PATH  
 
 # Create 5 files with numbers for testing
+mkdir -p SmartSlurmTest
+cd SmartSlurmTest
 createNumberFiles.sh
 
 # Run 3 jobs to get memory and run-time statistics for script findNumber.sh
@@ -607,9 +607,10 @@ cancelAllJobs
 
 ``` bash
 # Download smartSlurm if it is not done yet 
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
+mkdir -p SmartSlurmTest
+cd SmartSlurmTest
 export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
@@ -647,11 +648,12 @@ Coming soon
 
 ``` bash
 # Download smartSlurm if it is not done yet 
-cd $HOME
-git clone https://github.com/ld32/SmartSlurm.git  
+git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
 ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
 
+mkdir -p SmartSlurmTest
+cd SmartSlurmTest
 # Create Nextflow conda env
 module load conda/miniforge3/24.11.3-0
 mamba create -n  nextflowEnv -c bioconda -y nextflow
@@ -811,8 +813,8 @@ reviewJobRecords.py path/to/your/jobRecord.txt
 **How to use sbatchAndTop**
 [Back to top](#SmartSlurm)
 ```bash
-cd ~    
-git clone git@github.com:ld32/SmartSlurm.git  
+
+git clone git@github.com:ld32/SmartSlurm.git $HOME/SmartSlurm
 export PATH=$HOME/SmartSlurm/bin:$PATH    
 sbatchAndTop <sbatch option1> <sbatch option 2> <sbatch option 3> <...> 
 

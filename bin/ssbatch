@@ -48,6 +48,7 @@ elif [ -z "$runningSingleJob" ]; then
 # single job without runAsPipeline
 else 
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
+    echoerr1() { echo "$@" >> .smartSlurm.log; }
 fi 
 
 output="Running: `realpath $0` $@"
@@ -583,6 +584,8 @@ fi
 export snakemakeSuccFlag=''
 export snakemakeFailFlag=''
 
+realSbatch=`which -a sbatch | grep -v SmartSlurm | head -n 1`
+
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
@@ -591,7 +594,7 @@ if [ -f .command.sh ] && [ -f .command.run ]; then
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
     diff .command.run .command.run.back >> ../../../.nextflow.log
-    cmd="/usr/bin/sbatch --mail-type=FAIL $exNodeList --requeue --parsable -p $partition --mem $mem -t $time .command.run"
+    cmd="$realSbatch --mail-type=FAIL $exNodeList --requeue --parsable -p $partition --mem $mem -t $time .command.run"
     
 else 
 
@@ -723,9 +726,9 @@ else
 
     [ -z "$userEmail" ] || userEmail="--mail-user=$userEmail"
 
-    cmd="/usr/bin/sbatch --mail-type=FAIL $exNodeList $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
+    cmd="$realSbatch --mail-type=FAIL $exNodeList $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
     
-    echo -ne "\n#Command used to submit the job: /usr/bin/sbatch $exNodeList --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
+    echo -ne "\n#Command used to submit the job: $realSbatch $exNodeList --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
          
     if [ -z "$slurmScript" ]; then
         cmd="$cmd $additionalPara $job"
