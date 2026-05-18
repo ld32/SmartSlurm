@@ -1,9 +1,10 @@
 #!/bin/sh
 
 #set -x
-#set -u
+set -euo pipefail
 
 echolog() { echo -e "$@\n"; echo $@ >>.smartSlurm.log; }
+
 echolog1() { echo "$@" >> .smartSlurm.log; }
 
 output="Running: `realpath $0`"
@@ -105,6 +106,9 @@ echolog Converting $1 to $run
 
 echo "#!/bin/sh" > $run
 
+
+
+
 echo "#from cmd: $0 $@" >> $run
 echo "#run from: `pwd`" >> $run
 
@@ -113,6 +117,12 @@ echo "#set -x" >> $run
 echo "echo Running \$0 \$@"  >> $run
 
 echo "module list >> .smartSlurm.log 2>&1" >> $run
+
+# Set an early exit flag to 'true'
+echo early_exit=true >> $run
+
+# Trap EXIT signal to print a warning if early_exit is true
+echo "trap 'if $early_exit; then echo "WARNING: Script exited early! Please review!!!"; fi' EXIT" >> $run
 
 echo "xsubd=\"$2\"" >> $run
 
@@ -496,6 +506,8 @@ echo "echo All submitted jobs: " >> $run
 echo "awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
 [[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
+
+echo "early_exit=false" >> $run
 
 [[ "$1" = *" "* ]] && para=${1#* } || para=""
 

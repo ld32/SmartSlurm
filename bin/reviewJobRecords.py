@@ -70,7 +70,11 @@ shutil.copy(job_file, tmpFile)
 print(f"Temporary file created: {tmpFile}", flush=True)
 
 # Function to read job records from the file
-def read_job_records():
+# Function to read job records from the file
+def read_job_records(ignore_patterns=None):
+    if ignore_patterns is None:
+        ignore_patterns = ['missingInputFile']  # Default pattern to ignore
+    
     print(f'Reading job records from file: {tmpFile}', flush=True)
 
     # Read the CSV file without pandas
@@ -79,14 +83,29 @@ def read_job_records():
         headers = next(reader)  # Read the header row
         print("Headers:", headers, flush=True)
 
-        # Process rows
+        # Process rows and filter out unwanted records
         rows = []
+        ignored_count = 0
         for row in reader:
-            rows.append(row)
+            # Check if second column (index 1) contains any ignore patterns
+            should_ignore = False
+            if len(row) > 1:  # Ensure row has at least 2 columns
+                second_column = str(row[1]).lower()  # Convert to lowercase for case-insensitive matching
+                for pattern in ignore_patterns:
+                    if pattern.lower() in second_column:
+                        should_ignore = True
+                        ignored_count += 1
+                        print(f"Ignoring row with second column containing '{pattern}': {row[1]}", flush=True)
+                        break
+            
+            if not should_ignore:
+                rows.append(row)
 
-    print("number of rows read:", len(rows), flush=True)
+    print(f"Number of rows read: {len(rows)}", flush=True)
+    print(f"Number of rows ignored: {ignored_count}", flush=True)
+    
     # Extract unique values from column 12 (index 11)
-    unique_programs = set(row[11] for row in rows)
+    unique_programs = set(row[11] for row in rows if len(row) > 11)
     print("Unique programs in column 12:", unique_programs, flush=True)
 
     # Sort the unique_programs to ensure buttons are displayed in order
