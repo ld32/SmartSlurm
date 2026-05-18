@@ -140,7 +140,7 @@ app.layout = html.Div([
                 style={"margin": "5px", "backgroundColor": "lightgray"}
             ) for program in unique_programs
         ], style={"display": "flex", "flexWrap": "wrap"}), 
-        html.Button("Delete Selected Job", id="delete-btn", n_clicks=0, style={"margin": "10px"}),
+        html.Button("Delete Selected Jobs", id="delete-btn", n_clicks=0, style={"margin": "10px"}),
         html.Button("Save Records", id="save-btn", n_clicks=0, style={"margin": "10px"}),  # Add a save button below the delete button
     ], style={"width": "30%", "display": "inline-block", "verticalAlign": "top"}),
     html.Div([

@@ -569,16 +569,16 @@ echo -e "$resAjust" >> $outFlag
 # testmem
 # mem=20   # M
 if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then 
-
-    adjustPartition $(( ( $min + 59 ) / 60 )) $partition
-
+    #echoerr1 before adjust mem/time: $mem M, $min min, partition: $partition
+    adjustPartition "$mem" "$min" "$partition"
+    #echoerr1 Adjusted mem/time: $mem M, $min min, partition: $partition
     seconds=$(( $min * 60 ))
 
     #echoerr1 srun seconds: $seconds
 
     time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 elif [ -z $partition ]; then     
-    adjustPartition $(( ( $min + 59 ) / 60 )) partition
+    adjustPartition $mem $min partition
 fi
 
 export snakemakeSuccFlag=''

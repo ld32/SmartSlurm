@@ -86,13 +86,13 @@ else
         if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
             
             if [ -f .command.sh ] && [ -f .command.run ]; then 
-                output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
+                output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
             else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
-                output=`estimateMemTime.sh $program ${ref//\//-} $inputSize`
+                output=`calculateMemTime.sh $program ${ref//\//-} $inputSize`
             fi 
 
             #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
-            resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
+            resAjust="$resAjust\n#Output from calculateMemTime.sh: $output \n"
             
             if [[ "$output" == "outOfRange" ]]; then
                 resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
@@ -150,13 +150,13 @@ else
                 #ls -lrt $smartSlurmJobRecordDir/stats
                 if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
                     if [ -f .command.sh ] && [ -f .command.run ]; then 
-                        output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
+                        output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
                     else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
-                        output=`estimateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
+                        output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
                     fi 
 
                     #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
-                    resAjust="$resAjust\n#Output from estimateMemTime.sh: $output \n"
+                    resAjust="$resAjust\n#Output from calculateMemTime.sh: $output \n"
                     if [[ "$output" == "outOfRange" ]]; then
                         resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"
                         # not deleting mem.stat, so other jobs will not re-build it within 60 minutes
@@ -165,7 +165,6 @@ else
                         [[ ${output% *} != 0 ]] && mem=$((${output% *}+extraMem)) && resAjust="$resAjust\n#Give ${extraMem} M extra memory. "
                         [[ ${output#* } != 0 ]] && min=$((${output#* }+defaultExtraTime)) && resAjust="$resAjust\n#Give $defaultExtraTime more minutes."
                         resAjust="$resAjust\n#So use this to submit the job: $mem M ${min} mins"
-
                     fi
                     #echoerr got estimation $output
                 fi
@@ -177,17 +176,7 @@ fi
 if [ -z $mem ] || [ -z $min ]; then 
     mem=$defaultMem    
     min=$defaultMin
-fi 
-#else 
-    
-#    [ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
-#    [ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
-   
-#fi
-
-#[ $mem -gt 254976 ] && mem=254976 && resAjust="$resAjust\n#Mem is reset to 249G. "
-
-#[ $min -gt 43200 ] && min=43200 &&  resAjust="$resAjust\n#Min is reset to 4320 mins (one month). "
+fi
 
 if [[ $adjust == "adjust" ]]; then 
     echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
