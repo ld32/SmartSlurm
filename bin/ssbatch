@@ -66,7 +66,7 @@ for param in "$@"; do
     fi
 done
 
-echoerr "$output"
+echoerr1 "$output"
 #echoerr() { echo "$@" >&2; }
 
 usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
@@ -385,6 +385,9 @@ errFlag=$smartSlurmLogDir/$flag.err
 
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
+
+echoerr Working on inputs: ${inputs#,} for step: $step $name
+#, program: $program, flag: $flag, reference: $ref, job name: $name, dependencies: $deps
 if [ -z "$deps" ]; then 
     depsID=null
 else 
@@ -578,7 +581,7 @@ if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then
 
     time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
 elif [ -z $partition ]; then     
-    adjustPartition $mem $min partition
+    adjustPartition $mem $min $partition
 fi
 
 export snakemakeSuccFlag=''
@@ -783,7 +786,8 @@ else
     echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
 fi
 
-echo -e "\n#myMem=$mem myTime=$time" >> $job
+# not sure why we need this  but just in case, we will keep it here for now.
+echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
   
   [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
 

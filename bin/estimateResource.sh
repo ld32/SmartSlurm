@@ -27,7 +27,7 @@ adjust=$7
 mem=""; min=""
 [ -z "$defaultMin" ] && usage && exit 1
 
-[ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$(( $defaultExtraMem * 2 ))
+[ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$defaultExtraMem
 
 [ -z "$adjust" ] && resAjust="#Original mem $defaultMem M, Original time: $defaultMin mins\n"
 
@@ -186,4 +186,7 @@ echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out
 
 echo $inputSize $mem $min $extraMem
 
-echoerr Got $inputSize $mem $min $extraMem
+# for testing
+#echo $inputSize 2000 1 $extraMem
+
+echoerr Got inputsize: $inputSize mem: $mem time: $min extraMem: $extraMem extralTime: $defaultExtraTime

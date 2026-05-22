@@ -60,6 +60,7 @@ else
     mem=0
 fi
 
+echoerr Got  $mem 
 
 echoerr Calculating time: 
 timeFormu=timeFormu:
@@ -91,7 +92,7 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
 else 
     time=0
 fi
-echoerr Got  $mem $time
+echoerr Got $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes

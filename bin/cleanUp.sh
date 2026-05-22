@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -x
+set -x
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
@@ -74,7 +74,10 @@ jobStat=`echo -e "$sacct" | tail -n 1`
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID"
 
 START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt | cut -d' ' -f6`
+
 FINISH=`date +%s`
+
+[ -z "$START" ] && START=$((FINISH - 600))
 
 echo  start: $START fisnish: $FINISH
 
@@ -162,7 +165,7 @@ fi
 
 #[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
 
-#set -x
+
 # totalM=200; totalT=200; srunM=1000; min=200;
 overEstimate=""; overText=""; ratioM=""; ratioT=""
 if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
@@ -216,7 +219,7 @@ fi
 # if more than 10, then delete the stat file ( will re-generate next time to estimate)
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
-    newRecords=`awk -F"," -v a=$2 -v b=$3 -v t="$tFile" '{ split($20, a, " "); if( a[2] > t && $12 == a && $13 == b) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($20, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
     if [ $newRecords -gt 10 ]; then
         mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
     fi
@@ -336,6 +339,9 @@ if [ ! -f $succFile ]; then
         # Calculate partition and time format
         #hours=$((($min + 59) / 60))
         #partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+
+        partition=`grep "^#myMem=" $script | awk -F'myPartition=' '{print $2}' | awk '{print $1}'`
+
 
         adjustPartition $mem $min $partition
         
@@ -558,6 +564,7 @@ if [ ! -f $succFile ]; then
 # job was successful
 else 
 
+    :
 
 
 fi
