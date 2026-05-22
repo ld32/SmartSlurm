@@ -23,7 +23,7 @@ export defaultMem=4096  # in M
 export defaultTime=120  # in min
 
 export defaultExtraTime=10     # in min. extra minutes than the estimated time
-export defaultExtraMem=500      # in M. extra memory than the estinated memory
+export defaultExtraMem=1000      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 

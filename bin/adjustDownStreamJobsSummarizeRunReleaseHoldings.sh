@@ -81,7 +81,12 @@ else
 
             #find original partition 
             # todo: should save the partition in the allJobs.txt
-            partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+            #partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
+
+            partition=`grep "^#myMem=" $smartSlurmLogDir/$name.sh | awk -F'myPartition=' '{print $2}' | awk '{print $1}'`
+          
+            echo find original partition: $partition
+
 
             adjustPartition $mem $min $partition
 

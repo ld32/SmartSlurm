@@ -733,7 +733,7 @@ else
     echoerr "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
 fi
 
-echo -e "\n#myMem=$mem myTime=$time" >> $job
+echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
   
   [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
 
