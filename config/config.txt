@@ -125,20 +125,23 @@ adjustPartition() {
     
     for i in {1..10}; do
         partition=partition${i}Name
-        [ -z ""${!partition}"" ] && continue
-        partitionTime=partition${i}TimeLimit
-        if [ $min -le  "${!partitionTime}" ]; then
-            partition=${!partition}
-            memLimit=partition${i}MemLimit
-            memLimit=${!memLimit}
-            [ "$mem" -gt "$memLimit" ] && mem="$memLimit" 
-            timeLimit=partition${i}TimeLimit
-            timeLimit=${!timeLimit}
-            [ "$min" -gt "$timeLimit" ] && min="$timeLimit"
+        partition=${!partition}
+        [ -z "$partition" ] && break || partition1=$partition 
+        memLimit=partition${i}MemLimit
+        memLimit=${!memLimit}
+        timeLimit=partition${i}TimeLimit
+        timeLimit=${!timeLimit}
+        
+        if [ $min -le $timeLimit  ]; then
             break
-        else 
-            partition=$partitionO
         fi
     done
+    if [ $mem -gt $memLimit ]; then 
+        mem=$memLimit
+    fi 
+    if [ $min -gt $timeLimit  ]; then 
+        min=$timeLimit
+    fi 
+    partition=$partition1 
 }
 export -f adjustPartition
