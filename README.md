@@ -611,27 +611,24 @@ git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
 mkdir -p SmartSlurmTest
 cd SmartSlurmTest
-export PATH=$HOME/SmartSlurm/sbatchBin:$HOME/SmartSlurm/bin:$PATH
+export PATH=$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
 cp $HOME/SmartSlurm/config/config.yaml .
 
-# Create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
+# load conda
 module load conda/miniforge3/24.11.3-0
+
+# If not done yest, create Snakemake conda env (from: https://snakemake.readthedocs.io/en/v3.11.0/tutorial/setup.html)
 mamba env create --name snakemakeEnv --file $PWD/SmartSlurm/config/snakemakeEnv.yaml
 
-# Review Snakefile, activate the snakemake env and run test
-module load conda/miniforge3/24.11.3-0
+# Activate the snakemake env and run test
 conda activate snakemakeEnv
-export PATH=$PWD/SmartSlurm/bin:$PATH
-cat Snakefile
-snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -t 100 --mem 1G -p short"
 
-If you have multiple Slurm account:
-snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -A mySlurmAccount -t 100 --mem 1G"
+snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p short"
 
-# To remove the fake sbatch from PATH: 
-source unExport; unExport
+# If you have multiple Slurm account:
+snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 100 --mem 1G"
 
 ```
 
@@ -650,17 +647,16 @@ Coming soon
 # Download smartSlurm if it is not done yet 
 git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
-ln -s ~/SmartSlurm/bin/ssbatch ~/SmartSlurm/bin/sbatch
-
 mkdir -p SmartSlurmTest
 cd SmartSlurmTest
-# Create Nextflow conda env
+
 module load conda/miniforge3/24.11.3-0
+
+# Create Nextflow conda env if not done yet
 mamba create -n  nextflowEnv -c bioconda -y nextflow
 
 # Review nextflow file, activate the nextflow env, and run test
-module load conda/miniforge3/24.11.3-0
-export PATH=$HOME/SmartSlurm/bin:$PATH  
+export PATH=$HOME/SmartSlurm/bin:$HOME/SmartSlurm/sbatchBin:$PATH  
 conda activate nextflowEnv
 cp $HOME/SmartSlurm/bin/nextflow.nf .
 cp $HOME/SmartSlurm/config/nextflow.config .
@@ -677,6 +673,9 @@ process.clusterOptions = '--account=mySlurmAcc'
 
 # Ready to run:
 nextflow run nextflow.nf -profile slurm
+
+# After finish running, remove the fake sbatch
+source unExport; unExport
 
 ```
 # Run bash script as smart pipeline using smart sbatch
