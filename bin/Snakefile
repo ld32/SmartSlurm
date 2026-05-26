@@ -9,12 +9,11 @@ rule all:
 
 rule find_number:
     input:
-        "{NUMBER}",
         "numbers{NUMBERS}.txt"
     output:
-        "{NUMBER}.{MUMBERS}.txt"
+        "{NUMBER}.{NUMBERS}.txt"
     shell:
-        "findNUmber.sh {input} > {output}"
+        "findNumber.sh {wildcards.NUMBER} {input} > {output}"
 
 rule merge:
     input:
