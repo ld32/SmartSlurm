@@ -611,7 +611,7 @@ git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
 mkdir -p SmartSlurmTest
 cd SmartSlurmTest
-export PATH=$HOME/SmartSlurm/bin:$PATH
+export PATH=$HOME/SmartSlurm/sbatchBin:$HOME/SmartSlurm/bin:$PATH
 
 cp $HOME/SmartSlurm/bin/Snakefile .
 cp $HOME/SmartSlurm/config/config.yaml .
@@ -630,7 +630,7 @@ snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -t 100 --mem 1G -p short
 If you have multiple Slurm account:
 snakemake -p -j 999 --latency-wait=80 --cluster "sbatch -A mySlurmAccount -t 100 --mem 1G"
 
-# To remove ssbatch from PATH: 
+# To remove the fake sbatch from PATH: 
 source unExport; unExport
 
 ```
