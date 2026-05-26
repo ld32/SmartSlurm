@@ -135,7 +135,7 @@ adjustPartition() {
         if [ $min -le $timeLimit  ]; then
             break
         fi
-    done
+    done  
     if [ $mem -gt $memLimit ]; then 
         mem=$memLimit
     fi 
