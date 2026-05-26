@@ -630,6 +630,9 @@ snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -t 100 --mem 1G -p shor
 # If you have multiple Slurm account:
 snakemake -p -j 999 --latency-wait=80 --cluster "ssbatch -A mySlurmAccount -t 100 --mem 1G"
 
+# Check status with
+checkRun
+
 ```
 
 # Use ssbatch in Cromwell pipeline
@@ -673,6 +676,9 @@ process.clusterOptions = '--account=mySlurmAcc'
 
 # Ready to run:
 nextflow run nextflow.nf -profile slurm
+
+# Check status with
+checkRun
 
 # After finish running, remove the fake sbatch
 source unExport; unExport
