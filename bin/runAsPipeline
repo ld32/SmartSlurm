@@ -65,6 +65,7 @@ fi
 [[ "$5" == checkpoint ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.checkpoint.sh
 
 #set -x
+
 set -o pipefail
 
 [ -f .smartSlurm.log ] && mv .smartSlurm.log .smartSlurm.log.$(stat -c '%.19z' .smartSlurm.log | cut -c 6- | tr " " . | tr ":" "-")
@@ -190,11 +191,11 @@ fi
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $2; exit 1; } 
 
 firstRowBelowLoopStart=""; findLoopStart=""
-{ cat "${1%% *}"; echo; } | while IFS= read -r t; do
+{ cat "${1%% *}"; echo; echo; } | while IFS= read -r t; do
 
     [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
-    #echolog original row: .$t.
+    echolog original row: .$t.
 
     # get space and the real command
     space=""; i=""
@@ -479,7 +480,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
         IFS=''
         cmd=""
     else
-        echo "$t" >> $run
+        [[ -n "$t" ]] && echo "$t" >> $run
         #findjob=""
 
         #if [[ "$i" == \#loopEnd* ]]; then

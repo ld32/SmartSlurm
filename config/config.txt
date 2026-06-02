@@ -27,6 +27,8 @@ export defaultExtraMem=500      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 
+export numberOfFailedJobsLastHourToRecalculateStats=5
+
 export condaEnvPath=$HOME/.conda/envs/smartSlurmEnv
 
 # Genernal partions, ordered by maximum allowed run-time in hours

@@ -253,6 +253,21 @@ if [ ! -f $succFile ]; then
         recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
+
+        # delete all record about the step is thare more than 3 failed jobs in last hour
+        if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
+            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            if [ ! -f $backup ]; then 
+                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
+                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to $backup and remove all records aboutn $software $ref. 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                #ls -l $smartSlurmJobRecordDir/ 
+                #ls -l $smartSlurmJobRecordDir/stats/
+                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+            fi
+        fi
+
+
         echo "Will re-queue after sending email... Job Status: $jobStatus"
 
         # Handle memory adjustment for OOM or OOMOOT
