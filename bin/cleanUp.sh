@@ -197,11 +197,11 @@ record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jo
 echo dataToPlot,$record
 
 # delete rows other than 1 week and not COMPLETED
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t || $9 == "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t && $9 != "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
 
 records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
 
-#   less than 500 records             # or current one is larger than all old data   # and not exist already
+#   less than 500 records or current one is larger than all old data and not exist already
 if [ "$(echo $records | wc -l)" -lt 500 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
         [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
@@ -215,7 +215,7 @@ else
 fi
 
 
-# the last column is date. first get he mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
+# the last column is date. first get the mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
 # if more than 10, then delete the stat file ( will re-generate next time to estimate)
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
