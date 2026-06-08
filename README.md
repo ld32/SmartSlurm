@@ -29,9 +29,9 @@ git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 # Set PATH
 export PATH=$HOME/SmartSlurm/bin:$PATH  
 
-# Optional: Conda environment to visualize jobs
+# Optional: conda environment for workflow charts (w option in checkRun)
 module load conda/miniforge3/24.11.3-0
-mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
+mamba create -n smartSlurmEnv -c conda-forge graphviz
  
 ```
 ---
@@ -255,10 +255,12 @@ Interactive tool for monitoring and debugging jobs submitted by runAsPipeline. P
 |`qq`          |  Exit completely|
 
 #### Workflow Visualization  
-Requires smartSlurmEnv conda environment
+Requires graphviz (install once via the smartSlurmEnv conda environment above).
 
+```bash
 module load conda/miniforge3/24.11.3-0
 conda activate smartSlurmEnv
+```
 
 Use `w` option to generate DAG charts showing job dependencies.
 
@@ -788,30 +790,32 @@ export defaultExtraMem=5      # in M. extra memory than the estinated memory
 ## Review and clean up job records and statistics
 [Back to top](#SmartSlurm)
 
-```
-From you local computer (Please change username from myUserID to your user ID):
-alias smartSession='PORT=51234; CLUSTER_USER=myUserID; ssh -L $PORT:127.0.0.1:$PORT $CLUSTER_USER@o2.hms.harvard.edu -t "hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; srun --pty -p priority -t 8:0:0 --tunnel $PORT:$PORT bash -c \"hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; export PORT=$PORT; bash;\""'
-smartSession
+`reviewJobRecords.py` is a fully terminal-based tool — no browser, X11, or extra Python packages required.
 
-# after job start, run:
+```bash
+# Review the default job record
+reviewJobRecords.py
 
-# if you would like to see flowchart. Only need to run this once
-module load conda/miniforge3/24.11.3-0
-mamba create -n smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-conda activate smartSlurmEnv
-
-Note: if you would like to share the env with group please use this command, and also modify the env path in config.txt: 
-mamba create -p /shared/path/smartSlurmEnv -c conda-forge -c bioconda dash plotly pandas graphviz
-
-conda activate /shared/path/smartSlurmEnv
-
-# To review and edit default job records
-reviewJobRecords.py 
-
-# To review and edit certain job record file 
+# Or point it at a specific file
 reviewJobRecords.py path/to/your/jobRecord.txt
 ```
+
+**How it works:**
+1. A numbered list of programs is shown. Enter a number to select one.
+2. An ASCII scatter plot of Input Size (G) vs Memory (G) is drawn in the terminal,
+   with each data point labeled by its index (`0`–`9`, then `a`–`z`).
+   A table below the plot lists each index with its Job ID and exact values.
+3. To delete outlier points, type their indices at the prompt:
+   - single: `2`
+   - list: `1,4,7`
+   - range: `3-6`
+   - mixed: `0,2-4,8`
+4. After deletion the plot is redrawn immediately. Remaining points **keep their
+   original indices** and the **axis scale stays fixed**, so it is easy to identify
+   and delete further points without re-learning the numbering.
+5. `b` — go back to the program list.
+   `s` — save changes to the job record file (a timestamped backup is created automatically).
+   `q` — quit.
 ====================
 
 ### sbatchAndTop

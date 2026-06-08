@@ -1,404 +1,322 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-# to run: 
-# alias smartSession='PORT=51234; CLUSTER_USER=ld32; ssh -L $PORT:127.0.0.1:$PORT $CLUSTER_USER@o2.hms.harvard.edu -t "hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; srun --pty -p priority -t 8:0:0 --tunnel $PORT:$PORT bash -c \"hostname; echo port is: $PORT; kill -9 $(/usr/sbin/lsof -t -i:$PORT) 2>/dev/null; export PORT=$PORT; bash;\""'
-# smartSession
-# after job start, run: 
-# module load miniconda3
-# conda activate smartSlurmEnv 
-# reviewJobRecords.py 
+# Terminal-based SLURM job record reviewer — no X11, browser, or extra packages.
+# Usage: reviewJobRecords.py [jobRecord.txt]
 
-import dash
-from dash import dcc, html, Output, Input, State
-import plotly.express as px
 import csv
 import time
 import shutil
 import os
 from pathlib import Path
 import glob
-import sys 
+import sys
 import tempfile
 
+# ── File path resolution ───────────────────────────────────────────────────────
+
 if len(sys.argv) == 2:
-    job_file = Path(sys.argv[1])  # Get first argument as folder name
-    #job_file = os.path.join(log_folder, "jobRecord.txt")
-    smartSlurmJobRecordDir=os.path.dirname(job_file)
-    print(f"file path1:", smartSlurmJobRecordDir)
-
+    job_file = Path(sys.argv[1])
+    smartSlurmJobRecordDir = str(job_file.parent)
 else:
-    # Get the path of the Python script itself
     script_dir = Path(__file__).resolve().parent
-
-    # Define the paths to the configuration files
     home_config = Path.home() / ".smartSlurm/config/config.txt"
     local_config = script_dir.parent / "config/config.txt"
 
-    # Check which configuration file exists and load it
     if home_config.is_file():
         config_path = home_config
     elif local_config.is_file():
         config_path = local_config
     else:
-        raise FileNotFoundError("Config list file not found: config.txt")
+        raise FileNotFoundError("Config file not found: config.txt")
 
-    print(f'config file path:', config_path)
-
-    # Load the smartSlurmJobRecordDir variable from the config file
     smartSlurmJobRecordDir = None
     with open(config_path, "r") as config_file:
         for line in config_file:
-            if (line.startswith("export smartSlurmJobRecordDir=")):
-                smartSlurmJobRecordDir = line.strip().split("=", 1)[1].replace("$HOME", str(Path.home()))
+            if line.startswith("export smartSlurmJobRecordDir="):
+                smartSlurmJobRecordDir = line.strip().split("=", 1)[1].replace(
+                    "$HOME", str(Path.home())
+                )
                 break
 
     if not smartSlurmJobRecordDir:
-        raise ValueError("smartSlurmJobRecordDir variable not found in the config file.")
+        raise ValueError("smartSlurmJobRecordDir not found in config.")
 
-    # Set the job file path using the loaded smartSlurmJobRecordDir
     job_file = Path(smartSlurmJobRecordDir) / "jobRecord.txt"
 
-print(f'file path:', job_file)
+if not job_file.is_file():
+    raise FileNotFoundError(f"Job record file not found: {job_file}")
 
-# Declare global variables at the top of the script
-global headers, rows, unique_programs,unique_programs1, last_checked_program, tmpFile
+print(f"Job file : {job_file}")
 
-# Create a temporary file and copy the job_file content to it
 tmp_dir = tempfile.gettempdir()
 tmpFile = os.path.join(tmp_dir, "jobRecord_tmp.txt")
 shutil.copy(job_file, tmpFile)
-print(f"Temporary file created: {tmpFile}", flush=True)
+print(f"Working copy: {tmpFile}")
 
-# Function to read job records from the file
-# Function to read job records from the file
+# ── Data I/O ───────────────────────────────────────────────────────────────────
+
 def read_job_records(ignore_patterns=None):
     if ignore_patterns is None:
-        ignore_patterns = ['missingInputFile']  # Default pattern to ignore
-    
-    print(f'Reading job records from file: {tmpFile}', flush=True)
-
-    # Read the CSV file without pandas
+        ignore_patterns = ["missingInputFile"]
     with open(tmpFile, "r") as f:
         reader = csv.reader(f)
-        headers = next(reader)  # Read the header row
-        print("Headers:", headers, flush=True)
-
-        # Process rows and filter out unwanted records
+        headers = next(reader)
         rows = []
-        ignored_count = 0
         for row in reader:
-            # Check if second column (index 1) contains any ignore patterns
-            should_ignore = False
-            if len(row) > 1:  # Ensure row has at least 2 columns
-                second_column = str(row[1]).lower()  # Convert to lowercase for case-insensitive matching
-                for pattern in ignore_patterns:
-                    if pattern.lower() in second_column:
-                        should_ignore = True
-                        ignored_count += 1
-                        print(f"Ignoring row with second column containing '{pattern}': {row[1]}", flush=True)
-                        break
-            
-            if not should_ignore:
-                rows.append(row)
-
-    print(f"Number of rows read: {len(rows)}", flush=True)
-    print(f"Number of rows ignored: {ignored_count}", flush=True)
-    
-    # Extract unique values from column 12 (index 11)
-    unique_programs = set(row[11] for row in rows if len(row) > 11)
-    print("Unique programs in column 12:", unique_programs, flush=True)
-
-    # Sort the unique_programs to ensure buttons are displayed in order
-    unique_programs = sorted(unique_programs)
-
+            if len(row) > 1 and any(
+                p.lower() in row[1].lower() for p in ignore_patterns
+            ):
+                continue
+            rows.append(row)
+    unique_programs = sorted({row[11] for row in rows if len(row) > 11})
     return headers, rows, unique_programs
 
-# Initialize global variables
-headers, rows, unique_programs = read_job_records()
 
-app = dash.Dash(__name__, suppress_callback_exceptions=True)  # Enable suppressing callback exceptions
+def write_tmp(headers, rows):
+    with open(tmpFile, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(rows)
 
-# # Save the last checked program name into a file
-# last_program_file = Path(smartSlurmJobRecordDir) / "last_checked_program.txt"
 
-# # Load the last checked program name if it exists
-# if last_program_file.is_file():
-#     with open(last_program_file, "r") as f:
-#         last_checked_program = f.read().strip()
-# else:
-#     last_checked_program = None
-
-app.layout = html.Div([
-    html.H1("SLURM Job Records"),
-    html.Div([
-        html.H3("Unique Programs"),
-        html.Div([
-            html.Button(
-                program,
-                id={"type": "program-button", "index": program},
-                n_clicks=0,
-                style={"margin": "5px", "backgroundColor": "lightgray"}
-            ) for program in unique_programs
-        ], style={"display": "flex", "flexWrap": "wrap"}), 
-        html.Button("Delete Selected Jobs", id="delete-btn", n_clicks=0, style={"margin": "10px"}),
-        html.Button("Save Records", id="save-btn", n_clicks=0, style={"margin": "10px"}),  # Add a save button below the delete button
-    ], style={"width": "30%", "display": "inline-block", "verticalAlign": "top"}),
-    html.Div([
-        dcc.Graph(id="memory_plot", config={'displayModeBar': True}, style={"height": "600px", "xaxis": {"range": [-1000, 1e5]}, "yaxis": {"range": [-1000, 1e5]}})
-    ], style={"width": "70%", "display": "inline-block"}),
-    html.Div(id="selected-job", style={"padding": "10px", "font-weight": "bold"}),
-    dcc.Store(id="data-store", data=rows),  # store data in memory
-    dcc.Store(id="page-load-store", data={"is_first_load": True}),  # Store to track page load state
-    #html.Div(id="debug-popup"),  # Add a div for the debug popup
-    # Add an interval component to trigger data reload on page refresh
-    # html.Button("Reload Data", id="reload-btn", n_clicks=0),  # Add a reload button to the layout
-    
-])
-
-# Function to delete files under smartSlurmJobRecordDir/stats/last_checked_program.*
-def delete_last_checked_program_files():
-    stats_dir = os.path.join(smartSlurmJobRecordDir, "stats")
-    file_pattern = os.path.join(stats_dir, f"{last_checked_program}.*")
-
-    for file_path in glob.glob(file_pattern):
-        try:
-            os.remove(file_path)
-            print(f"Deleted file: {file_path}", flush=True)
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}", flush=True)
-
-    file_pattern = os.path.join(stats_dir, f"extraMem.{last_checked_program}.*")
-
-    for file_path in glob.glob(file_pattern):
-        try:
-            os.remove(file_path)
-            print(f"Deleted file: {file_path}", flush=True)
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}", flush=True)
-
-# Callback to handle deletion and update the data-store
-@app.callback(
-    Output("memory_plot", "figure"),    
-    Output("data-store", "data"),
-    Input("delete-btn", "n_clicks"),
-    State("memory_plot", "selectedData"),
-    prevent_initial_call=True
-)
-def handle_deletion(n_clicks, selectedData):
-    
-
-    if not selectedData or "points" not in selectedData:
-        print("No points selected for deletion", flush=True)
-        return dash.no_update, dash.no_update
-    
-    global headers, rows, unique_programs1  # Declare globals inside the function
-
-    headers, rows, unique_programs1 = read_job_records()
-
-    print("Delete button clicked", flush=True)
-    print(f"selectedData: {selectedData}", flush=True)  # Debug the structure of selectedData
-
-    # Extract and clean job IDs from selected points
-    job_ids_to_delete = [str(point["customdata"][0]).strip("[]'") if isinstance(point["customdata"], list) else str(point["customdata"]).strip("[]'") for point in selectedData["points"]]
-    print(f"Cleaned Job IDs to delete: {job_ids_to_delete}", flush=True)
-    print(f'rows before deleting:', len(rows))
-    # Filter the data
-    updated_rows = [row for row in rows if str(row[0]) not in job_ids_to_delete]
-
-    print(f'filtered_rows for save:', len(updated_rows))
-    
-    # Update the job record file
-    try:
-        with open(tmpFile, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-            writer.writerows(updated_rows)
-        print("Updated job record file written successfully", flush=True)
-    except Exception as e:
-        print(f"Error updating job record file: {e}", flush=True)
-
-    # when deleting dots, also delete stat files:
-    delete_last_checked_program_files()
-
-    # After deletion, update the figure
-    ctx = dash.callback_context
-    if ctx.triggered and "delete-btn" in ctx.triggered[0]["prop_id"]:
-        filtered_rows = [row for row in updated_rows if last_checked_program in row[11]]
-
-        print(f'filtered_rows for plot:', len(filtered_rows))
-
-        # If filtered_rows is empty, clear the figure and return nothing
-        if not filtered_rows:
-            fig = px.scatter(
-                title=f"Input Size vs. Memory Usage for {last_checked_program}",
-                labels={"x": "Input Size", "y": "Memory Usage"}
-            )
-            fig.update_layout(clickmode='event+select', dragmode='lasso')
-            return fig, rows
-    
-
-        # Convert x-axis values to G (gigabytes) and y-axis values to G (gigabytes)
-        fig = px.scatter(
-            filtered_rows,
-            x=[float(row[1]) / (1024 * 1024) for row in filtered_rows],  # Convert Input size to G
-            y=[float(row[6]) / 1024 for row in filtered_rows],  # Convert Memory used to G
-            title=f"Input Size (G) vs. Memory Usage (G) for {last_checked_program}",
-            labels={"x": "Input Size (G)", "y": "Memory Usage (G)"},
-            hover_data={"Job ID": [row[0] for row in filtered_rows]}  # Include job ID in hover data
-        )
-        fig.update_traces(marker=dict(size=12, color='blue'),
-                        selected=dict(marker=dict(color='red', size=14)),
-                        unselected=dict(marker=dict(opacity=0.5)))
-        fig.update_layout(clickmode='event+select', dragmode='lasso')
-
-        # Dynamically adjust the x and y axis ranges to fit all data points
-        if filtered_rows:
-            x_values = [float(row[1])/ (1024 * 1024) for row in filtered_rows]
-            y_values = [float(row[6])/1024 for row in filtered_rows]
-            fig.update_layout(
-                xaxis=dict(range=[min(x_values) * 0.9, max(x_values) * 1.1]),  # Add padding to x-axis
-                yaxis=dict(range=[min(y_values) * 0.9, max(y_values) * 1.1])   # Add padding to y-axis
-            )
-        return fig, rows
-
-    #return rows
-
-# Callback to handle program button clicks and update the figure and button styles
-@app.callback(
-    [Output("memory_plot", "figure", allow_duplicate=True),
-     Output({"type": "program-button", "index": dash.dependencies.ALL}, "style")],
-    [Input({"type": "program-button", "index": dash.dependencies.ALL}, "n_clicks")],
-    [State("data-store", "data")],
-    prevent_initial_call=True
-)
-def update_plot_and_highlight_button(n_clicks_list, data):
-    global headers, rows, unique_programs1, unique_programs
-
-    headers, rows, unique_programs1 = read_job_records(); 
-    # Determine which button was clicked
-    ctx = dash.callback_context
-    if not ctx.triggered:
-        return dash.no_update, dash.no_update
-    
-    global last_checked_program 
-
-    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    last_checked_program = eval(triggered_id)["index"]  # Extract the program name from the triggered ID
-
-    # Filter rows for the selected program
-    filtered_rows = [row for row in rows if last_checked_program in row[11]]
-
-    # Debugging: Print the filtered rows for the selected program
-    print(f"Filtered rows for program '{last_checked_program}':")
-    print(len(filtered_rows), flush=True)
-
-    
-
-    # Dynamically adjust the x and y axis ranges to fit all data points
-    if filtered_rows:
-        # Convert x-axis values to G (gigabytes) and y-axis values to G (gigabytes)
-        fig = px.scatter(
-            filtered_rows,
-            x=[float(row[1]) / (1024 * 1024) for row in filtered_rows],  # Convert Input size to G
-            y=[float(row[6]) / 1024 for row in filtered_rows],  # Convert Memory used to G
-            title=f"Input Size (G) vs. Memory Usage (G) for {last_checked_program}",
-            labels={"x": "Input Size (G)", "y": "Memory Usage (G)"},
-            hover_data={"Job ID": [row[0] for row in filtered_rows]}  # Include job ID in hover data
-        )
-        fig.update_traces(marker=dict(size=12, color='blue'),
-                        selected=dict(marker=dict(color='red', size=14)),
-                        unselected=dict(marker=dict(opacity=0.5)))
-        fig.update_layout(clickmode='event+select', dragmode='lasso')
-        
-        x_values = [float(row[1])/ (1024 * 1024) for row in filtered_rows]
-        y_values = [float(row[6])/1024 for row in filtered_rows]
-        fig.update_layout(
-            xaxis=dict(range=[min(x_values) * 0.9, max(x_values) * 1.1]),  # Add padding to x-axis
-            yaxis=dict(range=[min(y_values) * 0.9, max(y_values) * 1.1])   # Add padding to y-axis
-        )
-
-    # If filtered_rows is empty, clear the figure and return nothing
-    if not filtered_rows:
-        fig = px.scatter(
-            title=f"Input Size vs. Memory Usage for {last_checked_program}",
-            labels={"x": "Input Size", "y": "Memory Usage"}
-        )
-        fig.update_layout(clickmode='event+select', dragmode='lasso')
-        return fig, rows
-
-    # Update button styles to highlight the clicked button
-    button_styles = []
-    for program, n_clicks in zip(unique_programs, n_clicks_list):
-        print(f"working on program:", program)
-        if program == last_checked_program:
-            button_styles.append({"margin": "5px", "backgroundColor": "lightblue"})  # Highlight clicked button
-        else:
-            button_styles.append({"margin": "5px", "backgroundColor": "lightgray"})  # Default style
-   
-    return fig, button_styles
-
-# Callback to handle saving rows to the job_file
-@app.callback(
-    Output("data-store", "data", allow_duplicate=True),
-    Input("save-btn", "n_clicks"),
-    State("data-store", "data"),
-    prevent_initial_call=True
-)
-def save_rows_to_file(n_clicks, data):
-   # Backup the job record file
+def save_to_file(headers, rows):
     try:
         mtime = time.strftime("%Y%m%d%H%M%S", time.localtime(job_file.stat().st_mtime))
-        backup_job_file = Path(smartSlurmJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
-        shutil.copy(job_file, backup_job_file)
-        print(f"Backup of job record file created: {backup_job_file}", flush=True)
+        backup = Path(smartSlurmJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
+        shutil.copy(job_file, backup)
+        print(f"Backup : {backup}")
     except Exception as e:
-        print(f"Error creating backup of job record file: {e}", flush=True)
-
-
+        print(f"Warning — could not create backup: {e}")
     shutil.copy(tmpFile, job_file)
-    print(f"Updated data is saved in: {job_file}", flush=True)
-    return data
+    print(f"Saved  : {job_file}")
 
-# Store selected point
-# @app.callback(
-#     Output("selected-job", "children"),
-#     Input("memory_plot", "clickData"),
-# )
-# def display_selected(clickData):
-#     if clickData and "points" in clickData:
-#         job_id = clickData["points"][0]["x"]  # Use 'x' as a placeholder for job_id
-#         return f"Selected job ID: {job_id}"
-#     return "Click a data point to select a job."
 
-# @app.callback(
-#     Output("debug-popup", "children"),
-#     Input("memory_plot", "clickData"),
-# )
-# def debug_popup(clickData):
-#     if clickData and "points" in clickData:
-#         job_id = clickData["points"][0]["x"]  # Use 'x' as a placeholder for job_id
-#         return html.Div([
-#             html.Div(f"Debug Info: Selected Job ID: {job_id}", style={"color": "blue", "font-weight": "bold"}),
-#             html.Button("Close", id="close-debug", n_clicks=0)
-#         ])
-#     return ""
+def delete_stats_files(program_name):
+    stats_dir = os.path.join(smartSlurmJobRecordDir, "stats")
+    for pat in [f"{program_name}.*", f"extraMem.{program_name}.*"]:
+        for fp in glob.glob(os.path.join(stats_dir, pat)):
+            try:
+                os.remove(fp)
+                print(f"Removed stat file: {fp}")
+            except Exception as e:
+                print(f"Could not remove {fp}: {e}")
 
-# # Callback to detect if the page is refreshed by the user
-# @app.callback(
-#     Output("page-load-store", "data"),
-#     Input("reload-btn", "n_clicks"),
-#     State("page-load-store", "data"),
-#     prevent_initial_call=True
-# )
-# def detect_page_refresh(n_clicks, data):
-#     if data["is_first_load"]:
-#         print("#############Page loaded for the first time.", flush=True)
-#         return {"is_first_load": False}
-#     else:
-#         print("###########Page refreshed by the user.", flush=True)
-#         return data
+# ── ASCII scatter plot (stdlib only) ─────────────────────────────────────────
 
+def ascii_scatter(x_vals, y_vals, title="", xlabel="", ylabel="", width=88, height=22, deleted=None):
+    """Draw a scatter plot in the terminal using only the standard library.
+    Points are labeled 0-9 then a-z; collisions shown as '+'.
+    deleted: set of indices to hide. Scale is always fixed to the full list so
+             it does not change when dots are removed.
+    """
+    if deleted is None:
+        deleted = set()
+
+    Y_LBL  = 10   # chars reserved for y-axis tick labels
+    plot_w = width - Y_LBL - 1   # 1 for the '|' separator
+    plot_h = height
+
+    # Scale is computed from ALL points (including deleted) so it never shifts.
+    x_min, x_max = min(x_vals), max(x_vals)
+    y_min, y_max = min(y_vals), max(y_vals)
+    if x_max == x_min: x_min -= 0.5; x_max += 0.5
+    if y_max == y_min: y_min -= 0.5; y_max += 0.5
+
+    xp = (x_max - x_min) * 0.05
+    yp = (y_max - y_min) * 0.05
+    x_min -= xp; x_max += xp
+    y_min -= yp; y_max += yp
+
+    grid  = [[' '] * plot_w for _ in range(plot_h)]
+    chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+    for i, (x, y) in enumerate(zip(x_vals, y_vals)):
+        if i in deleted:
+            continue                     # skip deleted; index preserved for others
+        gx = round((x - x_min) / (x_max - x_min) * (plot_w - 1))
+        gy = round((y - y_min) / (y_max - y_min) * (plot_h - 1))
+        gx = max(0, min(plot_w - 1, gx))
+        gy = max(0, min(plot_h - 1, gy))
+        gy = (plot_h - 1) - gy          # flip: y grows upward
+        marker = chars[i] if i < len(chars) else '*'
+        grid[gy][gx] = marker if grid[gy][gx] == ' ' else '+'
+
+    if title:
+        print(title.center(width))
+
+    tick_rows = {0, plot_h // 2, plot_h - 1}
+    for row_i, row in enumerate(grid):
+        if row_i in tick_rows:
+            y_frac = 1.0 - row_i / (plot_h - 1)
+            y_val  = y_min + y_frac * (y_max - y_min)
+            prefix = f"{y_val:{Y_LBL}.3f}|"
+        else:
+            prefix = ' ' * Y_LBL + '|'
+        print(prefix + ''.join(row))
+
+    # x axis
+    print(' ' * Y_LBL + '+' + '-' * plot_w)
+
+    x_lo  = f"{x_min:.3f}"
+    x_mid = f"{(x_min + x_max) / 2:.3f}"
+    x_hi  = f"{x_max:.3f}"
+    gap1  = max(1, plot_w // 2 - len(x_lo) - len(x_mid) // 2)
+    gap2  = max(1, plot_w - len(x_lo) - gap1 - len(x_mid) - len(x_hi))
+    print(' ' * (Y_LBL + 1) + x_lo + ' ' * gap1 + x_mid + ' ' * gap2 + x_hi)
+
+    if xlabel:
+        print((' ' * (Y_LBL + 1) + xlabel).center(width))
+    if ylabel:
+        print(f"  y-axis: {ylabel}")
+
+# ── Display ────────────────────────────────────────────────────────────────────
+
+def show_plot_and_table(all_rows, program_name, deleted=None):
+    """all_rows is the original full snapshot for this program (never trimmed).
+    deleted is the set of indices that have been removed — they are hidden from
+    the plot and table but their indices are preserved for all remaining points.
+    """
+    if deleted is None:
+        deleted = set()
+
+    if not all_rows:
+        print(f"\n  (no records for '{program_name}')\n")
+        return
+
+    x_vals, y_vals, bad = [], [], []
+    for i, row in enumerate(all_rows):
+        try:
+            x_vals.append(float(row[1]) / (1024 * 1024))  # bytes → GiB
+            y_vals.append(float(row[6]) / 1024)           # MiB  → GiB
+        except (ValueError, IndexError):
+            bad.append(i)
+            x_vals.append(0.0)
+            y_vals.append(0.0)
+
+    remaining = len(all_rows) - len(deleted)
+    if remaining == 0:
+        print(f"\n  (all records for '{program_name}' have been deleted)\n")
+        return
+
+    ascii_scatter(
+        x_vals, y_vals,
+        title=f"Input Size (G) vs Memory (G) — {program_name}",
+        xlabel="Input Size (G)",
+        ylabel="Memory Usage (G)",
+        deleted=deleted,
+    )
+
+    print(f"\n  Program: {program_name}   ({remaining} remaining of {len(all_rows)} total)")
+    print(f"  {'Idx':>4}  {'Job ID':>12}  {'Input (G)':>12}  {'Mem (G)':>10}")
+    print("  " + "-" * 46)
+    for i, (row, x, y) in enumerate(zip(all_rows, x_vals, y_vals)):
+        if i in deleted:
+            continue
+        flag = " !" if i in bad else ""
+        print(f"  {i:>4}  {str(row[0]):>12}  {x:>12.4f}  {y:>10.4f}{flag}")
+
+# ── Index parsing ──────────────────────────────────────────────────────────────
+
+def parse_indices(s, max_idx, exclude=None):
+    """Parse '0', '1,3', '2-5', or combinations into a set of valid ints.
+    exclude: set of indices already deleted (reported as invalid).
+    """
+    if exclude is None:
+        exclude = set()
+    indices = set()
+    for part in s.replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            try:
+                a, b = part.split("-", 1)
+                indices.update(range(int(a), int(b) + 1))
+            except ValueError:
+                print(f"  Invalid range: {part}")
+        else:
+            try:
+                indices.add(int(part))
+            except ValueError:
+                print(f"  Invalid index: {part}")
+    valid = set()
+    for i in indices:
+        if i in exclude:
+            print(f"  Index {i} already deleted — skipping.")
+        elif 0 <= i < max_idx:
+            valid.add(i)
+        else:
+            print(f"  Index {i} out of range — skipping.")
+    return valid
+
+# ── Main loop ──────────────────────────────────────────────────────────────────
+
+def main():
+    headers, rows, unique_programs = read_job_records()
+    current_program = None
+    program_rows    = []    # full snapshot of rows for selected program (never trimmed)
+    deleted_indices = set() # indices into program_rows that have been deleted
+
+    while True:
+
+        # ── Program selection ────────────────────────────────────────────────
+        if current_program is None:
+            unique_programs = sorted({row[11] for row in rows if len(row) > 11})
+            print("\n══════════════════ SLURM Job Records ══════════════════")
+            for i, prog in enumerate(unique_programs):
+                print(f"  [{i:>2}] {prog}")
+            print("\n  Commands: <number> select program | s save | q quit")
+            choice = input("  > ").strip().lower()
+
+            if choice == "q":
+                print("Bye.")
+                break
+            elif choice == "s":
+                save_to_file(headers, rows)
+                continue
+            else:
+                try:
+                    current_program = unique_programs[int(choice)]
+                    # Snapshot all rows for this program; indices are stable for the session.
+                    program_rows    = [row for row in rows if current_program in row[11]]
+                    deleted_indices = set()
+                except (ValueError, IndexError):
+                    print("  Invalid choice — enter a number from the list.")
+                    continue
+
+        # ── Show plot and prompt for deletion ────────────────────────────────
+        show_plot_and_table(program_rows, current_program, deleted=deleted_indices)
+
+        print(
+            "\n  Commands: <indices> delete (e.g. 0  or  1,3  or  2-5)"
+            " | b back | s save | q quit"
+        )
+        action = input("  > ").strip().lower()
+
+        if action == "q":
+            print("Bye.")
+            break
+        elif action == "b":
+            current_program = None
+            program_rows    = []
+            deleted_indices = set()
+        elif action == "s":
+            save_to_file(headers, rows)
+        elif action:
+            indices = parse_indices(action, len(program_rows), exclude=deleted_indices)
+            if indices:
+                job_ids = {program_rows[i][0] for i in indices}
+                deleted_indices |= indices
+                rows = [r for r in rows if r[0] not in job_ids]
+                write_tmp(headers, rows)
+                delete_stats_files(current_program)
+                print(
+                    f"  Deleted {len(job_ids)} job(s): "
+                    + ", ".join(sorted(job_ids))
+                )
+            else:
+                print("  No valid indices — try again.")
+        # empty input → just redraw
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    main()
 
