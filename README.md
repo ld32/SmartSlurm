@@ -6,13 +6,9 @@ An sbatch wrapper with a custom function that estimates job memory (RAM) and tim
 
 Unlike many other pipeline managers which can have complicated setup requirements, ssbatch is written in bash shellscript.  This allows for simple installation on bash/SLURM systems (just clone the repo), and straightforward to integrate with existing comandline tools and pipelines.
 
-3. **runAsPipeline**
+2. **runAsPipeline**
 A pipeline manager for ssbatch.  Parses bash scripts to find user defined commands and calls ssbatch to submit jobs to slurm. Handles job dependencies and provides tools to monitor and troubleshoot jobs.
    
-<div align="center">
-<img src="https://github.com/user-attachments/assets/24a17db3-d6a4-4629-b02c-7c65535872c7" width="85%">
-</div>
-
 ## Features
 [Back to top](#SmartSlurm)
 1) Auto adjust memory and run-time according to statistics from earlier jobs
