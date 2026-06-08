@@ -288,7 +288,7 @@ def main():
 
         print(
             "\n  Commands: <indices> delete (e.g. 0  or  1,3  or  2-5)"
-            " | b back | s save | q quit"
+            " | a delete all | b back | s save | q quit"
         )
         action = input("  > ").strip().lower()
 
@@ -299,6 +299,21 @@ def main():
             current_program = None
             program_rows    = []
             deleted_indices = set()
+        elif action == "a":
+            confirm = input(
+                f"  Delete ALL {len(program_rows) - len(deleted_indices)} remaining"
+                f" records for '{current_program}'? [y/N] "
+            ).strip().lower()
+            if confirm == "y":
+                all_indices = set(range(len(program_rows))) - deleted_indices
+                job_ids = {program_rows[i][0] for i in all_indices}
+                deleted_indices |= all_indices
+                rows = [r for r in rows if r[0] not in job_ids]
+                write_tmp(headers, rows)
+                delete_stats_files(current_program)
+                print(f"  Deleted all {len(job_ids)} records for '{current_program}'.")
+            else:
+                print("  Cancelled.")
         elif action == "s":
             save_to_file(headers, rows)
         elif action:
