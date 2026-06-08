@@ -1,4 +1,4 @@
-# Introduction
+# SmartSlurm
 SmartSlurm is an automated computational tool designed to estimate and optmize resouces for Slurm jobs. There are two major parts:
 
 1. **ssbatch**
