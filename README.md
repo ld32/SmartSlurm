@@ -8,7 +8,30 @@ Unlike many other pipeline managers which can have complicated setup requirement
 
 2. **runAsPipeline**
 A pipeline manager for ssbatch.  Parses bash scripts to find user defined commands and calls ssbatch to submit jobs to slurm. Handles job dependencies and provides tools to monitor and troubleshoot jobs.
-   
+
+## Table of Contents
+- [Features](#features)
+- [Installation](#installation)
+- [ssbatch: Smart sbatch](#ssbatch-smart-sbatch)
+  - [Usage](#usage)
+  - [ssbatch utilities](#ssbatch-utilities)
+  - [How does ssbatch work?](#how-does-ssbatch-work)
+  - [Smart Sbatch FAQ](#smart-sbatch-faq)
+- [runAsPipeline](#runaspipeline)
+  - [runAsPipeline Features](#runaspipeline-features)
+  - [Utilities: checkRun, cancelAllJobs](#utilities)
+  - [Building Workflows](#building-workflows)
+  - [Loops](#loops)
+  - [Smart pipeline tutorial](#smart-pipeline-tutorial)
+  - [runAsPipeline FAQ](#runaspipeline-faq)
+- [Use ssbatch in Snakemake pipeline](#use-ssbatch-in-snakemake-pipeline)
+- [Use ssbatch in Cromwell pipeline](#use-ssbatch-in-cromwell-pipeline)
+- [Use ssbatch in Nextflow pipeline](#use-ssbatch-in-nextflow-pipeline)
+- [Run bash script as smart pipeline](#run-bash-script-as-smart-pipeline-using-smart-sbatch)
+- [Review and clean up job records](#review-and-clean-up-job-records-and-statistics)
+- [sbatchAndTop](#sbatchandtop)
+- [upgrade](#upgrade)
+
 ## Features
 [Back to top](#SmartSlurm)
 1) Auto adjust memory and run-time according to statistics from earlier jobs
