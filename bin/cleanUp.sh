@@ -249,22 +249,29 @@ if [ ! -f $succFile ]; then
 
         # need keey record how many job oot and oom for this software and ref
         # if there are more than 3 in the last hour, set the newMemFactor and newTimeFactor higher to avoid multiple re-queue loop
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oot.oom.txt
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.txt | wc -l`
+        echo $record >> $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt
+        #recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
+        #echo recentFails in the last hour for $software $ref: $recentFails
+
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
+
 
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
         if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
-            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
-            if [ ! -f $backup ]; then 
-                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to $backup and remove all records aboutn $software $ref. 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
-                #ls -l $smartSlurmJobRecordDir/ 
-                #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
-            fi
+            #backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            #if [ ! -f $backup ]; then 
+            #    mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
+            #    echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
+            #    awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+            #    #ls -l $smartSlurmJobRecordDir/ 
+            #    #ls -l $smartSlurmJobRecordDir/stats/
+            #    rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+            #fi
+            # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. Please review the job records using:\n\$ reviewJobRecords.py" | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+
         fi
 
 
@@ -577,10 +584,28 @@ if [ ! -f $succFile ]; then
     #fi
 
 # job was successful
-else 
+elif [ ! -z "$overEstimate" ]; then
+    echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
 
-    :
+    
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
+        echo recentFails in the last hour for $software $ref: $recentFails
 
+        # delete all record about the step is thare more than 3 failed jobs in last hour
+        if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
+            #backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            #if [ ! -f $backup ]; then 
+            #    mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
+            #    echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
+            #    awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+            #    #ls -l $smartSlurmJobRecordDir/ 
+            #    #ls -l $smartSlurmJobRecordDir/stats/
+            #    rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+            #fi
+            # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. Please review the job records using:\n\$ reviewJobRecords.py" | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+
+        fi
 
 fi
 
