@@ -608,14 +608,21 @@ if [[ "$testRun" == "run" ]] && [ "$min" -lt "$smallJobMin" ] && [ -z "$deps" ];
 
     # Resolve real sbatch (not the SmartSlurm wrapper)
     _realSbatch=$(which -a sbatch | grep -v SmartSlurm | head -n 1)
-
-    # Should we submit a new batch runner?
     _now=$(date +%s)
-    _lastTs=0
-    [ -f "$batchTsFile" ] && _lastTs=$(< "$batchTsFile")
-    _elapsed=$(( _now - _lastTs ))
 
-    if [ "$_elapsed" -ge 300 ]; then
+    # Count queued commands (one blank separator line per record)
+    _batchThreshold=20
+    _cmdCount=$(grep -c '^$' "$cmdFile" 2>/dev/null || echo 0)
+
+    # Check whether an existing batch runner is still pending in SLURM
+    _existingJobID=0
+    [ -f "$batchJobIDFile" ] && _existingJobID=$(< "$batchJobIDFile")
+    _runnerPending=0
+    if [[ "$_existingJobID" =~ ^[0-9]+$ ]] && [ "$_existingJobID" -gt 0 ]; then
+        squeue -j "$_existingJobID" -h -o "%t" 2>/dev/null | grep -q '^PD$' && _runnerPending=1
+    fi
+
+    if [ "$_runnerPending" -eq 0 ]; then
         # Determine partition for a 12-hour batch runner job
         _batchMem=$(( mem > 2048 ? mem : 2048 ))
         adjustPartition "$_batchMem" "720" "${partition:-}"
@@ -696,23 +703,36 @@ BATCHBODY
         } > "$_wrapperScript"
         chmod +x "$_wrapperScript"
 
-        # Submit the wrapper (begins 300 s = 5 min from now)
+        # Submit the wrapper: soon if already many commands, delayed otherwise
+        if [ "$_cmdCount" -ge "$_batchThreshold" ]; then
+            _beginDelay="now+30"
+        else
+            _beginDelay="now+300"
+        fi
         newJobID=$($_realSbatch --parsable \
-            --begin="now+300" \
+            --begin="$_beginDelay" \
             -p "$_batchPartition" --mem "${_batchMem}M" -t "12:00:00" \
             $slurmAcc \
             -J "$_batchFlag" \
             -o "$smartSlurmLogDir/$program.$ref_safe.batch.out" \
             -e "$smartSlurmLogDir/$program.$ref_safe.batch.err" \
             "$_wrapperScript")
-        echo "$_now"     > "$batchTsFile"
         echo "$newJobID" > "$batchJobIDFile"
-        echoerr1 "Batch runner $newJobID submitted (begin: now+5min, wrapper: $_wrapperScript)"
+        echoerr1 "Batch runner $newJobID submitted (begin: $_beginDelay, wrapper: $_wrapperScript)"
     else
-        # A batch runner was submitted recently; the new command is already in
-        # cmdFile and will be picked up when the existing runner starts.
-        newJobID=$(< "$batchJobIDFile")
-        echoerr1 "Recent batch runner exists (${_elapsed}s ago, ID=$newJobID); command queued"
+        # Existing runner is still pending — adjust its start time
+        newJobID="$_existingJobID"
+        if [ "$_cmdCount" -lt "$_batchThreshold" ]; then
+            # Few commands: push start back 5 min to keep accumulating
+            _newStart=$(date -d "+5 minutes" +%Y-%m-%dT%H:%M:%S)
+            scontrol update job="$_existingJobID" StartTime="$_newStart" 2>/dev/null || :
+            echoerr1 "Few commands ($_cmdCount < $_batchThreshold): pushed runner $_existingJobID start back 5 min"
+        else
+            # Many commands: advance start to run very soon
+            _newStart=$(date -d "+30 seconds" +%Y-%m-%dT%H:%M:%S)
+            scontrol update job="$_existingJobID" StartTime="$_newStart" 2>/dev/null || :
+            echoerr1 "Many commands ($_cmdCount >= $_batchThreshold): advanced runner $_existingJobID to start in ~30s"
+        fi
     fi
 
     [ -f "$smartSlurmLogDir/allJobs.txt" ] || \
