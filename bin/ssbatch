@@ -563,6 +563,174 @@ fi
 
 #[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
 
+# ── Small-job batching ────────────────────────────────────────────────────────
+# If estimated time < smallJobMin minutes AND the job has no dependencies,
+# accumulate it in a per-program.ref cmd file and submit (or reuse) a single
+# SLURM "batch runner" job that begins 5 min after the first arrival.
+# The batch runner handles overflow: if commands exceed 55 min total it submits
+# a follow-on job with the proper time/memory for the remainder.
+
+set -x 
+smallJobMin=5
+if [[ "$testRun" == "run" ]] && [ "$min" -lt "$smallJobMin" ] && [ -z "$deps" ]; then
+    ref_safe="${ref//\//-}"
+    cmdFile="$smartSlurmLogDir/$program.$ref_safe.cmd"
+    batchTsFile="$smartSlurmLogDir/$program.$ref_safe.batch_ts"
+    batchJobIDFile="$smartSlurmLogDir/$program.$ref_safe.batch_jobid"
+
+    # Build the actual command to run
+    if [ -n "$wrapCMD" ]; then
+        actualCmd="$wrapCMD"
+    elif [ -f .command.sh ] && [ -f .command.run ]; then
+        # Nextflow: .command.run uses relative paths and must run from the
+        # task work directory. Capture absolute paths now (CWD will be
+        # different when the batch runner executes 5 min later).
+        _taskDir="$(realpath .)"
+        _taskScript="$(realpath "$slurmScript")"
+        actualCmd="cd '$_taskDir' && bash '$_taskScript'${slurmScriptParas:+ $slurmScriptParas}"
+    else
+        actualCmd="bash $slurmScript${slurmScriptParas:+ $slurmScriptParas}"
+    fi
+
+    # Append a 6-line record + blank separator to the accumulation file.
+    # Format: estimated_min / estimated_mem_MB / succFlag_path /
+    #         snakemakeSuccFlag / snakemakeFailFlag / command
+    {
+        printf '%s\n' "$min"
+        printf '%s\n' "$mem"
+        printf '%s\n' "$succFlag"
+        printf '%s\n' "${snakemakeSuccFlag:-}"
+        printf '%s\n' "${snakemakeFailFlag:-}"
+        printf '%s\n' "$actualCmd"
+        echo
+    } >> "$cmdFile"
+    echoerr1 "Small job (${min}min ${mem}M) queued in: $cmdFile"
+
+    # Resolve real sbatch (not the SmartSlurm wrapper)
+    _realSbatch=$(which -a sbatch | grep -v SmartSlurm | head -n 1)
+
+    # Should we submit a new batch runner?
+    _now=$(date +%s)
+    _lastTs=0
+    [ -f "$batchTsFile" ] && _lastTs=$(< "$batchTsFile")
+    _elapsed=$(( _now - _lastTs ))
+
+    if [ "$_elapsed" -ge 300 ]; then
+        # Determine partition for a 12-hour batch runner job
+        _batchMem=$(( mem > 2048 ? mem : 2048 ))
+        adjustPartition "$_batchMem" "720" "${partition:-}"
+        _batchPartition="$partition"
+        _batchFlag="smallBatch.$program.$ref_safe"
+        _batchSuccFlag="$smartSlurmLogDir/$_batchFlag.success"
+        _wrapperScript="$smartSlurmLogDir/$_batchFlag.sh"
+
+        # ── Timestamped runner: runs the accumulated commands ──────────────────
+        # A new timestamped file per batch window avoids overwriting a running script.
+        _batchScript="$smartSlurmLogDir/$program.$ref_safe.batch.$_now.sh"
+        {
+            echo "#!/bin/bash"
+            echo "# Batch runner for small $program / $ref_safe jobs — generated $(date)"
+            echo "cmdFile='$cmdFile'"
+            echo "batchSuccFlag='$_batchSuccFlag'"
+            cat << 'BATCHBODY'
+
+echo "Batch runner starting: $(date)"
+echo "Commands file: $cmdFile"
+
+# Read all 6-line records into arrays; skip blank/non-numeric first lines
+declare -a rmins rmems rsuccs rsmSucc rsmFail rcmds
+while IFS= read -r rmin; do
+    [[ -z "$rmin" || ! "$rmin" =~ ^[0-9]+$ ]] && continue
+    IFS= read -r rmem
+    IFS= read -r rsucc
+    IFS= read -r rsmS
+    IFS= read -r rsmF
+    IFS= read -r rcmd
+    rmins+=("$rmin"); rmems+=("$rmem"); rsuccs+=("$rsucc")
+    rsmSucc+=("$rsmS"); rsmFail+=("$rsmF"); rcmds+=("$rcmd")
+done < "$cmdFile"
+
+echo "Total queued: ${#rmins[@]} commands"
+
+# Run all commands, skipping any already done (succFlag exists)
+failCount=0
+for i in "${!rmins[@]}"; do
+    if [[ -f "${rsuccs[$i]}" ]]; then
+        echo "  Already done (skip): ${rcmds[$i]}"
+        continue
+    fi
+    echo "  Running [${rmins[$i]}min ${rmems[$i]}M]: ${rcmds[$i]}"
+    if eval "${rcmds[$i]}"; then
+        touch "${rsuccs[$i]}"
+        [[ -n "${rsmSucc[$i]}" ]] && touch "${rsmSucc[$i]}"
+    else
+        echo "FAILED: ${rcmds[$i]}" >&2
+        [[ -n "${rsmFail[$i]}" ]] && touch "${rsmFail[$i]}"
+        failCount=$(( failCount+1 ))
+    fi
+done
+
+# Release any held downstream jobs (runAsPipeline pattern)
+{ adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }
+
+echo "Batch runner done: $(date)  failures=$failCount"
+[[ $failCount -eq 0 ]] && touch "$batchSuccFlag"
+[[ $failCount -eq 0 ]] || exit 1
+BATCHBODY
+        } > "$_batchScript"
+        chmod +x "$_batchScript"
+
+        # ── Stable wrapper: cleanUp.sh integration ─────────────────────────────
+        # Submitted to SLURM; cleanUp.sh requeues this wrapper on OOM/OOT.
+        # The wrapper delegates to the timestamped runner; already-completed
+        # commands are skipped via succFlag checks in the runner.
+        # Initial submit uses --begin=now+300; requeues (via #Command comment) start immediately.
+        {
+            echo "#!/bin/bash"
+            echo "# SmartSlurm batch runner wrapper for $_batchFlag — generated $(date)"
+            echo "trap \"{ cleanUp.sh '$_batchFlag' '$program' '$ref_safe' 0 1 $_batchMem 720 $_batchMem 720 '$_batchPartition' '${slurmAcc#*-A }' none 0 $defaultExtraTime '${userEmail:-}'; }\" EXIT"
+            echo "memCpuMonitor.sh '$_batchFlag' $_batchMem 720 $_batchMem 1 &"
+            echo "bash '$_batchScript'"
+            echo "#myMem=$_batchMem myTime=12:00:00 myPartition=$_batchPartition"
+            echo "#Command used to submit the job: $_realSbatch --parsable -p \$myPartition --mem \$myMem -t \$myTime $slurmAcc -J '$_batchFlag' -o '$smartSlurmLogDir/$program.$ref_safe.batch.out' -e '$smartSlurmLogDir/$program.$ref_safe.batch.err' '$_wrapperScript'"
+        } > "$_wrapperScript"
+        chmod +x "$_wrapperScript"
+
+        # Submit the wrapper (begins 300 s = 5 min from now)
+        newJobID=$($_realSbatch --parsable \
+            --begin="now+300" \
+            -p "$_batchPartition" --mem "${_batchMem}M" -t "12:00:00" \
+            $slurmAcc \
+            -J "$_batchFlag" \
+            -o "$smartSlurmLogDir/$program.$ref_safe.batch.out" \
+            -e "$smartSlurmLogDir/$program.$ref_safe.batch.err" \
+            "$_wrapperScript")
+        echo "$_now"     > "$batchTsFile"
+        echo "$newJobID" > "$batchJobIDFile"
+        echoerr1 "Batch runner $newJobID submitted (begin: now+5min, wrapper: $_wrapperScript)"
+    else
+        # A batch runner was submitted recently; the new command is already in
+        # cmdFile and will be picked up when the existing runner starts.
+        newJobID=$(< "$batchJobIDFile")
+        echoerr1 "Recent batch runner exists (${_elapsed}s ago, ID=$newJobID); command queued"
+    fi
+
+    [ -f "$smartSlurmLogDir/allJobs.txt" ] || \
+        printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" \
+            job_id depend_on job_flag program reference inputs comment \
+            > "$smartSlurmLogDir/allJobs.txt"
+    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" \
+        "$newJobID" "$depsID" "$flag" "$program" "$ref" "$inputs" \
+        >> "$smartSlurmLogDir/allJobs.txt"
+
+    echoerr1 "Submitted batch job $newJobID"
+    echo "Submitted batch job $newJobID"
+    exit
+fi
+
+set +x
+# ── End small-job batching ─────────────────────────────────────────────────────
+
 echo -e "$resAjust" >> $outFlag
 
 [ -z "$slurmAcc" ] && [ ! -z "$defaultSlurmAcc" ] && slurmAcc="-A $defaultSlurmAcc"
