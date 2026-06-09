@@ -544,7 +544,7 @@ if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSlurmLogDir/$f
     #min=`echo $tText | cut -d' ' -f2`
     #extraMem=`echo $tText | cut -d' ' -f3`
     echo Got mem/time from $smartSlurmLogDir/$flag.adjust: >> $outFlag
-    #echo $tText >> $outFlag
+    #echo $tText >> $outFlagƒ
 else
     rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
 
