@@ -11,7 +11,7 @@ echo Running: $0  $@
 
 # jobid, deps, flag, software, ref, input, inputSize
 if [ -f $smartSlurmLogDir/allJobs.txt ]; then 
-    lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
+    lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt | grep -vE '[0-9]+\.batchSub'` # | awk 'NF>2{print $1, $2, $3}'`
 else 
     exit 1; 
 fi 

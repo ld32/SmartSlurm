@@ -572,7 +572,7 @@ fi
 
 set -x 
 smallJobMin=5
-if [[ "$testRun" == "run" ]] && [ "$min" -lt "$smallJobMin" ] && [ -z "$deps" ]; then
+if [[ "$testRun" == "run" ]] && [ "$min" -lt "$smallJobMin" ] && [ -z "$deps" ] && [ -n "$runningSingleJob" ]; then
     ref_safe="${ref//\//-}"
     cmdFile="$smartSlurmLogDir/$program.$ref_safe.cmd"
     batchTsFile="$smartSlurmLogDir/$program.$ref_safe.batch_ts"
@@ -739,8 +739,14 @@ BATCHBODY
         printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" \
             job_id depend_on job_flag program reference inputs comment \
             > "$smartSlurmLogDir/allJobs.txt"
+
+    if [ "$_runnerPending" -eq 0 ]; then
+        printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" \
+        "$newJobID" "$depsID" "$_batchFlag" "$program" "$ref" "$inputs" \
+        >> "$smartSlurmLogDir/allJobs.txt"
+    fi
     printf "%-10s  %-20s  %-10s %-10s %-10s %-10s\n" \
-        "$newJobID" "$depsID" "$flag" "$program" "$ref" "$inputs" \
+        "$newJobID.batchSub" "$depsID" "$flag" "$program" "$ref" "$inputs" \
         >> "$smartSlurmLogDir/allJobs.txt"
 
     echoerr1 "Submitted batch job $newJobID"
