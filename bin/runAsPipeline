@@ -195,7 +195,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
 
     [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
-    echolog original row: .$t.
+    echolog1 original row: .$t.
 
     # get space and the real command
     space=""; i=""
@@ -215,7 +215,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
 
     if [[ "$i" == \#@* ]]; then
         
-        echolog "    Recognized job step: $i"
+        echolog1 "    Recognized job step: $i"
 
         findjob="yes"
         x=${i#*\#@}
