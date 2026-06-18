@@ -267,7 +267,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
         cmd=""
 
     elif [ ! -z $findjob ]; then
-        [[ "$i" == \#* ]] && { findjob=""; echo "$t" >> $run; continue; }
+        [[ "$i" == \#* ]] && { echo "$t" >> $run; continue; }
         #echolog
         echolog1 "    find job: $i"
         [[ "$i" == ssbatch* ]] && echolog Error! Please remove ssbatch command from $1. && exit 1
