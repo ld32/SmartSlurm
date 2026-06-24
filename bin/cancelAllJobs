@@ -12,7 +12,10 @@ fi
 
 IFS=$'\n'
 
-out=`squeue -u $USER -o "%.18i"`
+#out=`squeue -u $USER -o "%.18i"`
+out=$(squeue -u "$USER" -h -o "%.18i")
+# pad with spaces and newlines
+out=" $out "
 
 [ -z "$out" ] && exit 0; 
 
@@ -22,7 +25,7 @@ lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt | awk '{print $1, $3}'`
 for line in $lines; do
     if [ ! -z "${line/ /}" ]; then
         id=${line%% *} #`echo $line | cut -d' ' -f1`
-        if [[ "$out" == *$id* ]]; then 
+        if [[ "$out" == *" $id "* ]]; then 
             ids="$ids $id"
             nmap[$id]=${line##* }
             notdone="$notdone $line\n" #flags="$flags $flag" 
