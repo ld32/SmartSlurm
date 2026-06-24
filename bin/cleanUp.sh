@@ -249,11 +249,11 @@ if [ ! -f $succFile ]; then
 
         # need keey record how many job oot and oom for this software and ref
         # if there are more than 3 in the last hour, set the newMemFactor and newTimeFactor higher to avoid multiple re-queue loop
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt
-        #recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
+        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
+        #recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
         #echo recentFails in the last hour for $software $ref: $recentFails
 
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
 
@@ -588,7 +588,7 @@ elif [ ! -z "$overEstimate" ]; then
     echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
 
     
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oot.oom.over.txt | wc -l`
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
