@@ -15,7 +15,7 @@ IFS=$'\n'
 #out=`squeue -u $USER -o "%.18i"`
 out=$(squeue -u "$USER" -h -o "%.18i")
 # pad with spaces and newlines
-out=" $out\n"
+out=" $out\n "
 
 [ -z "$out" ] && exit 0; 
 
