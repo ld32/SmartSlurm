@@ -197,7 +197,8 @@ record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jo
 echo dataToPlot,$record
 
 # delete rows other than 1 week and not COMPLETED
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t && $9 != "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+# awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t && $9 != "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+# awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$20; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
 
 records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
 
