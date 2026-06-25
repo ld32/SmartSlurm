@@ -202,7 +202,7 @@ awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t
 records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
-if [ "$(echo $records | wc -l)" -lt 500 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
+if [ "$(echo $records | wc -l)" -lt 500 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM" && [[ "$flag" != smallBatch*]]; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
         [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
