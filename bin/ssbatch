@@ -781,7 +781,7 @@ if [[ "$testRun" == "run" ]]; then
 
     #touch $submitFlag
 else
-    jobID=$(date +"%4N")
+    jobID=0$(date +"%4N")
     echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
 fi
 
