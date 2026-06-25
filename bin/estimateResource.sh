@@ -184,9 +184,9 @@ fi
 
 echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
 
-echo $inputSize $mem $min $extraMem
+#echo $inputSize $mem $min $extraMem
 
 # for testing
-#echo $inputSize 2 1 1
+echo $inputSize 8000 200 1
 
 echoerr Got inputsize: $inputSize mem: $mem time: $min extraMem: $extraMem extralTime: $defaultExtraTime

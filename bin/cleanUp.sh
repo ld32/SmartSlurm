@@ -56,7 +56,7 @@ out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smar
 [ -f .exitcode ] && touch $succFile
 
 # wait for slurm database update
-sleep 1
+sleep 5
 
 sacct=`sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $SLURM_JOBID`
 
@@ -73,7 +73,7 @@ jobStat=`echo -e "$sacct" | tail -n 1`
 
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID"
 
-START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOB_ID.memCPU.txt | cut -d' ' -f6`
+START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f6`
 
 FINISH=`date +%s`
 
@@ -112,7 +112,7 @@ else
         jobStatus="OOM"
         echo The job is actually out-of-memory by according to the log:
         echo $tLog
-        scontrol show jobid -dd $SLURM_JOB_ID
+        scontrol show jobid -dd $SLURM_JOBID
     else
        jobStatus="Unknown"
        [ -z "$snakemakeFailFlag" ] || touch "$snakemakeFailFlag"
@@ -183,9 +183,6 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
         currentExtraMem=0
         [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && currentExtraMem=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
 
-
-
-
     fi
   fi
 fi
@@ -193,17 +190,18 @@ ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|b
 
 # todo: move this part to main job, so that when release job, this job record can be used for the statics 
                                 #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOB_ID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`" 
+record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
 echo dataToPlot,$record
 
 # delete rows other than 1 week and not COMPLETED
-# awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ split($20, a, " "); if( a[2] > t && $9 != "COMPLETED") print $0}' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
-# awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$20; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
+#awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
+awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+
 
 records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
-if [ "$(echo $records | wc -l)" -lt 500 ] || [ "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ] && ! echo $records | grep "$inputSize $srunM"; then
+if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(echo $records | wc -l)" -lt 500 || "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ]] && ! echo $records | grep "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
         [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
@@ -220,7 +218,9 @@ fi
 # if more than 10, then delete the stat file ( will re-generate next time to estimate)
 if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
-    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($20, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+
+    # todo: time format in jobRecord.txt is not consistent. some are in seconds, some are in date format. need to fix it.  
+    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($21, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
     if [ $newRecords -gt 10 ]; then
         mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
     fi
@@ -248,30 +248,28 @@ if [ ! -f $succFile ]; then
     # Handle OOM, OOT, and OOMOOT cases
     if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        # need keey record how many job oot and oom for this software and ref
-        # if there are more than 3 in the last hour, set the newMemFactor and newTimeFactor higher to avoid multiple re-queue loop
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
-        #recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b && ($9 == "OOM" || $9 == "OOT" || $9 == "OOMOOT")) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
-        #echo recentFails in the last hour for $software $ref: $recentFails
+        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
 
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
+        echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if(  $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
 
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
         if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
-            #backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
-            #if [ ! -f $backup ]; then 
-            #    mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-            #    echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
-            #    awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
-            #    #ls -l $smartSlurmJobRecordDir/ 
-            #    #ls -l $smartSlurmJobRecordDir/stats/
-            #    rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
-            #fi
+            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            if [ ! -f $backup ]; then 
+                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
+                echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref." 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                #ls -l $smartSlurmJobRecordDir/ 
+                #ls -l $smartSlurmJobRecordDir/stats/
+                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+            fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. Please review the job records using:\n\$ reviewJobRecords.py" | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
@@ -444,11 +442,11 @@ if [ ! -f $succFile ]; then
                     [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
 
                     touch $out.$newJobID
-                    cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+                    cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
 
                     # Lock mechanism for job ID adjustments
                     while true; do
-                        if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
+                        if mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null; then
                             break
                         else 
                             folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
@@ -550,9 +548,9 @@ if [ ! -f $succFile ]; then
 
                         touch $out.$newJobID
 
-                        cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOB_ID.as.$newJobID
+                        cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
                         while true; do
-                            if `mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null`; then
+                            if mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null; then
                                 break
                             else 
                                 folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
@@ -586,25 +584,26 @@ if [ ! -f $succFile ]; then
 
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
-    echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
+        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,OverEstimate,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
+        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
 
     
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ split($20, c, " "); if( c[2] > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt | wc -l`
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if( $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
         if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
-            #backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
-            #if [ ! -f $backup ]; then 
-            #    mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-            #    echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
-            #    awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
-            #    #ls -l $smartSlurmJobRecordDir/ 
-            #    #ls -l $smartSlurmJobRecordDir/stats/
-            #    rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
-            #fi
+            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            if [ ! -f $backup ]; then 
+                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
+                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                #ls -l $smartSlurmJobRecordDir/ 
+                #ls -l $smartSlurmJobRecordDir/stats/
+                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+            fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. Please review the job records using:\n\$ reviewJobRecords.py" | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
@@ -692,7 +691,7 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 #fi
 
 
-# echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOB_ID.memCPU.txt
+# echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOBID.memCPU.txt
 
 rate=0.0013 # $0.0013 per G per hour 
 maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
@@ -749,7 +748,7 @@ fi
 # move to inside of job
 #summarizeRun.sh $smartSlurmLogDir $flag 
 
-[ -f $smartSlurmLogDir/summary.$SLURMJOB_ID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURMJOB_ID`\n$toSend" && s="${toSend%% *} $s"
+[ -f $smartSlurmLogDir/summary.$SLURM_JOBID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURM_JOBID`\n$toSend" && s="${toSend%% *} $s"
 
 #echo -e "tosend:\n$toSend"
 #echo -e "$toSend" >> ${err%.err}.email
