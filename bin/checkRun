@@ -2,6 +2,8 @@
 
 #set -x
 
+showPending=""
+
 submttingLog=.smartSlurm.log
 
 if [[ $1 == "-h" ||  $i == "--help" ]]; then
@@ -50,21 +52,38 @@ function loadData() {
     BLUE='\033[0;34m'
     YELLOW='\033[0;33m'
     ORANGE='\033[0;35m'
-    ORANGE='\033[0;33m'
     GREY='\033[0;37m'
 
     records=""; count=1; all=y 
     for i in $logFolders; do
         
         if [ -d $i ]; then 
-            [ -f $i/allJobs.txt ] && nJobs=$(grep -v ^job_id $i/allJobs.txt | wc -l) || nJobs=0
-            records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
+            if [ -f $i/allJobs.txt ]; then 
+             nJobs=$(grep -v ^job_id $i/allJobs.txt | wc -l) || nJobs=0
+             lastRow=`tail -n 1 $i/allJobs.txt`
+             if [[ $lastRow == 0* ]]; then # job id starts with 0
+                 records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs ${RED}dry run${NC} jobs submitted")\n"
+             else 
+                 records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
+             fi
+            else 
+                records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "0 jobs submitted")\n"
+            fi
+
+
+           
             count=$((count + 1))
 
         elif [ -f "$i" ]; then 
             nJobs=$(grep "^Submitted batch job" $i | wc -l)
+
+            if grep 'useTmp run' $i >/dev/null 2>&1; then 
+                records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
+            else 
+                records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs ${RED}dry run${NC} jobs submitted")\n"
+            fi
             
-            records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
+            #records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
             count=$((count + 1))    
         fi    
     done
@@ -149,7 +168,11 @@ while true; do
         IFS=$'\n'
         #set -x 
         for i in `echo -e "$toShow" | tail -n +2`; do
-            echo -e "$GREEN$count1${ne} ${i#*\/}"
+            if [ -z "$showPending" ]; then 
+                [[ "$i" != *Pend* ]] && echo -e "$GREEN$count1${ne} ${i#*\/}" 
+            else     
+                echo -e "$GREEN$count1${ne} ${i#*\/}"
+            fi
             count1=$((count1 + 1))
         done
         echo Current working folder: $logFolder and job: $failedJob
@@ -159,7 +182,7 @@ while true; do
         else  #Or ${RED}r${NC} to run the job command. 
             
             #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
-            echo -e "Select a failed step to check the .out log, ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit:"
+            echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
             read -p "" xx </dev/tty;
         
             #[[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
@@ -184,6 +207,11 @@ while true; do
             # fi 
             [[ "$xx" == q ]] && break
 
+            if [[ "$xx" == p ]]; then 
+                [ -z "$showPending" ] && showPending=yes || showPending="" 
+                continue
+            fi
+            
             [[ "$xx" == qq ]] && exit
             
             #[[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 

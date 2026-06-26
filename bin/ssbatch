@@ -447,7 +447,6 @@ resAjust="#Depend on: $depsID\n"
 
             if [[ "$x" == "y" ]]; then
                 [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
-                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
             elif [[ "$x" == "ystep" ]]; then
                 touch $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt
             elif [[ "$x" == "nstep" ]]; then
@@ -782,7 +781,7 @@ if [[ "$testRun" == "run" ]]; then
 
     #touch $submitFlag
 else
-    jobID=$(date +"%4N")
+    jobID=0$(date +"%4N")
     echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
 fi
 
