@@ -72,9 +72,6 @@ git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 export PATH=$HOME/SmartSlurm/bin:$PATH
 ```
 
-> [!IMPORTANT]
-> Putting `SmartSlurm/bin` on your `PATH` shadows the system `sbatch` with `ssbatch`, so existing `sbatch` commands transparently gain smart sizing. To temporarily undo this in your current shell, run `source unExport; unExport` (see [Utilities](#utilities-unexport)).
-
 **Optional** — only needed for the workflow-chart (`w`) option in `checkRun`:
 
 ```bash
@@ -109,8 +106,8 @@ For most programs, memory and run-time scale with input size. ssbatch records wh
 ## Usage
 
 ```
-ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] --wrap="COMMAND" [run]
-ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [run]
+ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] --wrap="COMMAND" [dryrun]
+ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dryrun]
 ```
 
 | Option | Description | Required |
@@ -121,7 +118,7 @@ ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [ru
 | `--wrap="CMD"` | Command to run. | Yes* |
 | `SCRIPT.sh [ARGS]` | A script to run instead of `--wrap`. Its first line must be a shebang. | Yes* |
 | `SBATCH_OPTIONS` | Any standard sbatch option (`-c`, `--mem`, `-t`, `-p`, `-A`, `--mail-user=`, …). Defaults exist for memory and time. | No |
-| `run` | As the **last** argument: actually submit. Omit it for a dry run that estimates and builds the job script but does not submit. | No |
+| `dryrun` | As the **last** argument: not actually submit, only estimates and builds the job script but does not submit. | No |
 
 <sub>*Provide **either** `--wrap` **or** a script file.</sub>
 
@@ -233,12 +230,12 @@ export smartSlurmLogDir=smartSlurmLog            # per-run log dir (relative to 
 export firstBatchCount=5   # runAsPipeline: how many independent jobs run before the rest are held
 export defaultMem=4096     # M   — used until estimation is available
 export defaultTime=120     # min — used until estimation is available
-export defaultExtraMem=5   # M   — safety margin added to estimates
-export defaultExtraTime=5  # min — safety margin added to estimates
+export defaultExtraMem=500   # M   — safety margin added to estimates
+export defaultExtraTime=10  # min — safety margin added to estimates
 
-export partition1TimeLimit=12   # hours: run-time  >0h  and ≤12h
-export partition2TimeLimit=120  # hours: run-time >12h  and ≤5 days
-export partition3TimeLimit=720  # hours: run-time  >5d  and ≤30 days
+export partition1TimeLimit=720   # hours: run-time  >0h  and ≤12h
+export partition2TimeLimit=7200  # hours: run-time >12h  and ≤5 days
+export partition3TimeLimit=43200  # hours: run-time  >5d  and ≤30 days
 
 adjustPartition() { ...; }
 ```
@@ -845,7 +842,7 @@ cp $HOME/SmartSlurm/bin/Snakefile .
 cp $HOME/SmartSlurm/config/config.yaml .
 
 module load conda/miniforge3/24.11.3-0
-mamba env create --name snakemakeEnv --file $PWD/SmartSlurm/config/snakemakeEnv.yaml
+mamba env create --name snakemakeEnv --file $HOME/SmartSlurm/config/snakemakeEnv.yaml
 conda activate snakemakeEnv
 
 # Use ssbatch as the cluster submit command:
@@ -879,7 +876,7 @@ nextflow run nextflow.nf -profile slurm
 checkRun
 
 # When finished, restore the system sbatch:
-source unExport; unExport
+export PATH="${PATH/:$HOME\/SmartSlurm\/sbatchBin/}"
 ```
 
 ## Cromwell
@@ -926,8 +923,12 @@ sbatchAndTop job.sh
 
 # Upgrading
 
-`upgrade.sh` pulls the latest SmartSlurm **without** clobbering your personal `~/.smartSlurm/config/config.txt`:
+`backup your config.txt before upgrade`:
 
 ```bash
-upgrade.sh
+cd ~/SmartSlurm
+cp ~/.smartSlurm/config/config.txt ~/.smartSlurm/config/config.txt.backup
+git pull
+
+# the modify the new config.txt manually
 ```
