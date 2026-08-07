@@ -16,41 +16,98 @@ for param in "$@"; do
     fi
 done
 
+usage() {
+    echolog -e "Usage: \n${0##*/} --script \"bashScriptV2.sh [parameter1] [parameter2] ...\" --tmp useTmp|noTmp [--sbatch-options \"sbatch -p medium -t 24:0:0 -c 4\"] [--mode dryrun] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]"
+    exit 1
+}
 
-usage() { echolog -e "Usage: \n${0##*/} <\"bashScriptV2.sh [parameter1] [parameter2] ...\"> [sbatch options, such as: \"sbatch -p medium -t 24:0:0 -c 4\" .] <useTmp/noTmp> [run, default is empty to test the pipeline, which does not submit jobs, only create fake job id, 1194.] [noEmail/noSuccEmail, default is all emails.]"; exit 1; }
+require_option_value() {
+    [ -z "$2" ] && { echolog "Missing value for option: $1"; usage; }
+    [[ "$2" == --* ]] && { echolog "Missing value for option: $1"; usage; }
+}
 
-[ -f ${1%% *} ] || { echolog bash script file does not exist: .${1%% *}... Exiting...; usage; }
+PIPELINE_SPEC=""
+SBATCH_OPTIONS=""
+TMP_MODE=""
+RUN_MODE=""
+EMAIL_MODE=""
+SPECIAL_MODE=""
 
-export bashScriptPath=`dirname ${1%% *}`
+thisCmd="$0 $@"
 
-if [ -z "$2" ]; then 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --script)
+            require_option_value "$1" "$2"
+            PIPELINE_SPEC="$2"
+            shift 2
+            ;;
+        --sbatch-options)
+            require_option_value "$1" "$2"
+            SBATCH_OPTIONS="$2"
+            shift 2
+            ;;
+        --tmp)
+            require_option_value "$1" "$2"
+            TMP_MODE="$2"
+            shift 2
+            ;;
+        --mode)
+            require_option_value "$1" "$2"
+            RUN_MODE="$2"
+            shift 2
+            ;;
+        --email)
+            require_option_value "$1" "$2"
+            EMAIL_MODE="$2"
+            shift 2
+            ;;
+        --special)
+            require_option_value "$1" "$2"
+            SPECIAL_MODE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echolog "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+[ -z "$PIPELINE_SPEC" ] && usage
+[ -z "$TMP_MODE" ] && usage
+
+PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
+[ -f "$PIPELINE_SCRIPT" ] || { echolog bash script file does not exist: .${PIPELINE_SCRIPT}... Exiting...; usage; }
+
+export bashScriptPath=`dirname "$PIPELINE_SCRIPT"`
+
+if [ -z "$SBATCH_OPTIONS" ]; then 
     echolog Commandline sbatch option is empty. Please make sure all steps have sbatch options in your bash script.
-elif [[ "$2" != sbatch* ]]; then 
-    args=("$@")
-    new_arg="sbatch -p short -c 1 --mem 2G -t 50:0"
-    args=("${args[0]}" "$new_arg" "${args[@]:1}")
-    set -- "${args[@]}"
-#else 
-#    usage
+elif [[ "$SBATCH_OPTIONS" != sbatch* ]]; then 
+    SBATCH_OPTIONS="sbatch -p short -c 1 --mem 2G -t 50:0"
 fi
 
-[[ "$3" == useTmp ]] || [[ "$3" == noTmp ]] || usage
+[[ "$TMP_MODE" == useTmp ]] || [[ "$TMP_MODE" == noTmp ]] || usage
 
-[[ -z "$4"  ]] || [[ "$4" == run ]] || usage
+[[ -z "$RUN_MODE" ]] || [[ "$RUN_MODE" == dryrun ]] || usage
 
-[[ -z "$5" ]] || [[ "$5" == noSuccEmail ]] || [[ "$5" == noEmail ]] || usage 
+[[ -z "$EMAIL_MODE" ]] || [[ "$EMAIL_MODE" == noSuccEmail ]] || [[ "$EMAIL_MODE" == noEmail ]] || usage 
 
-if [ -z "$5" ]; then
+if [ -z "$EMAIL_MODE" ]; then
     export lessEmail=""
 else 
-    export lessEmail="$5"
+    export lessEmail="$EMAIL_MODE"
 fi 
 
 
-if [ ! -z "$6" ]; then
-    if [[ "$6" == checkpoint ]]; then
+if [ ! -z "$SPECIAL_MODE" ]; then
+    if [[ "$SPECIAL_MODE" == checkpoint ]]; then
         checkpoint=".Checkpoint"
-    elif [[ "$6" == excludeFailedNodes ]]; then
+    elif [[ "$SPECIAL_MODE" == excludeFailedNodes ]]; then
         echolog1 "Excluding failed nodes"
     else 
         usage
@@ -58,11 +115,6 @@ if [ ! -z "$6" ]; then
 else
     checkpoint=""
 fi
-
-
-[[ "$4" == run ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.sh
-
-[[ "$5" == checkpoint ]] && run=$smartSlurmLogDir/slurmPipeLine.$checkSum.run.checkpoint.sh
 
 #set -x
 
@@ -99,20 +151,21 @@ fi
 
 [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
 
-[ -d $smartSlurmLogDir ] && [[ "$4" == run ]] && cp -rp $smartSlurmLogDir $smartSlurmLogDir.$(stat -c '%.19z' $smartSlurmLogDir | cut -c 6- | tr " " "." | tr ":" "-")
+[ -d $smartSlurmLogDir ] && [[ "$RUN_MODE" != dryrun ]] && cp -rp $smartSlurmLogDir $smartSlurmLogDir.$(stat -c '%.19z' $smartSlurmLogDir | cut -c 6- | tr " " "." | tr ":" "-")
 
 mkdir -p $smartSlurmLogDir
 
-checkSum=`md5sum ${1%% *} | cut -d' ' -f 1`
+checkSum=`md5sum "$PIPELINE_SCRIPT" | cut -d' ' -f 1`
 
 run=$smartSlurmLogDir/slurmPipeLine.$checkSum.sh
+[ -z "$RUN_MODE" ] || run=$smartSlurmLogDir/slurmPipeLine.$checkSum.dryrun.sh
  
 if [ -f "$run" ]; then
-    thisCmd="#cmd: $0 $@"
+    #thisCmd="#cmd: $0 $@"
     lastCmd=`tail -n 1 $run`
     if [[ "$thisCmd" == "$lastCmd" ]]; then
         echolog This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run
-        [[ "$1" = *" "* ]] && para=${1#* } || para=""
+        [[ "$PIPELINE_SPEC" = *" "* ]] && para=${PIPELINE_SPEC#* } || para=""
         eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
         exit
     fi
@@ -120,11 +173,11 @@ fi
 
 echolog ===========
 echolog Stage 1: Processing Pipeline
-echolog "    Converting pipeline to execution script ($1 to $run)"
+echolog "    Converting pipeline to execution script ($PIPELINE_SPEC to $run)"
 
 echo "#!/bin/sh" > $run
 
-echo "#from cmd: $0 $@" >> $run
+echo "#from cmd: $thisCmd" >> $run
 echo "#run from: `pwd`" >> $run
 
 echo "#set -x" >> $run
@@ -139,7 +192,7 @@ echo early_exit=true >> $run
 # Trap EXIT signal to print a warning if early_exit is true
 echo "trap 'if \$early_exit; then echo "WARNING: Script exited early! Please review!!!"; fi' EXIT" >> $run
 
-echo "xsubd=\"$2\"" >> $run
+echo "xsubd=\"$SBATCH_OPTIONS\"" >> $run
 
 echo "rm \$smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
 echo "if [ -f \$smartSlurmLogDir/allJobs.txt ]; then" >> $run
@@ -160,38 +213,38 @@ echo "rm -r \$smartSlurmLogDir/downsteamjob.adjusting \$smartSlurmLogDir/job.adj
 echo "[ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n\" job_id depend_on job_flag program reference inputs comment > \$smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> \$smartSlurmLogDir/allJobs.txt">> $run
 echo "echo ---------------------------------------------------------" >> $run
 
-[ "$3" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
+[ "$TMP_MODE" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
 
 # get slurm account from command line
 slurmAccount=""
-if [[ "$2" == *\ -A\ * ]]; then
-    slurmAccount=${2#*-A }
+if [[ "$SBATCH_OPTIONS" == *\ -A\ * ]]; then
+    slurmAccount=${SBATCH_OPTIONS#*-A }
     slurmAccount="-A ${slurmAccount%% *}"
-elif [[ "$2" == *\ --account\ * ]]; then
-    slurmAccount=${2#*--account }
+elif [[ "$SBATCH_OPTIONS" == *\ --account\ * ]]; then
+    slurmAccount=${SBATCH_OPTIONS#*--account }
     slurmAccount="-A ${slurmAccount%% *}"
-elif [[ "$2" == *\ --account=* ]]; then
-    slurmAccount=${2#*--account\=}
+elif [[ "$SBATCH_OPTIONS" == *\ --account=* ]]; then
+    slurmAccount=${SBATCH_OPTIONS#*--account\=}
     slurmAccount="-A ${slurmAccount%% *}"
-elif [[ "$2" == *\ --array=* ]]; then
-    echolog Error: job array is not supported! $2
+elif [[ "$SBATCH_OPTIONS" == *\ --array=* ]]; then
+    echolog Error: job array is not supported! $SBATCH_OPTIONS
     exit
-elif [[ "$2" == *\ -a\ * ]]; then
-    echolog Error: job array is not supported! $2
+elif [[ "$SBATCH_OPTIONS" == *\ -a\ * ]]; then
+    echolog Error: job array is not supported! $SBATCH_OPTIONS
     exit
 fi
 
-if [[ "$2" == *\ --mail-user=* ]]; then
-    userEmail="--mail-user ${2#*--mail-user=}"
+if [[ "$SBATCH_OPTIONS" == *\ --mail-user=* ]]; then
+    userEmail="--mail-user ${SBATCH_OPTIONS#*--mail-user=}"
     #export userEmail="${userEmail%% *}"
 else 
     userEmail="";
 fi
 
-[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $2; exit 1; } 
+[ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $SBATCH_OPTIONS; exit 1; } 
 
 firstRowBelowLoopStart=""; findLoopStart=""
-{ cat "${1%% *}"; echo; echo; } | while IFS= read -r t; do
+{ cat "$PIPELINE_SCRIPT"; echo; echo; } | while IFS= read -r t; do
 
     [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
@@ -270,7 +323,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
         [[ "$i" == \#* ]] && { echo "$t" >> $run; continue; }
         #echolog
         echolog1 "    find job: $i"
-        [[ "$i" == ssbatch* ]] && echolog Error! Please remove ssbatch command from $1. && exit 1
+        [[ "$i" == ssbatch* ]] && echolog Error! Please remove ssbatch command from $PIPELINE_SPEC. && exit 1
 
         [ -z "$cmd" ] && cmd="${i%\\}" || cmd="$cmd ${i%\\}" 
         cmd="${cmd%% #*}"; cmd="$(echo $cmd | xargs)" # remove comments and trim space
@@ -343,7 +396,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
         # fi
 
         #echo "debug: ${cloper[$step]} ${cloper[$de]} .$sameLoop. " >> $run
-        [ "$3" == "useTmp" ] && useTmp="reference: $ref"
+        [ "$TMP_MODE" == "useTmp" ] && useTmp="reference: $ref"
 
         #echo -e "${space}echo Working on step: $step, depends on: $de, job name: $name, flag: ${step}.$de.$name$loper  $useTmp " >> $run
         echo -e "${space}echo step: $step, depends on: $de, job name: $name, flag: ${step}.$de.$name$loper $useTmp >> .smartSlurm.log " >> $run
@@ -410,17 +463,17 @@ firstRowBelowLoopStart=""; findLoopStart=""
         
         #echo "set +x" >> $run 
         
-        [[ "$3" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
+        [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
         #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
 
-        [[ "$5" == excludeFailedNodes ]] &&  excludeFailedNode="-X"
+        [[ "$SPECIAL_MODE" == excludeFailedNodes ]] &&  excludeFailedNode="-X"
 
-        if [[ "$4" == run ]]; then 
-            echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch }  --wrap \"$cmd\" run)" >> $run
+        if [[ "$RUN_MODE" == dryrun ]]; then 
+            echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" dryrun)" >> $run
         else 
-           echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
+           echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
         fi 
         echo "${space}green=\"\\033[0;32m\$id\\033[0m\n\"" >> $run
         echo "${space}red=\"\\033[0;31m\$id\\033[0m\n\"" >> $run
@@ -444,7 +497,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
 
         echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$green\" && echo -e \"\$green\" >> .smartSlurm.log && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
 
-        [[ "$3" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run
+        [[ "$TMP_MODE" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run
 
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    echo -e \"\$green\" " >> $run 
@@ -531,13 +584,15 @@ echo "echo All submitted jobs: " >> $run
 #echo "cat \$cwd/\$smartSlurmLogDir/allJobs.txt" >> $run
 echo "awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt" >> $run
 echo "echo ---------------------------------------------------------" >> $run
-[[ "$4" == run ]] || echo "echo Note: This is just a test run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
+
+[[ "$RUN_MODE" == "dryrun" ]] && echo "echo Note: This is just a dry run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
+
 
 echo "early_exit=false" >> $run
 
-echo "#cmd: $0 $@" >> $run
+echo "#cmd: $thisCmd" >> $run
 
-[[ "$1" = *" "* ]] && para=${1#* } || para=""
+[[ "$PIPELINE_SPEC" = *" "* ]] && para=${PIPELINE_SPEC#* } || para=""
 
 echolog ==========
 echolog Stage 2: Submitting jobs
@@ -545,13 +600,13 @@ echolog Stage 2: Submitting jobs
 
 eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
 
+echolog  
+
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 GREEN='\033[0;32m'
 
-echolog  
-
-echolog -e ${GREEN}runAsPipeline${NC} finished. 
+[[ "$RUN_MODE" == "dryrun" ]] && echolog -e "${GREEN}Dry run finished sumitting jobs.$NC" || echolog -e ${GREEN}runAsPipeline${NC} finished submitting jobs. 
 echolog Thank you for using Smart Slurm. You can run:
 echolog -e "${GREEN}less .smartSlurm.log${NC} to see detailed submission log."
 echolog -e "${GREEN}checkRun${NC} to check run status and submission logs"
