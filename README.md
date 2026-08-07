@@ -139,13 +139,13 @@ createNumberFiles.sh
 # Run a few jobs so ssbatch can learn this program's memory/time profile.
 # "findNumber" is just a label you choose with -P.
 ssbatch -P findNumber -I numbers1.txt -F find1 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt" run
+    --wrap="findNumber.sh 12345 numbers1.txt"
 
 ssbatch -P findNumber -I numbers3.txt -F find3 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers3.txt" run
+    --wrap="findNumber.sh 12345 numbers3.txt"
 
 ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers5.txt" run
+    --wrap="findNumber.sh 12345 numbers5.txt"
 ```
 
 > [!IMPORTANT]
@@ -154,15 +154,15 @@ ssbatch -P findNumber -I numbers5.txt -F find5 --mem 4G -t 2:0:0 \
 ```bash
 # The 4th job is auto-sized from the first three:
 ssbatch -P findNumber -I numbers2.txt -F find2 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers2.txt" run
+    --wrap="findNumber.sh 12345 numbers2.txt"
 
 # Multiple inputs are fine (their combined size is used):
 ssbatch -P findNumber -I "numbers1.txt numbers2.txt" -F find12 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt" run
+    --wrap="findNumber.sh 12345 numbers1.txt numbers2.txt"
 
 # No -I? Estimation uses the 90th percentile of this program's past usage instead:
 ssbatch -P findNumber -F find21 --mem 4G -t 2:0:0 \
-    --wrap="findNumber.sh 12345 numbers2.txt" run
+    --wrap="findNumber.sh 12345 numbers2.txt"
 
 # Check status
 checkRun
@@ -327,22 +327,22 @@ On success it creates `<flag>.success` in `smartSlurmLogDir`. That file's presen
 ## runAsPipeline Usage
 
 ```
-runAsPipeline "SCRIPT [ARGS]" ["SBATCH_OPTIONS"] {useTmp|noTmp} [run] [noEmail|noSuccEmail] [checkpoint|excludeFailedNodes]
+runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--sbatch-options "SBATCH_OPTIONS"] [--mode dryrun] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]
 ```
 
-Arguments are **positional** and must appear in this order:
+Arguments are **named options**:
 
-| Position | Argument | Description | Default |
-|:-------:|----------|-------------|---------|
-| 1 | `"SCRIPT [ARGS]"` | Your annotated script and its arguments, quoted as one string. | *required* |
-| 2 | `"SBATCH_OPTIONS"` | Default sbatch options for steps that don't specify their own. | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
-| 3 | `useTmp` / `noTmp` | Copy each step's `reference` files to node-local `/tmp` (faster for big references) or not. | *required* |
-| 4 | `run` | Actually submit. Omit for a **dry run** (builds the pipeline, prints fake job IDs, submits nothing). | dry run |
-| 5 | `noEmail` / `noSuccEmail` | Silence all emails, or success emails only. | all emails |
-| 6 | `checkpoint` / `excludeFailedNodes` | Enable checkpointing, or exclude nodes where this job type failed before. | none |
+| Option | Description | Required | Default |
+|--------|-------------|:--------:|---------|
+| `--script "SCRIPT [ARGS]"` | Your annotated script and its arguments, quoted as one string. | Yes | n/a |
+| `--tmp useTmp\|noTmp` | Copy each step's `reference` files to node-local `/tmp` (faster for big references) or not. | Yes | n/a |
+| `--sbatch-options "SBATCH_OPTIONS"` | Default sbatch options for steps that don't specify their own. | No | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
+| `--mode dryrun` | Dry run only (builds the pipeline and logs planned jobs; no Slurm submission). | No | run (submit) |
+| `--email noEmail\|noSuccEmail` | Silence all emails, or success emails only. | No | all emails |
+| `--special checkpoint\|excludeFailedNodes` | Enable checkpointing, or exclude nodes where this job type failed before. | No | none |
 
 > [!NOTE]
-> If position 2 is empty or doesn't start with `sbatch`, the default sbatch string above is inserted automatically. That means every step must then get its resources either from that default or from its own `#@` line.
+> If `--sbatch-options` is omitted, or provided but doesn't start with `sbatch`, the default sbatch string above is used. That means every step must then get its resources either from that default or from its own `#@` line.
 
 ## Writing a pipeline: the `#@` job block
 
@@ -614,7 +614,7 @@ cat $number.*.txt > all$number.txt
 It searches for a number in `numbers1.txt … numbers5.txt`, then merges the results. To run the search step and the merge step as Slurm jobs, add `#@` markers — this is `bashScriptV2.sh`:
 
 ```bash
-#!/bin/sh
+#!/bin/bash
 number=$1
 [ -z "$number" ] && echo -e "Error: number is missing.\nUsage: bashScript <number>" && exit 1
 
@@ -633,23 +633,23 @@ cat $number.*.txt > all$number.txt
 - `#@1,0,findNumber,,input,sbatch …` — step **1**, depends on **nothing** (`0`), program **findNumber**, **no** reference, input is `$input`, with the given sbatch options. Because it's inside the `for` loop, it submits five jobs, one per `$i`.
 - `#@2,1,mergeNumber,,,sbatch …` — step **2**, depends on **step 1**, program **mergeNumber**, no reference, no input. Slurm holds it until all five step-1 jobs finish.
 
-**Dry run** (no `run`, so nothing is submitted — you just see the plan and fake IDs):
+**Dry run** (adds `--mode dryrun`, so nothing is submitted — you just see the plan and fake IDs):
 
 ```bash
-runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp
+runAsPipeline --script "bashScriptV2.sh 123" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp --mode dryrun
 ```
 
-**Real run** (append `run`):
+**Real run** (default mode, no `--mode` needed):
 
 ```bash
-runAsPipeline "bashScriptV2.sh 1234" "sbatch -p short -t 10:0 -c 1" useTmp run
+runAsPipeline --script "bashScriptV2.sh 1234" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp
 ```
 
 Abbreviated output:
 
 ```text
 runAsPipeline run date: 2024-04-28_16-03-36
-Running: .../bin/runAsPipeline .../bashScriptV2.sh 1234 sbatch -p short -t 10:0 -c 1 useTmp run
+Running: .../bin/runAsPipeline --script "bashScriptV2.sh 1234" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp
 ===========
 Stage 1: Processing Pipeline
     Converting pipeline to execution script (.../slurmPipeLine.<md5>.sh)
@@ -797,18 +797,18 @@ Yes — dot-join them in the marker (`#@2,1,find,,input1.input2,...`) or use a s
 <details>
 <summary><b>Fewer or no emails?</b></summary>
 
-Add `noSuccEmail` (failures only) or `noEmail` (none) at position 5:
+Add `noSuccEmail` (failures only) or `noEmail` (none) with `--email`:
 ```bash
-runAsPipeline "bashScriptV2.sh 123" "sbatch -p short -t 10:0 -c 1" useTmp run noSuccEmail
+runAsPipeline --script "bashScriptV2.sh 123" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp --email noSuccEmail
 ```
 </details>
 
 <details>
 <summary><b>Can I drop the command-line sbatch options?</b></summary>
 
-Yes, **if every step sets its own** `sbatchOptions`. Then pass an empty string (or omit it):
+Yes, **if every step sets its own** `sbatchOptions`. Then omit `--sbatch-options`:
 ```bash
-runAsPipeline "bashScriptV2.sh 123" "" useTmp run
+runAsPipeline --script "bashScriptV2.sh 123" --tmp useTmp
 ```
 </details>
 

@@ -54,7 +54,7 @@ function loadData() {
     ORANGE='\033[0;35m'
     GREY='\033[0;37m'
 
-    records=""; count=1; all=y 
+    records=""; count=1; all=n 
     for i in $logFolders; do
         
         if [ -d $i ]; then 
@@ -77,10 +77,10 @@ function loadData() {
         elif [ -f "$i" ]; then 
             nJobs=$(grep "^Submitted batch job" $i | wc -l)
 
-            if grep 'useTmp run' $i >/dev/null 2>&1; then 
-                records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
-            else 
+            if grep 'dryrun' $i >/dev/null 2>&1; then 
                 records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs ${RED}dry run${NC} jobs submitted")\n"
+            else 
+                records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
             fi
             
             #records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
@@ -93,15 +93,16 @@ loadData
 
 while true; do
     echo Path: $PWD
-    echo Availale logFolders or files:
-    if [ ! -z "$all" ]; then 
+    
+    if [[ "$all" == y ]]; then 
+        echo Availale logFolders or files:
         echo  -e "$records" #| grep -v " 0 jobs submitted"
-    else 
-        echo  -e "$records"
     fi 
-
-    if [ $count -eq 2 ] && [ -z "$x" ]; then
-        
+  
+    if [[ "$all" == n ]]; then 
+        echo By default, only show most recent folder. Please type q to see all folders or files. 
+        x=1; 
+    elif [[ $count -eq 2 && -z "$x" ]]; then
         echo Only one logFolder. No need to select.
         x=1 
         #firstRound=y
@@ -182,7 +183,7 @@ while true; do
         else  #Or ${RED}r${NC} to run the job command. 
             
             #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
-            echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
+            echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
             read -p "" xx </dev/tty;
         
             #[[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
@@ -205,7 +206,7 @@ while true; do
             #     #set +x 
             #     continue
             # fi 
-            [[ "$xx" == q ]] && break
+            [[ "$xx" == q ]] &&  all=y && break
 
             if [[ "$xx" == p ]]; then 
                 [ -z "$showPending" ] && showPending=yes || showPending="" 
