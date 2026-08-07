@@ -135,11 +135,15 @@ while true; do
 
     lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
-    current=0; succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
+    succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
     toShow="Summary for jobs in allJobs.txt:"
     for line in $lines; do
         if [ ! -z "${line/ /}" ]; then
             id=${line%% *}; name=${line##* }
+            error=`grep -i "error" $logFolder/$name.out 2>/dev/null | head -n 1`
+            [ -z "$error" ] && error='NoErrInLog'
+
+            line="$line $error"
 
             if [ -f $logFolder/$name.success ]; then
                 toShow="$toShow\n${NC}Done $line"
