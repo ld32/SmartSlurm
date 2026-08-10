@@ -337,7 +337,7 @@ if [ -z "$program" ]; then
     if [ ! -z "$wrapCMD" ]; then
         arr=($wrapCMD)
         # need remove the parameters, to get unique name for job types
-        if [[ "${arr[0]}" == sh || "${arr[0]}" == perl || "${arr[0]}" == bash || "${arr[0]}" == python || "${arr[0]}" == python3  || "${arr[0]}" == matlab || ""${arr[0]}" == Rscript ]]; then
+        if [[ "${arr[0]}" == sh || "${arr[0]}" == perl || "${arr[0]}" == bash || "${arr[0]}" == python || "${arr[0]}" == python3  || "${arr[0]}" == matlab || "${arr[0]}" == Rscript ]]; then
             program="${arr[1]}"
         else
             program="${arr[0]}"
