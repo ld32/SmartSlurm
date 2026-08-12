@@ -21,7 +21,7 @@ fi
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
 # Path to the setuid AI helper binary (holds the HMS AI token securely)
-_AI_CALL="/home/your-user/.smartSlurm/bin/ai_call"
+_AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
  
 function loadData() {
     logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
