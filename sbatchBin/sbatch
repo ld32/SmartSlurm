@@ -1,1 +1,823 @@
-../bin/ssbatch
+#!/bin/bash
+
+## notes: to estimate resource, need at least three jobs if no input size is given, and 5 jobs if there is input size given
+
+## features for regular sbatch (when calling without -L)
+# Auto adjust partition according to run-time request if they does not match up
+# Auto check if slurm script exists
+# Auto create output and erro folders if not exist
+# Auto adjust memory and run time based on earlier mem time usage
+# Support re-run checking (using output as checkpoint)
+# Auto adjust memory and run time based on earlier mem time usage
+# Auto requeue job with double time when out of time
+# Auto requeue job with double memory when out of memory
+# Keep good log and send informative email
+# allow user level config file in ~/.smartSlurm/config/config.txt
+
+# Limitations:
+# does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
+
+# todo:
+# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt.
+
+# the logic:
+# If job does not depends on other job, and has input, estimate mem/timed and submit
+# If a job has no inputs, directly submit
+# Adjust mem/time from upstream job for jobs with input. todo list: adjust jobs without input as well?
+
+#set -e
+#set -x
+#set -u
+
+parentCmd=`ps -h --pid $(ps -h --pid $$ -o ppid) -o command`
+
+#echo 'parentCmd: ' $parentCmd >&2
+
+[[ "$parentCmd" == *slurmPipeLine* ]] && runningSingleJob="" || runningSingleJob=y
+
+# nextflow
+if [ -f .command.sh ] && [ -f .command.run ]; then 
+    exec 2>>../../../.nextflow.log
+    echoerr() { echo "$@" >> ../../../.nextflow.log; }
+
+# runAsPipeline
+elif [ -z "$runningSingleJob" ]; then
+    echoerr() { echo "$@" >&2; }
+    echoerr1() { echo "$@" >> .smartSlurm.log; }
+
+# single job without runAsPipeline
+else 
+    echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
+    echoerr1() { echo "$@" >> .smartSlurm.log; }
+fi 
+
+output="Running: `realpath $0` $@"
+
+current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
+echoerr1 ssbatch run date: $current_date
+echoerr1 pwd: `pwd`
+
+
+for param in "$@"; do
+    if [[ "$param" == *\ * ]]; then
+        output="$output \"$param\""
+    else
+        output="$output $param"
+    fi
+done
+
+echoerr1 "$output"
+#echoerr() { echo "$@" >&2; }
+
+usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+
+[[ "$1" == "-h" || "$1" == "--help" ]] && usage
+
+#todo: add HERE DOC function, example: /n/shared_db/misc/juicer/juicer.short.12hours.4core.sh
+
+if [ -z "$smartSlurmJobRecordDir" ]; then
+    if [ -f ~/.smartSlurm/config/config.txt ]; then
+        source ~/.smartSlurm/config/config.txt
+    else
+        source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
+    fi
+fi
+
+[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+
+mkdir -p $smartSlurmJobRecordDir/stats
+
+[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt
+
+cmd="ssbatch"
+whitespace="[[:space:]]"
+for i in "$@"; do
+    if [[ $i =~ $whitespace ]]; then
+        i="\"$i\""
+    fi
+    cmd="$cmd  $i"
+done
+echoerr1 $cmd
+
+dryrun=${@: -1}
+
+#unset P R I d C
+
+echoerr1
+array=( "$@" )
+arrayC=("${array[@]}")  
+
+export alwaysRequeueIfFail=""
+
+#[ ! -z "$runningSingleJob" ] && set -- "$@" run && dryrun=run
+
+# nextflow pipeline, log dir is on the top folder
+# if [ -f .command.sh ] && [ -f .command.run ]; then 
+#     export smartSlurmLogDir="../../../$smartSlurmLogDir"
+# fi 
+mkdir -p $smartSlurmLogDir/
+
+#slurmScriptPosition=$(($(($#))-2))
+
+# get the first few parameters for ssbatch
+for (( i=0; i<$(($#)); i++ )); do
+    [ -z "${array[$i]}" ] && continue
+  	#echoerr $i " / " $(($#)) " : " ${array[$i]}
+  	case "${array[$i]}" in
+  	    --array=*       )   { echoerr Error: job array is not supported!; exit; };;
+  	    "-a"            )   { echoerr Error: job array is not supported!; exit; };;
+        --mail-user=*   )   userEmail="${array[$i]}" && userEmail="${userEmail/--mail-user=/}";;
+        "-H"            )   onhold=-H;;
+        "-X"            )   excludeFailedNodes=y;;
+        "-D"            )   chdir="${array[$i+1]}" && array[$i+1]="";;
+        --chdir=*       )   chdir="${array[$i]}" && chdir="${chdir/--chdir=/}";;
+        --comment=*     )   comment="${array[$i]}";; # && comment=${comment/--comment=/};; # && for c in "${arr[@]}"; do eval $c; done;;
+  		"-P" 			)   program="${array[$i+1]}" && array[$i+1]="";;
+  		--program=* 	)   program="${array[$i]}" && program="${program/--program=/}";;
+  		"-R" 			)   ref="${array[$i+1]}" && array[$i+1]="";;
+  		--Ref=* 		)   ref="${array[$i]}" && ref="${ref/--Ref=/}";;
+  		"-F" 			)   flag="${array[$i+1]}" && array[$i+1]="";;
+  		--Flag=* 	    )   flag="${array[$i]}" && flag="${flag/--Flag=/}";;
+        "-I" 			)   inputs="${array[$i+1]}" && array[$i+1]="";;
+  		--Inputs=* 	    )   inputs="${array[$i]}" && inputs="${inputs/--Inputs=/}";;
+        "-d"            )   deps="${array[$i+1]}" && array[$i+1]="";;
+        "--Dependency=" )   deps="${array[$i]}" && deps="${deps/--Dependency=/}";;
+        "--alwaysRequeueIfFail") export alwaysRequeueIfFail=true;;
+  	    "-p"            )   partition="${array[$i+1]}" && array[$i+1]="";; # will set partition later
+  		--partition=*   )   partition="${array[$i]}" && partition=${partition/--partition=/};;
+  		--mem-per-cpu=* ) 	mem1="${array[$i]}" && mem1="${mem1/--mem-per-cpu=/}";;
+  		"-c" 	 		) 	core="${array[$i+1]}" && array[$i+1]="";;
+  		--cpus-per-task=*)  core="${array[$i]}" && core="${core/--cpus-per-task=/}";;
+  		"-n" 	 		) 	task="${array[$i+1]}" && array[$i+1]="";;
+  		--ntasks=*      )   task="${array[$i]}" && task="${task/--ntasks=/}";;
+  		"-N" 	 		) 	node="${array[$i+1]}" && array[$i+1]="";;
+  		--nodes=*       )   node="${array[$i]}" && node="${node/--nodes=/}";;
+  		"--mem"  		) 	mem="${array[$i+1]}" && array[$i+1]="";; # will set memory later
+  		--mem=* 		)  	[ -z "$mem" ] && mem="${array[$i]}" && mem=${mem/--mem=/};;
+  		"-t" 			)   time="${array[$i+1]}" && array[$i+1]="";;
+  		--time=* 		)   time="${array[$i]}" && time="${time/--time=/}";;
+  		"-J" 			)   name="${array[$i+1]}" && array[$i+1]="";;
+  		--job-name=* 	)   name="${array[$i]}" && name="${name/--job-name=/}";;
+  		"-o" 			)   out="${array[$i+1]}" && array[$i+1]="";;
+  		--output=* 		)   out="${array[$i]}" && out="${out/--output=/}";;
+  		"-e" 			)   err="${array[$i+1]}" && array[$i+1]="";;
+  		--error=* 		)   err="${array[$i]}" && err="${err/--error=/}";;
+        "-A"            )   slurmAcc="-A ${array[$i+1]}" && array[$i+1]="";;
+        "-d" 			)   deps="${array[$i+1]}" && array[$i+1]="";;
+  	    --dependency=* 	)   deps="${array[$i]}" && deps="${deps/--dependency=/}";;
+        "test"          )   [ $i -eq $(($#)) ] && continue;;
+        "run"           )   [ $i -eq $(($#)) ] && continue;;
+        "--wrap"        )   wrapCMD="${array[$i+1]}" && array[$i+1]="";;
+        --wrap=*        )   wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
+        *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -P -t -F -w -x -B -G --nice --export " != *" ${arrayC[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
+    esac
+
+    # [ -z "$wrapCMD" ] && [[ ${array[$i]} == "--wrap" ]] && echoerr1 Found --wrap ${array[$i+1]} && wrapCMD="${array[$i+1]}" && array[$i]="" && array[$i+1]=""
+  	# [ -z "$wrapCMD" ] && [[ ${array[$i]} ==	--wrap=* ]] && echoerr1 Found --wrap= && wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}" && array[$i]="" || CMDWithoutWrap="$CMDWithoutWrap ${array[$i]}"
+    # [ -z "$slurmScript$wrapCMD" ] && [ -f "${array[$i]}" ] && echoerr1 Found slurmScript ${array[$i]} && slurmScript="${array[$i]}" && array[$i]=""
+    # [ -z "$slurmScript" ] && CMDWithoutSlurmCMD="$CMDWithoutSlurmCMD ${array[$i]}" || slurmScriptParas="$slurmScriptParas ${array[$i]}"
+done
+
+echoerr1 Parsing result from sbatch commandline:
+echoerr1 program: $program ref: $ref jobFlag: $flag inputs: $inputs deps: $deps
+echoerr1 partition: $partition time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err additionalPara: $additionalPara
+
+if [ -z "$slurmScript" ]; then
+    echoerr1 wrapCMD: $wrapCMD
+else
+
+    echoerr1 slurmScript: $slurmScript
+    echoerr1 slurmScriptParas: $slurmScriptParas
+fi
+#echoerr1 test or run: $dryrun
+#echoerr1
+
+if [ -z "$wrapCMD" ] && [ -z "$slurmScript" ]; then 
+    tm=$smartSlurmLogDir/cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
+    # check if there is commands piped in
+    while IFS= read -r line; do
+        #echo "Received: $line"
+        echo -e "$line" >> $tm
+    done
+    if [ -f $tm ] && [ -s $tm ]; then 
+        slurmScript=$tm
+    else 
+        echo Error: Did not find --wrap, did not find slurmScript either.
+        usage 
+
+    fi 
+fi 
+
+if [ ! -z "$slurmScript" ]; then
+  echoerr1 Validating slurmScript:
+  firstRow=`head -n 1 $slurmScript`
+  echoerr1 FirstRow of the script: $firstRow
+  [[ "$firstRow" =~ ^#\!/bin/bash ]] || [[ "$firstRow" =~ ^#\!/usr/bin/bash ]] || [[ "$firstRow" =~ ^#\!/bin/sh ]] || [[ "$firstRow" =~ ^#\!/usr/bin/sh ]]|| { echo "Error: first row of the slurm script ($slurmScript) does not start with #!/bin/bash, #!/usr/bin/bash, #!/bin/sh, #!/usr/bin/sh";  exit 1;}
+
+
+  # get program (rule), input, threads from
+  if [[ "$parentCmd" == *snakemake* ]]; then
+    #properties='{"local": false, "params": {}, "input": ["data/genome.fa", "data/samples/A.fastq"], "rule": "bwa_map", "resources": {}, "output": ["mapped_reads/A.bam"], "cluster": {}, "threads": 2}'
+
+    # properties = {"type": "single", "rule": "hmmer", "local": false, "input": ["data_esl/translations/GCF_024224615.1.faa"], "output": ["data_esl/hmmer_results/tbl/GCF_024224615.1.tbl"], "wildcards": {"sample": "GCF_024224615.1"}, "params": {"hmm": "/n/data1/hms/dbmi/baym/kepler/ROP/04_ROP_genome_mining/hmm_models/PF01815.hmm"}, "log": [], "threads": 1, "resources": {"mem_mb": 1000, "mem_mib": 954, "disk_mb": 1000, "disk_mib": 954, "tmpdir": "<TBD>", "partition": "short", "time": "01:00:00"}, "jobid": 15, "cluster": {}}
+
+    
+    properties=`grep "^# properties =" $slurmScript`
+    echoerr1 Got snakemake parameter: $properties
+    properties=${properties#\# properties =}
+    
+    [ -z "$program" ] && program=$(echo $properties | jq -r '.rule')
+    
+    # properties = {"type": "group", "groupid": "translate", "local": false, "input": ["/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033100295.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033122725.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033100235.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033122045.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033121265.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_033114265.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033111965.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033105485.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCA_033104825.1.fasta", "/n/data1/hms/dbmi/baym/kepler/Plasmid/PLSDB/assemblies/fasta/GCF_024224615.1.fasta"], "output": ["data_esl/translations/GCF_033100295.1.faa", "data_esl/translations/GCF_033122725.1.faa", "data_esl/translations/GCF_033100235.1.faa", "data_esl/translations/GCA_033122045.1.faa", "data_esl/translations/GCF_033121265.1.faa", "data_esl/translations/GCF_033114265.1.faa", "data_esl/translations/GCA_033111965.1.faa", "data_esl/translations/GCA_033105485.1.faa", "data_esl/translations/GCA_033104825.1.faa", "data_esl/translations/GCF_024224615.1.faa"], "threads": 10, "resources": {"time": "01:00:00", "partition": "short", "mem_mib": 9540, "disk_mb": 10000, "disk_mib": 9540, "mem_mb": 10000}, "jobid": "7aec3796-6f36-58dc-99ad-92575a410130", "cluster": {}}
+     
+    # when snakemake has group job, all the commands for each input will run in parallel, and multiple CPU is allocated to the job.
+    # !!! number of CPU is determined by the threads parameter, and the input is a list of files.
+ 
+    # group job
+    if [ "$program" == null ]; then 
+        program=$(echo $properties | jq -r '.groupid')
+        
+    fi 
+    [ -z "$core" ] && core=$(echo $properties | jq -r '.threads')
+    if [ -z "$inputs" ]; then 
+        inputs=$(echo $properties | jq -r '.input | join(" ")') 
+    
+        # need to ignore non exist file
+        tm=""
+        for fx in $inputs; do   
+            [ -e "$fx" ] && tm="$tm $fx"
+        done    
+        inputs=$tm
+    fi 
+
+    
+    flag=$program.${inputs##*/}; 
+    flag=${flag// /}; 
+    
+    echoerr1 Got snakemake parameter: rule: $program, threads: $core input: $inputs 
+
+  # todo: need to check if there two inputs   
+  elif  [ -f .command.sh ] && [ -f .command.run ] ; then 
+
+    for i in `awk '/nxf_stage\(\) {/, /\}/{if ($0 ~ /ln -s /) print $0; }' .command.run | cut -d' ' -f7 `; do
+        inputs="$inputs $i"
+    done 
+
+    #inputs=`grep -A 2 "# stage input files" .command.run | tail -n 1 | tr -s " " | cut -d' ' -f4`; 
+    
+    program=`grep "# NEXTFLOW TASK:" .command.run`; program=${program#*NEXTFLOW TASK: }; 
+
+    flag=$program.${inputs##*/}
+    flag=${flag// /}; 
+
+    echoerr1 Got parameter for nextflow: program: $program flag: $flag inputs: $inputs
+  fi  
+fi
+
+
+
+if [[ ! -z "$slurmScript" ]]; then
+    echoerr1
+    echoerr1 Parsing slurm script ...
+    while IFS=$'\n' read line; do
+        #echoerr1 Got line: $line
+        arr=($line)
+        if [[ ${arr[0]} == "#SBATCH" ]]; then
+            case "${arr[1]}" in
+                --array=* )   { echoerr Error: job array is not supported!; exit; };;
+  	            "-a"      )   { echoerr Error: job array is not supported!; exit; };;
+            
+                --comment=* )   echoerr1 found --comment && comment="${arr[1]}";; # && comment=${comment/--comment=/};; # && for c in "${ar[@]}"; do v=${c%=*}; [ -z "${!v}" ] && eval $c; done;;
+
+                "-A"   )   echoerr1 Found -A  && [ -z "$slurmAcc" ] && slurmAcc="-A ${arr[2]}";;
+                "--mem" ) [ -z "$mem" ] && echoerr1 Found --mem && mem="${arr[2]}";;
+                --mem=* ) [ -z "$mem" ] && echoerr1 Found --mem= && mem="${arr[1]}" && mem="${mem/--mem=/}";;
+                "--mem-per-cpu") [ -z "$mem1" ] && echoerr1 Found --mem-per-cpu && mem1="${arr[2]}";;
+                --mem-per-cpu=*) [ -z "$mem1" ] && echoerr1 Found --mem-per-cpu= && mem1="${arr[1]}" && mem1="${mem1/--mem-per-cpu=/}";;
+                "-c"    ) [ -z "$core" ] && echoerr1 Found -c && core="${arr[2]}";;
+                --cpus-per-task=* ) [ -z "$core" ] && echoerr1 Found --cpus-per-task= && core="${arr[1]}" && core="${core/--cpus-per-task=/}";;
+                "-n"    ) [ -z "$task" ] && echoerr1 Found -n && task="${arr[2]}";;
+                --ntasks=* ) [ -z "$task" ] && echoerr1 Found --ntasks= && task="${arr[1]}" && task="${task/--ntasks=/}";;
+                "-N"    ) [ -z "$node" ] && echoerr1 Found -N && node="${arr[2]}";;
+                --nodes=*   ) [ -z "$node" ] && echoerr1 Found --nodes= && node="${arr[1]}" && node="${node/--nodes=/}";;
+                "-t"    ) [ -z "$time" ] && echoerr1 Found -t && time="${arr[2]}";;
+                --time=* ) [ -z "$time" ] && echoerr1 Found --time= && time="${arr[1]}" && time="${time/--time=/}";;
+                "-J"    ) [ -z "$name" ] && echoerr1 Found -J && name="${arr[2]}";;
+                --job-name=* ) [ -z "$name" ] && echoerr1 Found --job-name= && name="${arr[1]}" && name="${name/--job-name=/}";;
+                "-o"    ) [ -z "$out" ] && echoerr1 Found -o && out="${arr[2]}";;
+                --output=* ) [ -z "$out" ] && echoerr1 Found --output= && out="${arr[1]}" && out="${out/--output=/}";;
+                "-e" ) [ -z "$err" ] && echoerr1 Found -e && err="${arr[2]}";;
+                --error=* ) [ -z "$err" ] && echoerr1 Found --error= && err="${arr[1]}" && err="${err/--error=/}";;
+
+                "-d"    ) [ -z "$deps" ] && echoerr1 Found -d && deps="${arr[2]}";;
+                --dependency=* ) [ -z "$deps" ] && echoerr1 Found --dependency= && deps="${arr[1]}" && deps="${deps/--dependency=/}";;
+            esac
+        fi
+    done < $slurmScript
+
+    echoerr1
+    echoerr1 Parsing result from slurm script:
+    echoerr1 time: $time mem: $mem mem-per-cpu: $mem1 task: $task core: $core node: $node out: $out err: $err deps: $deps
+
+    echoerr1 slurmScript: $slurmScript
+    echoerr1 slurmScriptParas: $slurmScriptParas
+fi
+
+# convert 4g to 4G
+mem="${mem^^}"; mem1="${mem1^^}"
+
+[ -z "$core" ] && { [ ! -z "$task" ] && core="$task" || core=1; }
+
+[ -z "$out" ] || out=`realpath $out`
+[ -z "$err" ] || err=`realpath $err`
+#todo: err is ignored. will work on it later
+
+# todo: figure out how to find program name and input automatically
+if [ -z "$program" ]; then 
+    if [ ! -z "$wrapCMD" ]; then
+        arr=($wrapCMD)
+        # need remove the parameters, to get unique name for job types
+        if [[ "${arr[0]}" == sh || "${arr[0]}" == perl || "${arr[0]}" == bash || "${arr[0]}" == python || "${arr[0]}" == python3  || "${arr[0]}" == matlab || "${arr[0]}" == Rscript ]]; then
+            program="${arr[1]}"
+        else
+            program="${arr[0]}"
+        fi
+        program=${program##*/}
+        #flag=${wrapCMD// /.}; flag=${flag%;}.$tm
+    else
+        program=${slurmScript##*/}
+        #flag=$program.${slurmScriptParas// /.}
+        #flag=${flag%.}.$tm
+    fi 
+fi         
+
+if [ -z "$flag" ]; then   
+    tm=`mktemp XXXXXXXX --dry-run` 
+    
+    # todo: should creat a link to slurm-40468559.out
+    #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
+    #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
+
+    if [ ! -z "$program" ]; then 
+        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm  
+    elif [ ! -z "$name" ]; then 
+        flag=$name.$tm
+    else 
+        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm 
+    fi
+fi
+
+flag=${flag//\//-}
+flag=${flag//../.}
+flag=${flag// /}
+
+[ -z "$name" ] && name=$flag
+
+
+mkdir -p $smartSlurmLogDir/
+job=$smartSlurmLogDir/$flag.sh
+succFlag=$smartSlurmLogDir/$flag.success
+failFlag=$smartSlurmLogDir/$flag.failed
+#startFlag=$smartSlurmLogDir/$flag.start
+killFlag=$smartSlurmLogDir/$flag.user.killed
+outFlag=$smartSlurmLogDir/$flag.out
+errFlag=$smartSlurmLogDir/$flag.err
+
+[ -z "$ref" ] && ref=none
+[ -z "$inputs" ] && inputs=none
+
+echoerr Working on inputs: ${inputs#,} for step: $step $name
+#, program: $program, flag: $flag, reference: $ref, job name: $name, dependencies: $deps
+if [ -z "$deps" ]; then 
+    depsID=null
+else 
+    depsID=${deps#afterok:}; 
+    deps="-d $deps"
+fi
+[ -z "$chdir" ] || chdir="-D $chdir"
+
+if [ -z "$mem" ]; then
+    if [ -z "$mem1" ]; then
+        mem=$defaultMem
+    else
+        [[ "$mem1" == *B ]] && mem1=${mem1%B}
+        [[ "$mem1" == *G ]] && mem=$(( ${mem1%G} * $core * 1024)) || mem=$(( ${mem1%M} * $core ))
+    fi
+else
+    [[ "$mem" == *B ]] && mem=${mem%B}
+    [[ "$mem" == *G ]] && mem=$(( ${mem%G} * 1024 )) || mem=${mem%M}
+fi
+
+if [ -z "$time" ]; then
+    time=$defaultTime
+    min=$defaultTime
+else
+    [[ "$time" == *-* ]] && { day=${time%-*}; tem=${time#*-}; hour=${tem%%:*}; min=${tem#*:}; min=${min%%:*}; sec=${tem#$hour:$min}; sec=${sec#:}; } || { [[ "$time" =~ ^[0-9]+$ ]] && min=$time || { sec=${time##*:}; min=${time%:*}; min=${min##*:}; hour=${time%$min:$sec}; hour=${hour%:}; day=0;} }
+
+    [ -z "$day" ] && day=0; [ -z "$hour" ] && hour=0; [ -z "$min" ] && min=0;[ -z "$sec" ] && sec=0
+
+    min=$(($day * 24 * 60 + $hour * 60  + $min))
+fi
+
+resAjust="#Depend on: $depsID\n"
+
+# check job done before or not
+#if [[ "$dryrun" == "run" ]]; then
+    
+    #echoerr1 ps command output 
+    
+    if [ -f $succFlag ] && [[ "$parentCmd" != */bin/snakemake* ]] && [ ! -f .command.run ] && [ ! -f command.sh ]; then
+        stepID=${flag%%.*}
+        if [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
+            echo skipThisJob
+            exit
+        
+
+        elif [ -z "$runningSingleJob" ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] || [ ! -z "$runningSingleJob" ] ; then
+    
+            stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
+            echoerr -e "\n!!! $flag was done before, do you want to re-run it?\n"
+            echoerr -e "y:        To re-run this job, press y, then enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key.\n"
+            echoerr -e "enter:    To not re-run this job, directly press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key.\n"
+            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key.\n"
+            read -p "" x </dev/tty
+
+            echoerr You typed: \"$x\"
+
+            if [[ "$x" == "y" ]]; then
+                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
+            elif [[ "$x" == "ystep" ]]; then
+                touch $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt
+            elif [[ "$x" == "nstep" ]]; then
+                touch $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt
+                echo skipThisJob
+                exit
+            elif [[ "$x" == "yall" ]]; then
+                touch $smartSlurmLogDir/reRunAllSuccessJobs.txt
+            elif [[ "$x" == "nall" ]]; then
+                touch $smartSlurmLogDir/skipAllSuccessJobs.txt
+                echo skipThisJob
+                exit
+            else
+                echo skipThisJob
+                exit
+            fi
+        fi
+    fi
+    if [ -z "$runningSingleJob" ] && [ -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] && ls $smartSlurmLogDir/$stepID.*.success > /dev/null 2>&1; then
+        jobs=`ls $smartSlurmLogDir/$stepID.*.success`
+        count=1
+        for j in $jobs; do
+            j=${j##*/}; j=${j%.success}
+            echoerr -e "\n!!! $j was done before, do you want to re-run it?\n"
+            echoerr -e "y:        To re-run this job, press y, then enter key.\n"
+            echoerr -e "enter:    To not re-run this job, directly press enter key.\n"
+            read -p "" x </dev/tty
+            echoerr You typed: \"$x\"
+            if [[ "$x" == "y" ]]; then
+                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
+                break
+            else
+                echo skipThisJob
+                exit
+            fi
+        done       
+    fi
+
+    if [ -f $smartSlurmLogDir/keepRunningJobs.txt ]; then
+        #echoerr $flag
+        # check the third column for the job name, then find the the job id in column 1
+        out=`cat $smartSlurmLogDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
+        id=${out%% *}; de=${out##* }
+
+        # this job was submitted earlier
+        if [ ! -z "$id" ]; then
+
+            # this job still running or pending
+            # todo: need troubleshoot this part. If dependency condition changed, need resubmit the job
+            if grep ^$id $smartSlurmLogDir/keepRunningJobs.txt 1>/dev/null; then
+
+                # check if upsteam job is resubmitted
+                upstreamResubmitted=""
+                if [[ $de != null ]]; then
+                    if [[ $de == ${de/:/} ]]; then
+                        [ -f $smartSlurmLogDir/${de/:/}.resubmitted ] && upstreamResubmitted=y
+                    else
+                        for t in ${de//:/ }; do
+                            [ -f $smartSlurmLogDir/$t.resubmitted ] && upstreamResubmitted=y
+                        done
+                    fi
+                fi
+
+                # the job still running, but the dependency contidtion is change, need cancel it.
+                if [ ! -z "$upstreamResubmitted" ] || [[ "$de" != "$depsID" ]]; then
+                    echoerr "Running job job is cancelled: $id" && scancel $id
+                else
+
+                    echoerr This job still running $id
+                    echo $id
+                    exit
+                fi
+            else
+                if [ -z "$deps" ]; then
+                    depsR=""   
+                else
+                    depsR="dependency=$deps"
+                fi
+
+                scontrol requeue $id
+
+                touch $smartSlurmLogDir/$id.resubmitted
+
+                [ ! -z "$depsR" ] && scontrol update job=$id $depsR && scontrol hold $id 
+                echo "Resubmit#$id-#$de-#$flag" >> $smartSlurmLogDir/allJobs.txt
+                echo $id
+                #rm $smartSlurmLogDir/$flag.success 2>/dev/null
+                rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
+                exit
+            fi
+        fi
+        #set +x
+    fi
+    #ls $flagDir/$flag.* 1>&2
+    rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
+#fi
+
+# original mem and time
+memO=$mem; minO=$min
+
+[ -f $smartSlurmJobRecordDir/stats/badNodes.$program.$ref ] && [ ! -z "$excludeFailedNodes" ] && exNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$program.$ref`"
+
+echoerr1
+echoerr1 Check if there input file list and this job does not depend on other jobs
+
+# has checkpoint ready to resume from
+if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
+    IFS=' ' read -r inputSize mem min extraMem  <<< `cat $smartSlurmLogDir/$flag.adjust`
+    #mem=`echo $tText | cut -d' ' -f1`
+    #min=`echo $tText | cut -d' ' -f2`
+    #extraMem=`echo $tText | cut -d' ' -f3`
+    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: >> $outFlag
+    #echo $tText >> $outFlagƒ
+else
+    rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
+
+    if [ -f .command.sh ] && [ -f .command.run ]; then 
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> ../../../.nextflow.log`
+    else
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min 2>> .smartSlurm.log`
+    fi     
+fi
+
+[ -z "$min" ] && { echo did not find time limit; exit 1; }
+
+[ -z "$mem" ] && { echo did not find mem limit; exit 1; }
+
+#[ "$mem" -lt 100 ] && mem=100 && resAjust="$resAjust\n#Mem is reset to 100M. "
+
+#[ "$min" -lt 10 ] && min=10 && resAjust="$resAjust\n#Time is reset to 10min. "
+
+echo -e "$resAjust" >> $outFlag
+
+[ -z "$slurmAcc" ] && [ ! -z "$defaultSlurmAcc" ] && slurmAcc="-A $defaultSlurmAcc"
+
+# testtime
+#min=10   # min
+# testmem
+# mem=20   # M
+if [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ]; then 
+    #echoerr1 before adjust mem/time: $mem M, $min min, partition: $partition
+    adjustPartition "$mem" "$min" "$partition"
+    #echoerr1 Adjusted mem/time: $mem M, $min min, partition: $partition
+    seconds=$(( $min * 60 ))
+
+    #echoerr1 srun seconds: $seconds
+
+    time=`eval "echo $(date -ud "@$seconds" +'$((%s/3600/24))-%H:%M:%S')"`
+elif [ -z $partition ]; then     
+    adjustPartition $mem $min $partition
+fi
+
+export snakemakeSuccFlag=''
+export snakemakeFailFlag=''
+
+realSbatch=`which -a sbatch | grep -v SmartSlurm | head -n 1`
+
+# nextflow
+if [ -f .command.sh ] && [ -f .command.run ]; then 
+    cp .command.run .command.run.back 
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    
+    sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
+
+    diff .command.run .command.run.back >> ../../../.nextflow.log
+    cmd="$realSbatch --mail-type=FAIL $exNodeList --requeue --parsable -p $partition --mem $mem -t $time .command.run"
+    
+else 
+
+    echoerr1
+    echoerr1 Building new sbatch command ...
+
+    # has --wrap
+    if [ -z "$slurmScript" ]; then
+        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+
+        # testing without trap
+        #echo -e "#!/bin/bash\ndate\n" > $job
+
+        echo -e "unset SLURM_CPU_BIND" >> $job
+
+        #echo "touch $startFlag" >> $job
+        [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
+        # `echo -e "$wrapCMD" | xargs echo -ne`; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
+        if [[ "$program" == *.Checkpoint ]]; then
+           
+
+            # echo -e "set -x\nps -u $USER\nsh -eo -c \"$wrapCMD;\" &" > ${job%.sh}.cmd
+            # echo -e "pid=\$$" >> ${job%.sh}.cmd
+            # echo -e "echo \$pid > ${job%.sh}/taskProcessID.txt" >> ${job%.sh}.cmd
+            # echo -e "ps -u $USER\nwait \$pid" >> ${job%.sh}.cmd
+            # echo -e "echo \$? > ${job%.sh}/taskProcessStatus.txt" >> ${job%.sh}.cmd
+
+            # note: if job OOT or OOM, .success or .failed will not be created
+            echo -e "for i in \`seq 10000\`; do echo Program running time: \${i}0 s; sleep 10; done &\nsh -e -o pipefail  -c \"$wrapCMD; \" && touch $succFlag" > ${job%.sh}.cmd
+            ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
+            ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
+            #echo -e "ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"" >> ${job%.sh}.cmd
+
+            #echo -e "pss=\`ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"\`" >> ${job%.sh}.cmd
+            ##echo -e "pid=\`ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \" $flag \" | tail -n 2 | head -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
+
+            #echo -e "pid=\`echo -e \"\$pss\" | head -n 4 | tail -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
+            #echo -e "echo \$pid > ${job%.sh}/taskProcessID.txt" >> ${job%.sh}.cmd
+            #echo -e "ps -fu $USER\nwait" >> ${job%.sh}.cmd
+            #echo -e "echo done > ${job%.sh}.success" >> ${job%.sh}.cmd
+
+            # x="bash -e -c \"set -e; sh sleeping1.sh; \""
+            # pid=`ps -f -u $USER | grep -v awk | grep -v srun | awk -v pat="$x"  '$0 ~ pat { print $2 }' | tail -n 1`
+            # echo $pid > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessID.txt
+
+            #pid=$!
+            # #echo $pid >
+            # ps -f -u ld32
+            # wait
+
+            # echo done > /n/scratch3/users/l/ld32/sethTest/log/2.0.useSomeMemTimeAccordingInputSize.sh.1/taskProcessStatus.txt
+
+
+
+            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh ${job%.sh}.cmd\\\" $flag $mem $min $extraMem \"" >> $job
+        else
+            
+            if [ ! -z "$runningSingleJob" ]; then
+
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
+            else 
+
+                # !!! runAsPipeline jobs will land here !!!
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
+                # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
+            fi 
+        fi
+
+    # no --wrap, has slurm script    
+    else
+        echo -e "#!/bin/bash" > $job
+
+        grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
+        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
+
+        #echo "touch $startFlag" >> $job
+        echo -e "unset SLURM_CPU_BIND" >> $job
+        if [[ "$program" == *.Checkpoint ]]; then
+            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir; \"" >> $job
+        else
+            
+            if [ ! -z "$runningSingleJob" ]; then
+                
+                # double quotatons 
+                export snakemakeSuccFlag="$(sed -n 's/.*touch "\([^"]*jobfinished\)".*/\1/p' $slurmScript)"
+                
+                # single quotatons
+                [ -z "$snakemakeSuccFlag" ] && export snakemakeSuccFlag="$(sed -n "s/.*touch '\([^']*jobfinished\)'.*/\1/p" $slurmScript)"
+                export snakemakeFailFlag="$(sed -n 's/.*touch "\([^"]*jobfailed\)".*/\1/p' $slurmScript)"
+                [ -z "$snakemakeFailFlag" ] && snakemakeFailFlag="$(sed -n "s/.*touch '\([^']*jobfailed\)'.*/\1/p" $slurmScript)"
+                
+                
+                echoerr1 snakemakeSuccFlag: $snakemakeSuccFlag
+                echoerr1 snakemakeFailFlag: $snakemakeFailFlag
+                echoerr1 before sed: $slurmScript
+                echoerr1 `cat $slurmScript`  
+                
+                # double quotes
+                sed -i 's/&& touch "[^"]*jobfinished" || (touch "[^"]*jobfailed"; exit 1)//g' $slurmScript
+
+                # single quotes               
+                sed -i "s/&& touch '[^']*jobfinished' || (touch '[^']*jobfailed'; exit 1)//g" "$slurmScript"
+
+                echoerr1 after sed: $slurmScript
+                echoerr1 `cat $slurmScript` 
+
+                # snakemake should land here 
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job  
+            else 
+
+                # this is never called? Because runAsPipeline usa --wrap ? 
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir && touch $succFlag" >> $job
+            fi     
+        fi
+    fi
+    #echo "kill -9 \$mypid" >> $job
+
+    ## todo: need fix this when path not starting with /
+    [ -z "$out" ] || ( [[ "$out" == /* ]] && mkdir -p $(dirname $out) || mkdir -p $dir/$(dirname $out) )
+    [ -z "$err" ] || ( [[ "$err" == /* ]] && mkdir -p $(dirname $err) || mkdir -p $dir/$(dirname $err) )
+
+    # [ -f $outFlag ] && [ ! -z "$out" ] && [[ ! $outFlag == "$out" ]] && echo ln -s $outFlag $out >> $job
+    # [ -f $errFlag ] && [ ! -z "$err" ] && [[ ! $errFlag == "$err" ]] && echo ln -s $errFlag $err >> $job
+
+    [ -z "$err" ] && errFlag=$outFlag
+
+    # don't need to be hold because got resource estimation and does depend on any jobs
+    [ "$memO" -ne "$mem" ] || [ "$minO" -ne "$min" ] && [ -z "$deps" ] && onhold=""
+
+    [ -z "$userEmail" ] || userEmail="--mail-user=$userEmail"
+
+    cmd="$realSbatch --mail-type=FAIL $exNodeList $userEmail --requeue --parsable -p $partition -c $core --mem $mem -t $time --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc"
+    
+    echo -ne "\n#Command used to submit the job: $realSbatch $exNodeList --mail-type=FAIL $userEmail --requeue --parsable -p \$myPartition -c $core --mem \$myMem -t \$myTime --open-mode=append -o $outFlag -e $errFlag -J $name $deps $chdir $onhold $slurmAcc" >> $job
+         
+    if [ -z "$slurmScript" ]; then
+        cmd="$cmd $additionalPara $job"
+        echo -e " $additionalPara $job" >> $job
+    else
+        cmd="$cmd $additionalPara $job $slurmScriptParas"
+        echo -e " $additionalPara $job $slurmScriptParas" >> $job
+    fi
+fi
+
+echoerr1 New sbatch command to submit job:
+echoerr1 $cmd
+if [[ "$dryrun" != "dryrun" ]]; then
+    echoerr1 Start submtting job...
+    #set -x
+
+    # try to submit the job three time in case it fails
+    for i in {1..3}; do
+        jobID=$(unset SLURM_MEM_PER_CPU SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU; $cmd 2>jobErr; )
+        jobErr=$(< jobErr); rm jobErr
+
+        #[ -z "$jobErr" ] || echo $jobErr >&2 
+
+        # no error and a number job ID
+        if [ ! -z "$jobID" ] && [ "$jobID" -eq "$jobID" ]; then
+            touch $outFlag.$jobID
+            break
+        elif [ ! -z "$jobErr" ]; then
+            echoerr "Got error $jobErr"
+
+            # job submitted but the jobID is empty
+            if [[ "jobErr" == *"Socket timed out"* ]]; then
+                sleep 2
+                jobID=`sacct --name $flag --format jobid | head -n 1`
+                touch $outFlag.$jobID
+                break
+            else
+                echoerr "not sure what error it is: $jobErr"
+                echo $jobErr
+                exit
+            fi
+        fi
+        sleep 2
+    done
+
+    #echoerr final output is: $jobID
+    #set +x
+
+    #touch $submitFlag
+else
+    jobID=0$(date +"%4N")
+    echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
+fi
+
+# not sure why we need this  but just in case, we will keep it here for now.
+echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
+  
+  [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
+
+#if [[ "$parentCmd" != */bin/snakemake* ]]; then
+    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs>> $smartSlurmLogDir/allJobs.txt;
+#fi
+
+#echoerr1 New slurmScirpt is ready. The content is:
+#cat $job >&2
+echoerr1 "Submitted batch job $jobID"
+
+[ -z "$runningSingleJob" ] || echoerr1 -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+
+echo Submitted batch job $jobID
+
+
