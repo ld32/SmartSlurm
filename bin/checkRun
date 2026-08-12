@@ -20,12 +20,15 @@ fi
 
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
+# Path to the setuid AI helper binary (holds the HMS AI token securely)
+_AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
+ 
 function loadData() {
     logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
 
     [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
 
-    IFS=$'\n'
+    IFS=$'\n' 
 
     # Cache file path and TTL (2 minutes)
     SQUEUE_CACHE_FILE="squeue_cache.txt"
@@ -136,6 +139,7 @@ while true; do
     lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
     succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
+    failedJobs=""
     toShow="Summary for jobs in allJobs.txt:"
     for line in $lines; do
         if [ ! -z "${line/ /}" ]; then
@@ -150,6 +154,7 @@ while true; do
                 succ=$((succ + 1))
             elif [ -f $logFolder/$name.failed ]; then
                 toShow="$toShow\n${RED}Fail${NC} $line"
+                failedJobs="$failedJobs $name"
                 fail=$((fail + 1))
             elif [[ "$activeJobs" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
                 toShow="$toShow\n${GREEN}Runn${NC} $line"
@@ -187,7 +192,12 @@ while true; do
         else  #Or ${RED}r${NC} to run the job command. 
             
             #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
-            echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
+            if [ -x "$_AI_CALL" ]; then
+                echo -e "Please select a job number to view its log, or append ${BLUE}a${NC} to ask AI (e.g. ${BLUE}1a${NC}, ${BLUE}2a${NC}). Or ${RED}w${NC} for workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} upper menu, ${RED}qq${NC} quit:"
+            else
+                echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
+                echo -e "  ${YELLOW}(AI unavailable: ai_call not found or not executable. Build from bin/ai_call.c and ask admin to add you to ~/.smartSlurm/allowed_users.txt)${NC}"
+            fi
             read -p "" xx </dev/tty;
         
             #[[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
@@ -218,9 +228,37 @@ while true; do
             fi
             
             [[ "$xx" == qq ]] && exit
-            
-            #[[ "$xx" == l ]] && ls -l $logFolder/$failedJob* | less 
-            
+
+            # Handle Na: ask AI about job N (e.g. "1a", "2a")
+            if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
+                aiJobNum="${BASH_REMATCH[1]}"
+                if [ ! -x "$_AI_CALL" ]; then
+                    echo -e "${RED}ai_call not found.${NC} Build it: cd bin && gcc -O2 -Wall -o ai_call ai_call.c -lcurl && chmod 4755 ai_call"
+                    continue
+                fi
+                if [[ ! "$aiJobNum" -gt 0 || ! "$aiJobNum" -lt $count1 ]]; then
+                    echo -e "${RED}Out of range. Should be > 0 and < $count1${NC}"
+                    continue
+                fi
+                aiJob=`echo -e "$toShow" | tail -n +2 | head -n $aiJobNum | tail -n1 | awk '{print $4}'`
+                logFile="$logFolder/$aiJob.out"
+                if [ ! -f "$logFile" ]; then
+                    echo "No .out log found for job $aiJob"
+                    continue
+                fi
+                echo -e "${BLUE}Asking AI to analyze job $aiJobNum ($aiJob)...${NC}"
+                {
+                    echo "I am running a Slurm pipeline with SmartSlurm. The following job has failed. Please analyze the error log and suggest what went wrong and how to fix it."
+                    echo ""
+                    echo "=== Job: $aiJob ==="
+                    tail -n 150 "$logFile"
+                } | "$_AI_CALL" || {
+                    echo -e "${RED}AI call failed.${NC}"
+                    echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to ~/.smartSlurm/allowed_users.txt"
+                }
+                continue
+            fi
+
             if [[ "$xx" == w ]]; then 
 
                 if [ -f "$logFolder/dag.svg" ]; then 
