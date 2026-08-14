@@ -233,7 +233,7 @@ while true; do
             if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
                 aiJobNum="${BASH_REMATCH[1]}"
                 if [ ! -x "$_AI_CALL" ]; then
-                    echo -e "${RED}ai_call not found.${NC} Build it: cd bin && gcc -O2 -Wall -o ai_call ai_call.c -lcurl && chmod 4755 ai_call"
+                    echo -e "${RED}ai_call not found.${NC}"
                     continue
                 fi
                 if [[ ! "$aiJobNum" -gt 0 || ! "$aiJobNum" -lt $count1 ]]; then
@@ -254,7 +254,7 @@ while true; do
                     tail -n 150 "$logFile"
                 } | "$_AI_CALL" || {
                     echo -e "${RED}AI call failed.${NC}"
-                    echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to ~/.smartSlurm/allowed_users.txt"
+                    echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."
                 }
                 continue
             fi
