@@ -12,6 +12,24 @@ import glob
 import sys
 import tempfile
 
+# Optional AI support. If the helper module or the ai_call binary is missing,
+# ai_enabled() stays False and this tool behaves exactly as it did before.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import aiHelper
+except Exception:
+    aiHelper = None
+
+
+def ai_available():
+    return aiHelper is not None and aiHelper.ai_enabled()
+
+
+def ai_unavailable_reason():
+    if aiHelper is None:
+        return "AI helper module aiHelper.py not found."
+    return aiHelper.ai_why_not()
+
 # ── File path resolution ───────────────────────────────────────────────────────
 
 if len(sys.argv) == 2:
@@ -215,6 +233,78 @@ def show_plot_and_table(all_rows, program_name, deleted=None):
         flag = " !" if i in bad else ""
         print(f"  {i:>4}  {str(row[0]):>12}  {x:>12.4f}  {y:>10.4f}{flag}")
 
+# ── AI review ──────────────────────────────────────────────────────────────────
+
+def ai_review_records(all_rows, program_name, deleted=None):
+    """Ask AI to spot outliers and trends in the records shown, and to name the
+    indices worth deleting. Prints the answer; never raises and never changes
+    any data, so declining or failing here costs nothing."""
+    if deleted is None:
+        deleted = set()
+
+    if not ai_available():
+        print(f"\n  AI is not available. {ai_unavailable_reason()}\n")
+        return
+
+    kept = [(i, row) for i, row in enumerate(all_rows) if i not in deleted]
+    if not kept:
+        print("\n  Nothing left to review.\n")
+        return
+
+    lines = []
+    for i, row in kept:
+        def col(n):
+            try:
+                return row[n]
+            except IndexError:
+                return "?"
+        lines.append(
+            f"index={i} jobId={col(0)} inputSize={col(1)} memReserved={col(4)}M "
+            f"memUsed={col(6)}M timeReserved={col(5)}min timeUsed={col(7)}min "
+            f"status={col(8)} reference={col(12)} cores={col(14)} date={col(19)}"
+        )
+
+    prompt = "\n".join([
+        "These are historical Slurm job records that SmartSlurm uses to predict how much "
+        "memory and run-time to reserve for future jobs of this program. A record that is "
+        "not representative makes every future prediction worse.",
+        "",
+        f"In at most 12 lines, tell me:",
+        "1. Which records are outliers and why, naming their index numbers.",
+        "2. Whether memory or run-time grows with input size, or the relationship looks broken.",
+        "3. Whether there is a regime change, for example older records behaving differently "
+        "from newer ones after a software or reference change.",
+        "4. Finish with a single line of exactly this form, listing only records that should "
+        "be deleted, or 'none':",
+        "SUGGESTED DELETIONS: 3,7,12",
+        "",
+        f"Program: {program_name}   Records shown: {len(kept)}",
+        "",
+        "=== Records ===",
+        *lines,
+    ])
+
+    # This is an interactive review the user explicitly asked for, and reasoning
+    # over a full record set takes longer than the ordinary AI timeout allows.
+    try:
+        reviewTimeout = int(aiHelper._setting("smartSlurmAiRecordReviewTimeout", "180"))
+    except ValueError:
+        reviewTimeout = 180
+
+    print(f"\n  Asking AI to review {len(kept)} records for '{program_name}' "
+          f"(may take up to {reviewTimeout}s) ...")
+    answer = aiHelper.ai_ask(prompt, timeout=reviewTimeout)
+
+    if not answer:
+        print(f"  AI review not available. {ai_unavailable_reason()}\n")
+        return
+
+    print("\n  ── AI review " + "─" * 48)
+    for line in answer.splitlines():
+        print("  " + line)
+    print("  " + "─" * 60)
+    print("  Nothing was deleted. Type the indices above to delete them.\n")
+
 # ── Index parsing ──────────────────────────────────────────────────────────────
 
 def parse_indices(s, max_idx, exclude=None):
@@ -286,9 +376,10 @@ def main():
         # ── Show plot and prompt for deletion ────────────────────────────────
         show_plot_and_table(program_rows, current_program, deleted=deleted_indices)
 
+        aiHint = " | ? ask AI to review these records" if ai_available() else ""
         print(
             "\n  Commands: <indices> delete (e.g. 0  or  1,3  or  2-5)"
-            " | a delete all | b back | s save | q quit"
+            " | a delete all | b back | s save | q quit" + aiHint
         )
         action = input("  > ").strip().lower()
 
@@ -316,6 +407,8 @@ def main():
                 print("  Cancelled.")
         elif action == "s":
             save_to_file(headers, rows)
+        elif action == "?":
+            ai_review_records(program_rows, current_program, deleted=deleted_indices)
         elif action:
             indices = parse_indices(action, len(program_rows), exclude=deleted_indices)
             if indices:

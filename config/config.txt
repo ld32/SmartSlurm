@@ -29,6 +29,37 @@ export defaultSlurmAcc=""
 
 export numberOfFailedJobsLastHourToRecalculateStats=5
 
+# Optional AI features (failure analysis in emails, log analysis in checkRun).
+# Everything keeps working when AI is unavailable, so these are safe to leave on.
+# Set to no to turn AI off completely for this user or group.
+export smartSlurmAiEnabled=yes
+
+# Path to the setuid ai_call helper. Leave empty to auto-detect
+# (~/.smartSlurm/bin/ai_call, then the copy next to the SmartSlurm scripts).
+export smartSlurmAiCall=
+
+# Give up on an AI answer after this many seconds, so jobs are never delayed.
+export smartSlurmAiTimeout=90
+
+# AI review of a freshly fitted memory/time curve: minimum records before the
+# fit is worth reviewing, and a shorter timeout because this runs while a job
+# is being submitted.
+export smartSlurmAiMinRecords=10
+export smartSlurmAiReviewTimeout=30
+
+# AI validation of a pipeline, printed after conversion and before any job is
+# submitted, so a wrong dependency is caught early. Set to no to skip it.
+export smartSlurmAiValidatePipeline=yes
+
+# Pipeline validation reasons over the whole script, so it needs longer than
+# the curve review above.
+export smartSlurmAiValidateTimeout=90
+
+# AI review of job records in reviewJobRecords.py. The user asks for this one
+# explicitly and waits for it, and reasoning over a whole record set is slow,
+# so it gets a longer budget than the automatic reviews above.
+export smartSlurmAiRecordReviewTimeout=180
+
 export condaEnvPath=$HOME/.conda/envs/smartSlurmEnv
 
 # Genernal partions, ordered by maximum allowed run-time in hours

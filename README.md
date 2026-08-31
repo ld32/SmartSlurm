@@ -44,6 +44,7 @@ It has two parts you can use together or separately:
   - [Snakemake](#snakemake)
   - [Nextflow](#nextflow)
   - [Cromwell](#cromwell)
+- [AI assistance (optional)](#ai-assistance-optional)
 - [Reviewing and cleaning job records](#reviewing-and-cleaning-job-records)
 - [sbatchAndTop](#sbatchandtop)
 - [Upgrading](#upgrading)
@@ -59,6 +60,7 @@ It has two parts you can use together or separately:
 - **Informative emails**: Slurm emails are just a subject line; SmartSlurm attaches the job script, the exact submit command, and the stdout/stderr logs.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
 - **(runAsPipeline) Smart reruns**: an unchanged script is reused as-is, and already-successful steps are skipped unless you ask to rerun them.
+- **Optional [AI assistance](#ai-assistance-optional)**: explains why a job failed, reviews the fitted resource curves, validates a pipeline before submission, and answers questions about a run. Everything works normally when AI is unavailable.
 
 ---
 
@@ -189,29 +191,36 @@ source unExport; unExport
 A CSV of resource records for every successful job, one row per job. Its location is set by `smartSlurmJobRecordDir` in [`config.txt`](#configtxt) and defaults to `~/.smartSlurm/jobRecord.txt`.
 
 > [!WARNING]
-> The file has **18 columns** (created with the header below). Estimation matches on **program (col 12)** and **reference (col 13)** and reads **memory used (col 7)** and **time used (col 8)**. Input size (col 2) is used for the size-vs-resource fit.
+> The file has **21 columns** (created with the header below). Estimation matches on **program (col 12)** and **reference (col 13)** and reads **memory used (col 7)** and **time used (col 8)**. Input size (col 2) is used for the size-vs-resource fit.
 
 ```text
-1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date
+1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18memRatio,19timeRatio,20date,21epoch
 ```
 
 | Col | Name | Col | Name | Col | Name |
 |----:|------|----:|------|----:|------|
-| 1 | jobID | 7 | **memUsed** ⭐ | 13 | **reference** ⭐ |
-| 2 | **inputSize** ⭐ | 8 | **timeUsed** ⭐ | 14 | flag |
-| 3 | memDefault | 9 | jobStatus | 15 | core |
-| 4 | timeDefault | 10 | userID | 16 | extraMem |
-| 5 | memAllocated | 11 | saccMem | 17 | extraTime |
-| 6 | timeAllocated | 12 | **program** ⭐ | 18 | date |
+| 1 | jobID | 8 | **timeUsed** ⭐ | 15 | core |
+| 2 | **inputSize** ⭐ | 9 | jobStatus | 16 | extraMem |
+| 3 | memDefault | 10 | userID | 17 | extraTime |
+| 4 | timeDefault | 11 | saccMem | 18 | memRatio |
+| 5 | memAllocated | 12 | **program** ⭐ | 19 | timeRatio |
+| 6 | timeAllocated | 13 | **reference** ⭐ | 20 | date |
+| 7 | **memUsed** ⭐ | 14 | flag | 21 | epoch |
 
 <sub>⭐ = used directly by resource estimation.</sub>
+
+> [!NOTE]
+> The header row is written by `ssbatch` only when `jobRecord.txt` does not exist yet. If an older copy of your file has no header (a previous version of the record-pruning step dropped it), prepend one — otherwise `reviewJobRecords.py` treats your first record as the header and hides it:
+> ```bash
+> sed -i "1i $(grep -o '1jobID[^ ]*' $(dirname $(which ssbatch))/ssbatch | head -1)" ~/.smartSlurm/jobRecord.txt
+> ```
 
 Example rows:
 
 ```text
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,findNumber,none,...
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,findNumber,none,...
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,findNumber,none,...
+93037,1465,2048,50,2048,50,89,1,COMPLETED,ld32,38,findNumber,none,1.0.findNumber.1,1,500,10,0.04,0.02,Thu Jun 25 05:33:48 PM EDT 2026,1782423228
+93038,2930,2048,50,2048,50,87,2,COMPLETED,ld32,35,findNumber,none,1.0.findNumber.2,1,500,10,0.04,0.04,Thu Jun 25 05:34:32 PM EDT 2026,1782423272
+93039,4395,2048,50,2048,50,104,3,COMPLETED,ld32,52,findNumber,none,1.0.findNumber.3,1,500,10,0.05,0.06,Thu Jun 25 05:35:17 PM EDT 2026,1782423317
 ```
 
 ### config.txt
@@ -239,6 +248,8 @@ export partition3TimeLimit=43200  # hours: run-time  >5d  and ≤30 days
 
 adjustPartition() { ...; }
 ```
+
+It also holds the `smartSlurmAi*` settings — see [AI assistance](#ai-assistance-optional).
 
 > [!IMPORTANT]
 > **`firstBatchCount` (5) and the "3 records" rule are different things.**
@@ -574,12 +585,16 @@ Fix: move the `samtools view -c` **inside** step 2's block, where it runs on a n
 
 `runAsPipeline` preserves loop structure but extracts the `#@` blocks inside. The **loop variable becomes part of each job's flag**, so per-iteration jobs get distinct names (e.g. `1.0.findNumber.1`, `1.0.findNumber.2`, …).
 
+> [!IMPORTANT]
+> **Leave a blank line before every `done`.** A `#@` block ends only at a blank line (see [Comments, and where a job block ends](#comments-and-where-a-job-block-ends)). If the block's last command is followed directly by `done`, the parser reads `done` as part of the job command, and the `for`/`while` in the converted script is never closed. See [the FAQ](#runaspipeline-faq) for what that failure looks like.
+
 **`for` loops** work directly — the variable right after `for` is detected automatically:
 
 ```bash
 for file in `ls someFolder`; do
     #@1,0,process,,file
     process.sh $file
+
 done
 # each iteration submits a job flagged ...process.$file
 ```
@@ -591,6 +606,7 @@ done
 while read -r f1 f2 f3 f4; do
     #@1,0,process,,f1
     process.sh "$f1"
+
 done < samples.txt
 ```
 
@@ -622,6 +638,7 @@ for i in {1..5}; do
     input=numbers$i.txt
     #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
     findNumber.sh 1234 $input > $number.$i.txt
+
 done
 
 #@2,1,mergeNumber,,,sbatch -p short -c 1 --mem 4G -t 50:0
@@ -719,10 +736,26 @@ Shows every job from `allJobs.txt`, each with a colored status label:
 | Key | Action |
 |-----|--------|
 | *number* | Open that job's log files (Level 3) |
+| *number*`a` | Ask AI about that job (e.g. `1a`, `2a`) — see below |
+| `?` | Ask AI about the whole run — see below |
 | `w` | Render the dependency DAG as an image (needs graphviz; see below) |
 | `p` | Show/hide pending jobs |
 | `q` | Back to Level 1 |
 | `qq` | Quit |
+
+**Asking AI (`Na` and `?`)** — only offered when [AI is available](#ai-assistance-optional); the menu falls back to the plain keys otherwise.
+
+`Na` tailors its question to the job's state, so it is useful on more than just failures:
+
+| State | What AI is asked |
+|-------|------------------|
+| `Done` | Were the reserved memory and time a good fit for what was actually used? |
+| `Fail` / `Unkn` | What went wrong, and how to fix it |
+| `Runn` | Is it progressing or stuck, and will the reservation last? |
+| `Pend` | What is it waiting for, and can it start sooner? (works with no `.out` log yet) |
+| `Requ` | Why did the first attempt fail, and is the new reservation enough? |
+
+`?` summarizes the whole run — what is finished, what is stuck, which step is the bottleneck, and what to do next — from the job counts, `allJobs.txt`, the live queue, and the logs of failed jobs.
 
 ### Level 3 — pick a log file
 
@@ -771,6 +804,40 @@ cancelAllJobs
 ```
 
 ## runAsPipeline FAQ
+
+<details>
+<summary><b>What if I forget the blank line before <code>done</code>?</b></summary>
+
+The run fails at submission with a syntax error pointing at the **end** of the converted script:
+
+```
+smartSlurmLog/slurmPipeLine.<checksum>.sh: line 192: syntax error: unexpected end of file
+WARNING: Script exited early! Please review!!!
+```
+
+A `#@` block ends only at a blank line, so `done` was read as part of the job command instead of closing the loop. Two symptoms confirm it — in `smartSlurmLog/slurmPipeLine.<checksum>.sh`:
+
+```bash
+# the loop is opened but never closed:
+for i in {1..5}; do
+# ... and done ended up inside the job command:
+--wrap "findNumber.sh $number $input > $number.$i.txt; done;"
+```
+
+Fix it by leaving a **truly empty line** (or one containing only whitespace) between the block's last command and `done`:
+
+```bash
+for i in {1..5}; do
+    #@1,0,findNumber,,input,sbatch -p short -c 1 --mem 4G -t 50:0
+    findNumber.sh 1234 $input > $number.$i.txt
+
+done
+```
+
+The empty line above `done` is the fix. Note that a **comment line will not do it** — only a blank or whitespace-only line ends a block, so `# end of block` on that line leaves the bug in place.
+
+The same applies before `fi`, `esac`, a closing `}`, the next `#@` marker, or any following plain command. To check a converted script yourself: `bash -n smartSlurmLog/slurmPipeLine.*.sh`.
+</details>
 
 <details>
 <summary><b>Do later jobs wait for the first jobs before getting estimated resources?</b></summary>
@@ -886,6 +953,87 @@ export PATH="${PATH/:$HOME\/SmartSlurm\/sbatchBin/}"
 
 ---
 
+# AI assistance (optional)
+
+SmartSlurm can call a language model to explain failures and sanity-check its own estimates. **This is entirely optional.** Every AI call is guarded, so if AI is not set up — or is turned off, or the call fails or times out — each script behaves exactly as it did before: same emails, same estimates, same generated pipeline scripts, same menus.
+
+## Setup
+
+AI calls go through a small setuid helper binary, `ai_call`, which holds the API token so it never appears in a script, a process list, or a log.
+
+```bash
+# Built and installed by an admin, typically at:
+~/.smartSlurm/bin/ai_call          # setuid (mode 4755), compiled from ai_call.c
+
+# Access is granted per user by the helper's owner:
+echo yourUserName >> ~/.smartSlurm/allowed_users.txt
+```
+
+`ai_call` is found automatically at `~/.smartSlurm/bin/ai_call`, then next to the SmartSlurm scripts. Set `smartSlurmAiCall` in [`config.txt`](#configtxt) to point somewhere else.
+
+If it is missing, or your username is not in `allowed_users.txt`, SmartSlurm says so once and carries on without AI.
+
+## What AI does, and when it runs
+
+| Where | When it runs | What you get |
+|---|---|---|
+| `cleanUp.sh` (every job) | automatically, when a job ends **not** COMPLETED (Canceled excluded) | Failure analysis at the top of the job email, also saved to `smartSlurmLog/ai.<jobid>.txt` |
+| `estimateResource.sh` | automatically, **only when a resource curve is rebuilt** and there are ≥ `smartSlurmAiMinRecords` records | Review of the fit: outliers, non-linearity, regime changes. Saved to `<recordDir>/stats/<program>.<ref>.aiReview.txt` and copied into the step's `.out` log |
+| `runAsPipeline` | automatically, as **Stage 1.5**, after conversion and **before any job is submitted** | Dependency errors, duplicate steps, suspicious resource requests, plus a plain-English description. Saved to `smartSlurmLog/pipelineAiReview.txt` |
+| [`checkRun`](#checkrun-monitor-and-debug) | on demand: `1a`, `2a`, … or `?` | Per-job analysis (tailored to whether the job is done, failed, running or pending), or a summary of the whole run |
+| [`reviewJobRecords.py`](#reviewing-and-cleaning-job-records) | on demand: `?` | Outliers and trends in a program's records, ending with a `SUGGESTED DELETIONS:` line |
+
+`calculateMemTime.sh` runs on **every** submission, so it deliberately makes **no** AI call — it only prints a review that `estimateResource.sh` produced earlier.
+
+> [!NOTE]
+> Nothing is decided by AI. It never changes a resource estimate, deletes a record, cancels a job, or blocks a submission — it only writes text for you to read.
+
+## Settings
+
+All in [`config.txt`](#configtxt) (your `~/.smartSlurm/config/config.txt` copy wins):
+
+```bash
+export smartSlurmAiEnabled=yes        # no = turn AI off completely
+export smartSlurmAiCall=              # empty = auto-detect ai_call
+export smartSlurmAiTimeout=90         # s, default cap for any AI call
+
+export smartSlurmAiMinRecords=10      # records needed before a fitted curve is reviewed
+export smartSlurmAiReviewTimeout=30   # s, curve review — short, a submission is waiting
+
+export smartSlurmAiValidatePipeline=yes  # no = skip runAsPipeline Stage 1.5
+export smartSlurmAiValidateTimeout=90    # s, pipeline validation
+
+export smartSlurmAiRecordReviewTimeout=180  # s, reviewJobRecords.py — you asked for it, so it may take longer
+```
+
+> [!TIP]
+> Because `config.txt` is *sourced* (its `export`s override your environment), turn AI off by editing the config file — not with `smartSlurmAiEnabled=no runAsPipeline ...` on the command line.
+
+Every timeout exists so AI can never delay a job or a submission: when it expires, the call is abandoned and the script continues.
+
+## For developers
+
+Two small libraries provide the guarded interface; use them rather than calling `ai_call` directly:
+
+```bash
+# bin/aiHelper.sh — shell
+. "$(dirname $0)/aiHelper.sh"
+aiEnabled || return            # false when AI is off, missing, or not permitted
+echo "$prompt" | aiAsk         # prints the answer; on any failure prints nothing and returns non-zero
+aiWhyNot                       # one-line reason, for a log or a menu
+```
+
+```python
+# bin/aiHelper.py — python
+import aiHelper
+if aiHelper.ai_enabled():
+    answer = aiHelper.ai_ask(prompt)   # str, or None on any failure
+```
+
+`aiAsk`/`ai_ask` never write a partial answer to stdout and never raise, so a caller can treat failure as simply "no AI today". Prompts are capped at 48 KB (`ai_call` rejects anything over 64 KB).
+
+---
+
 # Reviewing and cleaning job records
 
 `reviewJobRecords.py` is a terminal-only tool (no browser, X11, or extra Python packages) for pruning outliers from your records so estimates stay accurate.
@@ -901,7 +1049,11 @@ How it works:
 2. An ASCII scatter plot of **Input Size (G)** vs **Memory (G)** is drawn, each point labeled `0`–`9` then `a`–`z`, with a table of Job IDs and exact values below.
 3. Delete outliers by index — single `2`, list `1,4,7`, range `3-6`, or mixed `0,2-4,8`.
 4. The plot redraws immediately; remaining points **keep their original indices** and the **axis scale stays fixed**, so numbering doesn't shift under you.
-5. `b` back to the program list · `s` save (a timestamped backup is written first) · `q` quit.
+5. `?` asks [AI](#ai-assistance-optional) to review the records on screen — outliers, whether memory/time really track input size, and regime changes — ending with a line like `SUGGESTED DELETIONS: 8,9` that you can type straight back in. It only reads; nothing is deleted for you. (Shown only when AI is available.)
+6. `b` back to the program list · `s` save (a timestamped backup is written first) · `q` quit.
+
+> [!NOTE]
+> Deletions only touch a working copy until you press `s`. Quitting without saving leaves `jobRecord.txt` untouched.
 
 ---
 

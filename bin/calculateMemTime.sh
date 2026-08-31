@@ -94,6 +94,17 @@ else
 fi
 echoerr Got $time
 
+# Surface the AI review of the curve, if estimateResource.sh already produced one.
+# Deliberately no AI call here: this script runs on every submission and must stay fast.
+# stderr only, because stdout is parsed by the caller.
+aiReviewFile=$smartSlurmJobRecordDir/stats/$software.$ref.aiReview.txt
+if [ -s "$aiReviewFile" ]; then
+    echoerr
+    echoerr "AI review of the fitted curve for $software.$ref:"
+    cat "$aiReviewFile" 1>&2
+    echoerr
+fi
+
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
 output="$mem $time \n\n$memFormu\n$timeFormu\nRSquare=$RSquare" 

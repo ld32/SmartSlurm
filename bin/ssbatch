@@ -87,7 +87,7 @@ fi
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
-[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt
+[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18memRatio,19timeRatio,20date,21epoch > $smartSlurmJobRecordDir/jobRecord.txt
 
 cmd="ssbatch"
 whitespace="[[:space:]]"

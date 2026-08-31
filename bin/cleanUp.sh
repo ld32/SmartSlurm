@@ -55,6 +55,17 @@ out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smar
 
 [ -f .exitcode ] && touch $succFile
 
+# Optional AI support. Sourcing never fails the job: if the library or the
+# ai_call helper is missing, aiEnabled stays false and everything below is skipped.
+if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
+    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
+
 # wait for slurm database update
 sleep 5
 
@@ -195,7 +206,9 @@ echo dataToPlot,$record
 
 # delete rows other than 1 week and not COMPLETED
 #awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+# The first condition keeps the header row: it has fewer fields than a record,
+# so $21 is empty and $9 is not COMPLETED, and it would otherwise be dropped here.
+awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if((NR==1 && $1 !~ /^[0-9]+$/) || $21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
 
 
 records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
@@ -709,6 +722,48 @@ savedDollar3=$(echo "$rate * $savedMem / 1024 * $jMin / 60" | bc -l)
 savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
 
 
+# Ask AI to explain the failure, so the email says what went wrong and how to fix it.
+# Purely additive: when AI is unavailable the email is exactly what it always was.
+aiSummary=""
+aiSummaryFile=$smartSlurmLogDir/ai.$SLURM_JOBID.txt
+# Canceled jobs are the user's own decision, so there is nothing for AI to explain.
+if [[ "$jobStatus" != "COMPLETED" ]] && [[ "$jobStatus" != "Canceled" ]] && aiEnabled; then
+    echo Asking AI to analyze failed job $SLURM_JOBID, status: $jobStatus ...
+    aiSummary=`{
+        echo "A Slurm job managed by SmartSlurm did not complete. Explain in at most 12 lines what went wrong and how to fix it. Be concrete about memory and run-time numbers when they matter."
+        echo ""
+        echo "=== Job status determined by SmartSlurm: $jobStatus ==="
+        echo "Program: $software   Reference: $ref   Input size: $inputSize"
+        echo "Reserved memory: ${totalM}M   Reserved time: ${totalT}min   Cores: $core   Partition: $partition"
+        echo "Measured peak memory: ${srunM}M   Measured run-time: ${min}min"
+        echo ""
+        echo "=== sacct report ==="
+        echo "$sacct"
+        if [ -f "$script" ]; then
+            echo ""
+            echo "=== Job script (first 60 lines) ==="
+            head -n 60 "$script"
+        fi
+        if [ -f "$out" ]; then
+            echo ""
+            echo "=== Last 150 lines of $out ==="
+            tail -n 150 "$out"
+        fi
+        if [ -f "$err" ]; then
+            echo ""
+            echo "=== Last 50 lines of $err ==="
+            tail -n 50 "$err"
+        fi
+    } | aiAsk`
+
+    if [ -n "$aiSummary" ]; then
+        echo -e "$aiSummary" > $aiSummaryFile
+        echo AI analysis saved to: $aiSummaryFile
+    else
+        echo "Skipping AI analysis: `aiWhyNot`"
+    fi
+fi
+
 minimumsize=9000
 actualsize=`wc -c $out || echo 0`
 
@@ -749,6 +804,9 @@ fi
 #summarizeRun.sh $smartSlurmLogDir $flag 
 
 [ -f $smartSlurmLogDir/summary.$SLURM_JOBID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURM_JOBID`\n$toSend" && s="${toSend%% *} $s"
+
+# Put the AI explanation at the top of the email, where the user reads first.
+[ -z "$aiSummary" ] || toSend="AI analysis of this $jobStatus job:\n$aiSummary\n\n----------------------------------------\n$toSend"
 
 #echo -e "tosend:\n$toSend"
 #echo -e "$toSend" >> ${err%.err}.email

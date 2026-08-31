@@ -20,8 +20,16 @@ fi
 
 [ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
 
-# Path to the setuid AI helper binary (holds the HMS AI token securely)
-_AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
+# Optional AI support (the token stays inside the setuid ai_call helper).
+# If the library or the helper is missing, checkRun works exactly as before.
+if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
+    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || { aiEnabled() { return 1; }; aiWhyNot() { echo "AI helper library aiHelper.sh not found."; }; }
  
 function loadData() {
     logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
@@ -192,11 +200,10 @@ while true; do
         else  #Or ${RED}r${NC} to run the job command. 
             
             #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
-            if [ -x "$_AI_CALL" ]; then
-                echo -e "Please select a job number to view its log, or append ${BLUE}a${NC} to ask AI (e.g. ${BLUE}1a${NC}, ${BLUE}2a${NC}). Or ${RED}w${NC} for workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} upper menu, ${RED}qq${NC} quit:"
+            if aiEnabled; then
+                echo -e "Please select a job number to view its log, or append ${BLUE}a${NC} to ask AI about it (e.g. ${BLUE}1a${NC}, ${BLUE}2a${NC}), or ${BLUE}?${NC} to ask AI about the whole run. Or ${RED}w${NC} for workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} upper menu, ${RED}qq${NC} quit:"
             else
-                echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
-                echo -e "  ${YELLOW}(AI unavailable: ai_call not found or not executable. Build from bin/ai_call.c and ask admin to add you to ~/.smartSlurm/allowed_users.txt)${NC}"
+                echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs."
             fi
             read -p "" xx </dev/tty;
         
@@ -229,32 +236,109 @@ while true; do
             
             [[ "$xx" == qq ]] && exit
 
-            # Handle Na: ask AI about job N (e.g. "1a", "2a")
+            # Handle ?: ask AI about the run as a whole
+            if [[ "$xx" == "?" ]]; then
+                if ! aiEnabled; then
+                    echo -e "${RED}AI is not available.${NC} `aiWhyNot`"
+                    continue
+                fi
+                echo -e "${BLUE}Asking AI about the overall status of this run...${NC}"
+                {
+                    echo "I am running a Slurm pipeline with SmartSlurm. Summarize the state of the whole run in at most 12 lines: what is finished, what is stuck or failing, which step is the bottleneck, and what I should do next. If jobs are pending, say what they are waiting for. If enough jobs are done, estimate whether the run is close to finishing."
+                    echo ""
+                    echo "=== Job counts ==="
+                    echo "successful: $succ  failed: $fail  running: $running  pending: $pending  requeued: $requeue  unknown: $unknown"
+                    echo ""
+                    echo "=== Job status list (status, slurm id, depends on, job name, first error line in log) ==="
+                    # Strip the colour codes, they are noise in a prompt.
+                    echo -e "$toShow" | tail -n +2 | sed 's/\x1b\[[0-9;]*m//g'
+                    echo ""
+                    echo "=== Submitted jobs ($logFolder/allJobs.txt) ==="
+                    head -n 60 "$logFolder/allJobs.txt" 2>/dev/null
+                    echo ""
+                    echo "=== Jobs still in the Slurm queue ==="
+                    squeue -u $USER -t PD,R -o "%.18i %.9P %.30j %.8T %.10M %.10l %.6D %R" 2>/dev/null | head -n 40
+                    if [ -n "$failedJobs" ]; then
+                        for aiFailed in $failedJobs; do
+                            [ -f "$logFolder/$aiFailed.out" ] || continue
+                            echo ""
+                            echo "=== Last 30 lines of the log of failed job $aiFailed ==="
+                            tail -n 30 "$logFolder/$aiFailed.out"
+                        done
+                    fi
+                } | aiAsk || {
+                    echo -e "${RED}AI call failed.${NC} `aiWhyNot`"
+                }
+                continue
+            fi
+
+            # Handle Na: ask AI about job N (e.g. "1a", "2a"). The question asked
+            # depends on the state of the job, so a running or pending job gets a
+            # useful answer too, not just a failed one.
             if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
                 aiJobNum="${BASH_REMATCH[1]}"
-                if [ ! -x "$_AI_CALL" ]; then
-                    echo -e "${RED}ai_call not found.${NC} Build it: cd bin && gcc -O2 -Wall -o ai_call ai_call.c -lcurl && chmod 4755 ai_call"
+                if ! aiEnabled; then
+                    echo -e "${RED}AI is not available.${NC} `aiWhyNot`"
                     continue
                 fi
                 if [[ ! "$aiJobNum" -gt 0 || ! "$aiJobNum" -lt $count1 ]]; then
                     echo -e "${RED}Out of range. Should be > 0 and < $count1${NC}"
                     continue
                 fi
-                aiJob=`echo -e "$toShow" | tail -n +2 | head -n $aiJobNum | tail -n1 | awk '{print $4}'`
+                # Strip colour codes so the state word and the slurm id can be read.
+                aiRow=`echo -e "$toShow" | tail -n +2 | head -n $aiJobNum | tail -n1 | sed 's/\x1b\[[0-9;]*m//g'`
+                aiState=`echo "$aiRow" | awk '{print $1}'`
+                aiJobId=`echo "$aiRow" | awk '{print $2}'`
+                aiJob=`echo "$aiRow" | awk '{print $4}'`
                 logFile="$logFolder/$aiJob.out"
-                if [ ! -f "$logFile" ]; then
+
+                case "$aiState" in
+                    Done)
+                        aiQuestion="This Slurm job completed successfully. In at most 10 lines, explain what it did and whether the memory and run-time it reserved were a good fit for what it actually used. Say clearly if it over-reserved or cut it too close, and what to reserve next time." ;;
+                    Fail|Unkn)
+                        aiQuestion="This Slurm job failed. In at most 12 lines, analyze the log and explain what went wrong and how to fix it." ;;
+                    Runn)
+                        aiQuestion="This Slurm job is still running. In at most 10 lines, say whether it looks like it is progressing normally or is stuck, how far along it seems to be, and whether the reserved memory and time look like enough to finish." ;;
+                    Pend)
+                        aiQuestion="This Slurm job is pending in the queue and has not started. In at most 10 lines, explain what it is waiting for and what, if anything, I can do to make it start sooner." ;;
+                    Requ)
+                        aiQuestion="This Slurm job failed and was requeued by SmartSlurm with more resources. In at most 10 lines, explain why the first attempt failed and whether the new reservation is likely to be enough." ;;
+                    *)
+                        aiQuestion="Analyze the following Slurm job in at most 12 lines and tell me anything that looks wrong." ;;
+                esac
+
+                if [ ! -f "$logFile" ] && [[ "$aiState" != Pend ]]; then
                     echo "No .out log found for job $aiJob"
                     continue
                 fi
-                echo -e "${BLUE}Asking AI to analyze job $aiJobNum ($aiJob)...${NC}"
+
+                echo -e "${BLUE}Asking AI to analyze job $aiJobNum ($aiJob, state: $aiState)...${NC}"
                 {
-                    echo "I am running a Slurm pipeline with SmartSlurm. The following job has failed. Please analyze the error log and suggest what went wrong and how to fix it."
+                    echo "$aiQuestion"
                     echo ""
-                    echo "=== Job: $aiJob ==="
-                    tail -n 150 "$logFile"
-                } | "$_AI_CALL" || {
-                    echo -e "${RED}AI call failed.${NC}"
-                    echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to ~/.smartSlurm/allowed_users.txt"
+                    echo "=== Job: $aiJob   slurm id: $aiJobId   SmartSlurm state: $aiState ==="
+                    if [[ "$aiJobId" =~ ^[1-9][0-9]*$ ]]; then
+                        echo ""
+                        echo "=== sacct report ==="
+                        sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j $aiJobId 2>/dev/null
+                        if [[ "$aiState" == Pend || "$aiState" == Runn ]]; then
+                            echo ""
+                            echo "=== Current queue entry ==="
+                            squeue -j $aiJobId -o "%.18i %.9P %.30j %.8T %.10M %.10l %.6D %R" 2>/dev/null
+                        fi
+                    fi
+                    if [ -f "$logFolder/$aiJob.sh" ]; then
+                        echo ""
+                        echo "=== Job script (first 60 lines) ==="
+                        head -n 60 "$logFolder/$aiJob.sh"
+                    fi
+                    if [ -f "$logFile" ]; then
+                        echo ""
+                        echo "=== Last 150 lines of $logFile ==="
+                        tail -n 150 "$logFile"
+                    fi
+                } | aiAsk || {
+                    echo -e "${RED}AI call failed.${NC} `aiWhyNot`"
                 }
                 continue
             fi

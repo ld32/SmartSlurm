@@ -151,6 +151,22 @@ fi
 
 [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
 
+# Optional AI validation of the pipeline. If the library or the ai_call helper
+# is missing, aiEnabled stays false and the pipeline runs exactly as before.
+if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
+    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
+
+# Validation runs between conversion and submission, while the user waits, so it
+# is capped by a timeout. Set smartSlurmAiValidatePipeline=no to turn it off.
+[ -z "$smartSlurmAiValidatePipeline" ] && smartSlurmAiValidatePipeline=yes
+[ -z "$smartSlurmAiValidateTimeout" ] && smartSlurmAiValidateTimeout=90
+
 [ -d $smartSlurmLogDir ] && [[ "$RUN_MODE" != dryrun ]] && cp -rp $smartSlurmLogDir $smartSlurmLogDir.$(stat -c '%.19z' $smartSlurmLogDir | cut -c 6- | tr " " "." | tr ":" "-")
 
 mkdir -p $smartSlurmLogDir
@@ -243,6 +259,12 @@ fi
 
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $SBATCH_OPTIONS; exit 1; } 
 
+# The parsing loop below runs in a subshell, so collected step information has
+# to be passed out through a file rather than a variable.
+pipelineStepFile=$smartSlurmLogDir/pipelineSteps.txt
+pipelineAiReviewFile=$smartSlurmLogDir/pipelineAiReview.txt
+rm -f "$pipelineStepFile" "$pipelineAiReviewFile"
+
 firstRowBelowLoopStart=""; findLoopStart=""
 { cat "$PIPELINE_SCRIPT"; echo; echo; } | while IFS= read -r t; do
 
@@ -313,6 +335,9 @@ firstRowBelowLoopStart=""; findLoopStart=""
         echo "$t" >> $run
 
         echolog1 "    It is treat as: step: $step, depends on: $de, job name: $name, reference: $ref, inputs: $inputs, sbatch options: $xsuba"
+
+        # Remember the step so the pipeline can be validated after parsing.
+        echo "step: $step | dependsOn: $de | name: $name | reference: $ref | inputs: $inputs | sbatchOptions: ${xsuba:-<from command line: $SBATCH_OPTIONS>}" >> "$pipelineStepFile"
         #echolog 
         #echo step is $step
         #echo de is $de
@@ -593,6 +618,44 @@ echo "early_exit=false" >> $run
 echo "#cmd: $thisCmd" >> $run
 
 [[ "$PIPELINE_SPEC" = *" "* ]] && para=${PIPELINE_SPEC#* } || para=""
+
+# Ask AI to sanity-check the pipeline before any job is submitted, so a wrong
+# dependency is caught before hundreds of jobs go out. Never fatal: any failure
+# here leaves submission untouched.
+if [[ "$smartSlurmAiValidatePipeline" != "no" ]] && [ -s "$pipelineStepFile" ] && aiEnabled; then
+    echolog ==========
+    echolog "Stage 1.5: Asking AI to validate the pipeline (up to ${smartSlurmAiValidateTimeout}s, set smartSlurmAiValidatePipeline=no to skip)"
+
+    aiPipelineReview=`smartSlurmAiTimeout=$smartSlurmAiValidateTimeout; {
+        echo "Below is a SmartSlurm pipeline. Each step is declared with a '#@step,dependsOn,name,reference,inputs,sbatchOptions' marker, where dependsOn is the step number this step waits for and 0 means no dependency."
+        echo "A marker inside a for or while loop is normal and correct: SmartSlurm submits one job per loop iteration under the same step number. Never report that as a duplicate step number."
+        echo "Validate it in at most 15 lines. Report only real problems, in this order of importance:"
+        echo "1. Dependency errors: a step depending on a step number that does not exist, on itself, on a later step, or a cycle."
+        echo "2. Duplicate step numbers, or steps that should depend on an earlier step but declare 0."
+        echo "3. Resource requests that look wrong for the command being run, including missing sbatch options."
+        echo "4. Then finish with a 2-3 line plain-English description of what this pipeline does, for documentation."
+        echo "If you find no problems, say so in one line and go straight to the description."
+        echo ""
+        echo "=== Steps parsed by SmartSlurm ==="
+        cat "$pipelineStepFile"
+        echo ""
+        echo "=== Pipeline script: $PIPELINE_SCRIPT ==="
+        cat "$PIPELINE_SCRIPT"
+    } | aiAsk`
+
+    if [ -n "$aiPipelineReview" ]; then
+        { echo "# AI validation of $PIPELINE_SCRIPT, `date`"
+          echo "$aiPipelineReview"; } > "$pipelineAiReviewFile"
+        # Printed with cat, not echolog, so backslashes in the text are not eaten.
+        echo "----- AI validation of $PIPELINE_SCRIPT -----"
+        cat "$pipelineAiReviewFile"
+        echo "----- end of AI validation (saved to $pipelineAiReviewFile) -----"
+        echo
+        cat "$pipelineAiReviewFile" >> .smartSlurm.log
+    else
+        echolog1 "Skipping AI validation of the pipeline: `aiWhyNot`"
+    fi
+fi
 
 echolog ==========
 echolog Stage 2: Submitting jobs

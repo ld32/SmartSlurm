@@ -27,6 +27,77 @@ adjust=$7
 mem=""; min=""
 [ -z "$defaultMin" ] && usage && exit 1
 
+# Optional AI review of a freshly fitted curve. If the library or the ai_call
+# helper is missing, aiEnabled stays false and estimation runs exactly as before.
+if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
+    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
+
+# Records needed before a fit is worth reviewing, and a short timeout because
+# this runs while a job is being submitted.
+[ -z "$smartSlurmAiMinRecords" ] && smartSlurmAiMinRecords=10
+[ -z "$smartSlurmAiReviewTimeout" ] && smartSlurmAiReviewTimeout=30
+
+aiReviewFile=$smartSlurmJobRecordDir/stats/$program.$ref.aiReview.txt
+
+# aiReviewFit <label> <dataFile> <statFile> [dataFile2] [statFile2]
+# Asks AI whether the linear fit is trustworthy and flags outliers or regime
+# changes. Writes only to $aiReviewFile and stderr, never to stdout, because
+# this script's stdout is parsed by the caller.
+aiReviewFit() {
+    aiEnabled || return 1
+
+    aiLabel=$1; aiData1=$2; aiStat1=$3; aiData2=$4; aiStat2=$5
+
+    [ -s "$aiData1" ] || return 1
+    aiRecords=`wc -l < "$aiData1"`
+    [ "$aiRecords" -ge "$smartSlurmAiMinRecords" ] || {
+        echoerr "Skipping AI review of the fit: only $aiRecords records, need $smartSlurmAiMinRecords."
+        return 1
+    }
+
+    aiReview=`smartSlurmAiTimeout=$smartSlurmAiReviewTimeout; {
+        echo "SmartSlurm just fitted a straight line to historical Slurm job records to predict memory and run-time. Review the fit in at most 10 lines: say whether the linear fit is trustworthy, and flag any outliers, non-linearity or regime change (for example a software or reference change) that would make predictions wrong. Name the specific data points that look wrong. Do not repeat the numbers back without a conclusion."
+        echo ""
+        echo "Program: $program   Reference: $ref   Data: $aiLabel"
+        echo "Record count: $aiRecords"
+        echo ""
+        echo "=== Fitted statistics ($aiStat1) ==="
+        cat "$aiStat1" 2>/dev/null
+        echo ""
+        echo "=== Data points ($aiData1) ==="
+        cat "$aiData1"
+        if [ -n "$aiData2" ] && [ -s "$aiData2" ]; then
+            echo ""
+            echo "=== Fitted statistics ($aiStat2) ==="
+            cat "$aiStat2" 2>/dev/null
+            echo ""
+            echo "=== Data points ($aiData2) ==="
+            cat "$aiData2"
+        fi
+    } | aiAsk`
+
+    if [ -n "$aiReview" ]; then
+        # Separate file on purpose: the .stat files are sourced by calculateMemTime.sh.
+        { echo "# AI review of $program.$ref ($aiLabel), `date`"
+          echo "$aiReview"; } > "$aiReviewFile"
+        echoerr "AI review of the fit saved to: $aiReviewFile"
+        # Kept out of resAjust: that string goes through echo -e, which would
+        # mangle backslashes in free text. Appended to the log verbatim instead.
+        aiReviewText="$aiReview"
+        aiReviewRecords="$aiRecords"
+        return 0
+    fi
+
+    echoerr "Skipping AI review of the fit: `aiWhyNot`"
+    return 1
+}
+
 [ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$defaultExtraMem
 
 [ -z "$adjust" ] && resAjust="#Original mem $defaultMem M, Original time: $defaultMin mins\n"
@@ -47,6 +118,11 @@ if [ $inputs == none ]; then
         gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
 
         rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
+
+        # Only after a rebuild, so submissions are not slowed down by an AI call each time.
+        aiReviewFit "memory and run-time of a job without input" \
+            $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput \
+            $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
     fi
 
     # at least 3 records
@@ -141,6 +217,13 @@ else
 
                 sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
 
+                # Only after a rebuild, so submissions are not slowed down by an AI call each time.
+                aiReviewFit "input size vs memory, and input size vs run-time" \
+                    $smartSlurmJobRecordDir/stats/$program.$ref.mem \
+                    $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat \
+                    $smartSlurmJobRecordDir/stats/$program.$ref.time \
+                    $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+
                 echoerr
                 echoerr You can see the plot using commands:
                 echoerr display $smartSlurmJobRecordDir/stats/$program.$ref.mem.png
@@ -183,6 +266,13 @@ if [[ $adjust == "adjust" ]]; then
 fi  
 
 echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
+
+# Append the AI review verbatim, so backslashes in the text survive.
+if [ -n "$aiReviewText" ]; then
+    { echo "#AI review of the fitted curve for $program.$ref ($aiReviewRecords records):"
+      echo "$aiReviewText" | sed 's/^/#/'
+      echo "#Full review: $aiReviewFile"; } >> $smartSlurmLogDir/$flag.out
+fi
 
 echo $inputSize $mem $min $extraMem
 
