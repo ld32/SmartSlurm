@@ -113,7 +113,7 @@ while true; do
     if [[ "$all" == n ]]; then 
         echo By default, only show most recent folder. Please type q to see all folders or files. 
         x=1; 
-    elif [[ $count -eq 2 && -z "$x" ]]; then
+    elif [[ $count -eq 2 && -z "$x" && -z "$xxxx" ]]; then
         echo Only one logFolder. No need to select.
         x=1 
         #firstRound=y
@@ -142,7 +142,7 @@ while true; do
     
     logFolder=`echo $logFolders | cut -d' ' -f$x`
 
-    [ -f "$logFolder" ] && less $logFolder && continue
+    [ -f "$logFolder" ] && less $logFolder && xxxx=y &&continue
 
     lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
 
@@ -194,7 +194,7 @@ while true; do
             count1=$((count1 + 1))
         done
         echo Current working folder: $logFolder and job: $failedJob
-        if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
+        if [ $count1 -eq 2 ] && [ -z "$xx" ] && [ -z "$xxxx" ]; then
             echo Only one failed step. No need to select.
             xx=1
         else  #Or ${RED}r${NC} to run the job command. 
@@ -405,7 +405,7 @@ while true; do
                 [[ "$xxx" =~ ^[0-9]+$ && "$xxx" -lt $count2 && "$xxx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count2";  continue; }
             
                 file=`echo -e "$toShow1" | tail -n +2 | head -n $xxx | tail -n1`
-                less $file 
+                less $file && xxxx=y
             else 
                 break
             fi

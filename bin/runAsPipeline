@@ -175,11 +175,11 @@ checkSum=`md5sum "$PIPELINE_SCRIPT" | cut -d' ' -f 1`
 
 run=$smartSlurmLogDir/slurmPipeLine.$checkSum.sh
 [ -z "$RUN_MODE" ] || run=$smartSlurmLogDir/slurmPipeLine.$checkSum.dryrun.sh
- 
+#set -x
 if [ -f "$run" ]; then
     #thisCmd="#cmd: $0 $@"
     lastCmd=`tail -n 1 $run`
-    if [[ "$thisCmd" == "$lastCmd" ]]; then
+    if [[ "#cmd: $thisCmd" == "$lastCmd" ]]; then
         echolog This is a re-run with the same command and script is not changed, no need to convert the script. Using the old one: $run
         [[ "$PIPELINE_SPEC" = *" "* ]] && para=${PIPELINE_SPEC#* } || para=""
         eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
