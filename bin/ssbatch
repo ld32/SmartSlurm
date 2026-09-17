@@ -386,7 +386,7 @@ errFlag=$smartSlurmLogDir/$flag.err
 [ -z "$ref" ] && ref=none
 [ -z "$inputs" ] && inputs=none
 
-echoerr Working on inputs: ${inputs#,} for step: $step $name
+[ "${ssV:-normal}" = verbose ] && echoerr "Working on inputs: ${inputs#,} for step: $step $name" || echoerr1 "Working on inputs: ${inputs#,} for step: $step $name"
 #, program: $program, flag: $flag, reference: $ref, job name: $name, dependencies: $deps
 if [ -z "$deps" ]; then 
     depsID=null
@@ -428,63 +428,89 @@ resAjust="#Depend on: $depsID\n"
     
     if [ -f $succFlag ] && [[ "$parentCmd" != */bin/snakemake* ]] && [ ! -f .command.run ] && [ ! -f command.sh ]; then
         stepID=${flag%%.*}
+
+        # Already-successful job. First honor any scope marker a prior prompt (or
+        # the smartSlurmRerun override) already materialized this run.
         if [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
             echo skipThisJob
             exit
-        
+        elif [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ]); then
+            : # a scope marker says re-run this step -> fall through, no prompt
 
-        elif [ -z "$runningSingleJob" ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] && [ ! -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] || [ ! -z "$runningSingleJob" ] ; then
-    
-            stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
+        elif [ ! -z "$runningSingleJob" ]; then
+            # Direct single-job re-run via ssbatch: simple confirm (unchanged UX).
             echoerr -e "\n!!! $flag was done before, do you want to re-run it?\n"
             echoerr -e "y:        To re-run this job, press y, then enter key.\n"
-            [ -z "$runningSingleJob" ] && echoerr -e "ystep:    To re-run all jobs for step $stepID: $stepName, type ystep, then press enter key.\n"
-            [ -z "$runningSingleJob" ] && echoerr -e "yall:     To re-run all jobs, type yall, then press enter key.\n"
             echoerr -e "enter:    To not re-run this job, directly press enter key.\n"
-            [ -z "$runningSingleJob" ] && echoerr -e "nstep:    To not re-run all successful jobs for step $stepID: $stepName, type nstep, then press enter key.\n"
-            [ -z "$runningSingleJob" ] && echoerr -e "nall:     To not re-run all successful jobs, type nall, then press enter key.\n"
             read -p "" x </dev/tty
-
             echoerr You typed: \"$x\"
+            [[ "$x" == "y" ]] || { echo skipThisJob; exit; }
 
-            if [[ "$x" == "y" ]]; then
-                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
-            elif [[ "$x" == "ystep" ]]; then
-                touch $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt
-            elif [[ "$x" == "nstep" ]]; then
-                touch $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt
-                echo skipThisJob
-                exit
-            elif [[ "$x" == "yall" ]]; then
-                touch $smartSlurmLogDir/reRunAllSuccessJobs.txt
-            elif [[ "$x" == "nall" ]]; then
-                touch $smartSlurmLogDir/skipAllSuccessJobs.txt
-                echo skipThisJob
-                exit
+        elif [ -z "$deps" ]; then
+            # Pipeline re-issue, no scope chosen yet: ask ONCE, up front, and
+            # materialize markers for the whole run (no per-job walk). yall/nall
+            # keep their meaning; "from a step" replaces the ystep/nstep walk and
+            # only offers steps that actually completed, so you cannot target a
+            # step the previous run never reached.
+            stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
+            reachable=`ls $smartSlurmLogDir/*.success 2>/dev/null | sed 's#.*/##' | cut -d. -f1 | sort -un | tr '\n' ' '`
+            reachable=`echo $reachable`   # trim
+
+            # non-interactive override (scripts/CI/tests): all | failed | fromStep:N
+            if [ -n "$smartSlurmRerun" ]; then
+                x="$smartSlurmRerun"
             else
+                echoerr -e "\n!!! Some jobs already completed. What would you like to re-run?\n"
+                echoerr -e "all      re-run ALL successful jobs (redo completed work).\n"
+                echoerr -e "failed   re-run only failed/incomplete jobs, keep successful ones. [default]\n"
+                echoerr -e "step     re-run from a step onward (pick from completed steps: $reachable).\n"
+                echoerr -e "cancel   abort without submitting.\n"
+                read -p "Choice [failed]: " x </dev/tty
+                echoerr You typed: \"$x\"
+            fi
+            x=${x:-failed}
+
+            case "$x" in
+                all|yall)
+                    touch $smartSlurmLogDir/reRunAllSuccessJobs.txt ;;
+                failed|nall)
+                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
+                cancel|q|quit)
+                    echoerr "Cancelled -- no jobs submitted."; echo skipThisJob; exit ;;
+                step|ystep|from|fromStep|fromStep:*|from:*)
+                    fromStep=""
+                    case "$x" in fromStep:*|from:*) fromStep=${x#*:};; esac
+                    if [ -z "$fromStep" ]; then
+                        echoerr "Completed steps you can re-run from:"
+                        for s in $reachable; do
+                            nm=`awk -v s=$s 'NR>1 && $3 ~ ("^"s"\\.") {split($3,f,"."); print f[3]; exit}' $smartSlurmLogDir/allJobs.txt 2>/dev/null`
+                            echoerr "    $s  $nm"
+                        done
+                        read -p "Re-run from which step? " fromStep </dev/tty
+                        echoerr You typed: \"$fromStep\"
+                    fi
+                    if [[ " $reachable " != *" $fromStep "* ]]; then
+                        echoerr "Step '$fromStep' is not in the completed set ($reachable); nothing to re-run there."
+                        echo skipThisJob; exit
+                    fi
+                    # keep steps below the chosen one, re-run it and everything above
+                    # (downstream then propagates through the live dependencies).
+                    for s in $reachable; do
+                        if [ "$s" -ge "$fromStep" ]; then touch $smartSlurmLogDir/reRunAllSuccessJobs$s.txt
+                        else touch $smartSlurmLogDir/skipAllSuccessJobs$s.txt; fi
+                    done ;;
+                *)
+                    echoerr "Unrecognized choice; keeping successful jobs (re-running failures only)."
+                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
+            esac
+
+            # apply the freshly-set scope to THIS job
+            if ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]); then
                 echo skipThisJob
                 exit
             fi
+            # else a re-run marker applies -> fall through and resubmit
         fi
-    fi
-    if [ -z "$runningSingleJob" ] && [ -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ] && [ -z "$deps" ] && ls $smartSlurmLogDir/$stepID.*.success > /dev/null 2>&1; then
-        jobs=`ls $smartSlurmLogDir/$stepID.*.success`
-        count=1
-        for j in $jobs; do
-            j=${j##*/}; j=${j%.success}
-            echoerr -e "\n!!! $j was done before, do you want to re-run it?\n"
-            echoerr -e "y:        To re-run this job, press y, then enter key.\n"
-            echoerr -e "enter:    To not re-run this job, directly press enter key.\n"
-            read -p "" x </dev/tty
-            echoerr You typed: \"$x\"
-            if [[ "$x" == "y" ]]; then
-                [ -z "$runningSingleJob" ] && echoerr "Will re-run the down stream steps even if they are done before (because they have deps - see code in row 70)."
-                break
-            else
-                echo skipThisJob
-                exit
-            fi
-        done       
     fi
 
     if [ -f $smartSlurmLogDir/keepRunningJobs.txt ]; then
@@ -623,12 +649,17 @@ else
 
     # has --wrap
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" > $job
+        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
 
         # testing without trap
         #echo -e "#!/bin/bash\ndate\n" > $job
 
         echo -e "unset SLURM_CPU_BIND" >> $job
+
+        # M1: sentinel marking the boundary between SmartSlurm setup and the
+        # step's own (tool) output. Everything until the "job report" sentinel
+        # is the tool's stdout+stderr, left untouched.
+        echo -e "echo\necho '========== SmartSlurm step output: $flag =========='\necho" >> $job
 
         #echo "touch $startFlag" >> $job
         [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
@@ -688,10 +719,13 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
-        echo -e "\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core &\n" >> $job
+        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
+
+        # M1: boundary between SmartSlurm setup and the step's own (tool) output.
+        echo -e "echo\necho '========== SmartSlurm step output: $flag =========='\necho" >> $job
         if [[ "$program" == *.Checkpoint ]]; then
             echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir; \"" >> $job
         else

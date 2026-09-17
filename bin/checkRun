@@ -22,6 +22,25 @@ fi
 
 # Path to the setuid AI helper binary (holds the HMS AI token securely)
 _AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
+
+# ---- M3a/M3b: non-interactive front-ends -----------------------------------
+# New verbs dispatch to the grid view (M3a), the diagnosis engine (M2), and the
+# Bare `checkRun` keeps the interactive browser below, now
+# with a grid dashboard shown first. The AI path further down is untouched.
+_bindir=$(dirname $0)
+_deflog="${smartSlurmLogDir:-smartSlurmLog}"
+case "$1" in
+  grid)   shift; exec "$_bindir/checkRunGrid" --log "$_deflog" "$@" ;;
+  why)    shift; exec "$_bindir/checkRunGrid" --log "$_deflog" why "$@" ;;
+  log)    shift
+          _p=$("$_bindir/checkRunGrid" --log "$_deflog" "$@" 2>/dev/null | grep -m1 '\.out *$' | tr -d ' ')
+          [ -n "$_p" ] && exec less "$_p"
+          echo "no log for address: $*"; exit 1 ;;
+  --json) for _f in $(awk 'NR>1&&NF>=3{print $3}' "$_deflog/allJobs.txt" 2>/dev/null); do
+            "$_bindir/diagnose.sh" "$_f" --log "$_deflog" --json
+          done; exit 0 ;;
+esac
+
  
 function loadData() {
     logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.*  $submttingLog* 2>/dev/null`
@@ -94,6 +113,14 @@ function loadData() {
 
 loadData
 
+# M3a: show the grid dashboard for the most recent run before browsing.
+if [ -d "$_deflog" ] && [ -f "$_deflog/allJobs.txt" ]; then
+    "$_bindir/checkRunGrid" --log "$_deflog" 2>/dev/null
+    echo
+    echo -e "(${BLUE}checkRun why <addr>${NC} e.g. b2 for a diagnosis, re-issue your ${BLUE}runAsPipeline${NC} command to re-run, or browse below)"
+    echo
+fi
+
 while true; do
     echo Path: $PWD
     
@@ -144,8 +171,10 @@ while true; do
     for line in $lines; do
         if [ ! -z "${line/ /}" ]; then
             id=${line%% *}; name=${line##* }
-            error=`grep -i "error" $logFolder/$name.out 2>/dev/null | head -n 1`
-            [ -z "$error" ] && error='NoErrInLog'
+            # M2: replace the old `grep -i error | head -1 -> NoErrInLog` heuristic
+            # with the diagnosis engine's one-line summary (cause, not noise).
+            error=`"$_bindir/diagnose.sh" $name --log $logFolder --json 2>/dev/null | grep -o '"summary":"[^"]*"' | cut -d'"' -f4`
+            [ -z "$error" ] && error='(no diagnosis)'
 
             line="$line $error"
 
@@ -248,10 +277,19 @@ while true; do
                 fi
                 echo -e "${BLUE}Asking AI to analyze job $aiJobNum ($aiJob)...${NC}"
                 {
-                    echo "I am running a Slurm pipeline with SmartSlurm. The following job has failed. Please analyze the error log and suggest what went wrong and how to fix it."
+                    echo "I am running a Slurm pipeline with SmartSlurm. A job has failed. Below is an automated diagnosis, then the job's own tool output. Explain what went wrong and how to fix it; be specific and concise."
                     echo ""
                     echo "=== Job: $aiJob ==="
-                    tail -n 150 "$logFile"
+                    echo ""
+                    echo "--- SmartSlurm automated diagnosis ---"
+                    "$_bindir/diagnose.sh" "$aiJob" --log "$logFolder" 2>/dev/null || echo "(diagnosis unavailable)"
+                    echo ""
+                    echo "--- Tool output ---"
+                    # M1: the tool's own output sits between these sentinels, with
+                    # SmartSlurm setup/teardown noise excluded. Fall back to a plain
+                    # tail for legacy logs that predate the sentinels.
+                    region=$(awk '/SmartSlurm step output:/{f=1;next} /SmartSlurm job report:/{f=0} f' "$logFile")
+                    if [ -n "$region" ]; then echo "$region" | tail -n 150; else tail -n 150 "$logFile"; fi
                 } | "$_AI_CALL" || {
                     echo -e "${RED}AI call failed.${NC}"
                     echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."

@@ -2,6 +2,15 @@
 
 #set -x
 
+# M1: sentinel marking the end of the step's own (tool) output and the start of
+# the SmartSlurm job report / teardown. Emitted first so everything below --
+# including the background "Cleanup counter" ticks -- is clearly SmartSlurm's,
+# leaving the tool output above cleanly bracketed. Fires on success and failure
+# because this script runs from the job's EXIT trap.
+echo
+echo "========== SmartSlurm job report: $1 =========="
+echo
+
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
 # to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13       14          15

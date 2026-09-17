@@ -17,7 +17,7 @@ for param in "$@"; do
 done
 
 usage() {
-    echolog -e "Usage: \n${0##*/} --script \"bashScriptV2.sh [parameter1] [parameter2] ...\" --tmp useTmp|noTmp [--sbatch-options \"sbatch -p medium -t 24:0:0 -c 4\"] [--mode dryrun] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]"
+    echolog -e "Usage: \n${0##*/} --script \"bashScriptV2.sh [parameter1] [parameter2] ...\" --tmp useTmp|noTmp [--sbatch-options \"sbatch -p medium -t 24:0:0 -c 4\"] [--mode dryrun] [--lint] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes] [-v|--verbose | -q|--quiet]"
     exit 1
 }
 
@@ -30,6 +30,7 @@ PIPELINE_SPEC=""
 SBATCH_OPTIONS=""
 TMP_MODE=""
 RUN_MODE=""
+VERBOSITY="normal"
 EMAIL_MODE=""
 SPECIAL_MODE=""
 
@@ -56,6 +57,19 @@ while [[ $# -gt 0 ]]; do
             require_option_value "$1" "$2"
             RUN_MODE="$2"
             shift 2
+            ;;
+        --lint)
+            LINT_MODE=yes
+            RUN_MODE=dryrun
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSITY=verbose
+            shift
+            ;;
+        -q|--quiet)
+            VERBOSITY=quiet
+            shift
             ;;
         --email)
             require_option_value "$1" "$2"
@@ -126,7 +140,7 @@ set -o pipefail
 
 current_date=$(date '+%Y-%m-%d_%H-%M-%S_%4N') 
 echolog1 runAsPipeline run date: $current_date
-echolog "$output"
+[ "$VERBOSITY" != quiet ] && echolog "$output" || echo "$output" >> .smartSlurm.log
 
 #echolog1 `module list`
 
@@ -171,9 +185,9 @@ if [ -f "$run" ]; then
     fi
 fi
 
-echolog ===========
-echolog Stage 1: Processing Pipeline
-echolog "    Converting pipeline to execution script ($PIPELINE_SPEC to $run)"
+[ "$VERBOSITY" != quiet ] && echolog ===========
+[ "$VERBOSITY" != quiet ] && echolog Stage 1: Processing Pipeline
+[ "$VERBOSITY" != quiet ] && echolog "    Converting pipeline to execution script ($PIPELINE_SPEC to $run)"
 
 echo "#!/bin/sh" > $run
 
@@ -194,6 +208,32 @@ echo "trap 'if \$early_exit; then echo "WARNING: Script exited early! Please rev
 
 echo "xsubd=\"$SBATCH_OPTIONS\"" >> $run
 
+# ---- A+ progress display (baked into the driver; verbosity read at runtime) ----
+# ssV is taken from the environment so the same (md5-cached) driver serves all
+# three levels: normal (default) = one appended-ASCII row per sample; verbose =
+# the full per-job firehose; quiet = errors + final summary only. No CR / no
+# in-place rewrite: each step appends "<step><glyph> " to the current row and a
+# newline closes the row. Glyphs: + submitted, - kept(skipped), H held, X error.
+echo "ssV=\"\${ssV:-normal}\"" >> $run
+echo "ssCur=''; ssRowOpen=0; ssNs=0; ssSub=0; ssKept=0; ssHeld=0; ssErr=0" >> $run
+echo "ssTick() {  # key label step glyph" >> $run
+echo "  case \"\$4\" in +) ssSub=\$((ssSub+1));; -) ssKept=\$((ssKept+1));; H) ssHeld=\$((ssHeld+1));; X) ssErr=\$((ssErr+1));; esac" >> $run
+echo "  [ \"\$ssV\" = normal ] || return 0" >> $run
+echo "  if [ \"\$1\" != \"\$ssCur\" ]; then" >> $run
+echo "    [ \"\$ssRowOpen\" = 1 ] && printf '\\n'" >> $run
+echo "    ssCur=\"\$1\"; ssNs=\$((ssNs+1))" >> $run
+echo "    lbl=\"\$2\"; lbl=\$(echo \$lbl); [ -z \"\$lbl\" ] && lbl='(no input)'" >> $run
+echo "    printf '  %-24s ' \"\$lbl\"; ssRowOpen=1" >> $run
+echo "  fi" >> $run
+echo "  printf '%s%s ' \"\$3\" \"\$4\"" >> $run
+echo "}" >> $run
+echo "ssSummary() {" >> $run
+echo "  [ \"\$ssRowOpen\" = 1 ] && printf '\\n'; ssRowOpen=0" >> $run
+echo "  [ \"\$ssV\" = quiet ] && return 0" >> $run
+echo "  printf 'Submitted %s, kept %s, error %s.  Details: less .smartSlurm.log  |  checkRun to monitor.\\n' \"\$ssSub\" \"\$ssKept\" \"\$ssErr\"" >> $run
+echo "}" >> $run
+
+
 echo "rm \$smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
 echo "if [ -f \$smartSlurmLogDir/allJobs.txt ]; then" >> $run
 echo "    cancelAllJobsReRun.sh" >> $run
@@ -211,7 +251,7 @@ echo "[ -f \$smartSlurmLogDir/allJobs.txt ] && cp \$smartSlurmLogDir/allJobs.txt
 echo "rm -r \$smartSlurmLogDir/downsteamjob.adjusting \$smartSlurmLogDir/job.adjusting.lock \$smartSlurmLogDir/requeue.start \$smartSlurmLogDir/skipAllSuccessJobs*.txt \$smartSlurmLogDir/reRunAllSuccessJobs*.txt \$smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
 
 echo "[ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n\" job_id depend_on job_flag program reference inputs comment > \$smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> \$smartSlurmLogDir/allJobs.txt">> $run
-echo "echo ---------------------------------------------------------" >> $run
+echo "[ \"\$ssV\" != quiet ] && echo ---------------------------------------------------------" >> $run
 
 [ "$TMP_MODE" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
 
@@ -244,7 +284,21 @@ fi
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $SBATCH_OPTIONS; exit 1; } 
 
 firstRowBelowLoopStart=""; findLoopStart=""
-{ cat "$PIPELINE_SCRIPT"; echo; echo; } | while IFS= read -r t; do
+
+# M4: choose block-closure mode. If the pipeline uses '#@end' anywhere, the whole
+# script is parsed in strict explicit-closure mode: blank lines are body, only
+# '#@end' closes a block, and an unclosed block is an error. Otherwise the legacy
+# blank-line-terminated behavior is used unchanged (full back-compat).
+if grep -qE '^[[:space:]]*#@end([[:space:]]|$)' "$PIPELINE_SCRIPT"; then
+    BLOCK_MODE=end
+    echolog "Block mode: explicit (#@ ... #@end). Blank lines are treated as body."
+else
+    BLOCK_MODE=blank
+fi
+rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per conversion
+[ "$LINT_MODE" = yes ] && echolog "Linting $PIPELINE_SCRIPT (block mode: $BLOCK_MODE) ..."
+
+{ cat "$PIPELINE_SCRIPT"; echo; echo; echo '#@__SMARTSLURM_EOF__'; } | while IFS= read -r t; do
 
     [ ! -z "$findLoopStart" ] && findLoopStart="" && firstRowBelowLoopStart=yes || firstRowBelowLoopStart=""
 
@@ -266,8 +320,28 @@ firstRowBelowLoopStart=""; findLoopStart=""
     # this maybe a new command, remember the space
     [ -z "$cmd" ] && oldspace="$space"
 
-    if [[ "$i" == \#@* ]]; then
-        
+    # M4: end-of-script sentinel. In explicit-closure mode a still-open block here
+    # means the user forgot the closing #@end.
+    if [[ "$i" == '#@__SMARTSLURM_EOF__' ]]; then
+        [ -n "$findjob" ] && [ "$BLOCK_MODE" = end ] && { echolog "Error: step '$step' was opened with '#@' but never closed with '#@end' before the end of the script."; touch "$smartSlurmLogDir/.conversionError"; exit 1; }
+        continue
+    fi
+
+    # M4: an '#@end' with no open block is an orphan (or a duplicate close, e.g.
+    # the second end in '#@ ... #@end #@end'). Report it with the line.
+    if { [[ "$i" == \#@end ]] || [[ "$i" == \#@end\ * ]]; } && [ -z "$findjob" ]; then
+        echolog "Error: '#@end' found with no open '#@ ...' step to close (orphan or duplicate #@end). Near: $t"
+        touch "$smartSlurmLogDir/.conversionError"; exit 1
+    fi
+
+    if [[ "$i" == \#@* ]] && [[ "$i" != \#@end* ]]; then
+
+        # M4: a new '#@' step while still inside a block means the previous block
+        # was never closed (no blank line and no #@end) -- the ambiguous
+        # "consecutive starts" case. Report it with the line instead of silently
+        # swallowing the following lines.
+        [ ! -z "$findjob" ] && { echolog "Error: new '#@' step marker found before the previous step was closed (add a blank line or an #@end). Near: $t"; touch "$smartSlurmLogDir/.conversionError"; exit 1; }
+
         echolog1 "    Recognized job step: $i"
 
         findjob="yes"
@@ -318,8 +392,18 @@ firstRowBelowLoopStart=""; findLoopStart=""
         #echo de is $de
         #echo name is $name
         cmd=""
+        rawBody=""            # M4: raw multi-line body (for #@end scripts-on-disk)
+        blockClosedBy=""      # M4: "blank" (legacy) or "end" (#@end)
 
     elif [ ! -z $findjob ]; then
+
+        # M4: explicit block terminator. '#@end' closes the current block; it is
+        # handled here (not as a comment) and does not become part of the body.
+        if [[ "$i" == \#@end || "$i" == \#@end\ * ]]; then
+            blockClosedBy="end"
+            echolog1 "    Found #@end (explicit block close)"
+            # fall through to finalize below (do not accumulate this line)
+        else
         [[ "$i" == \#* ]] && { echo "$t" >> $run; continue; }
         #echolog
         echolog1 "    find job: $i"
@@ -329,7 +413,16 @@ firstRowBelowLoopStart=""; findLoopStart=""
         cmd="${cmd%% #*}"; cmd="$(echo $cmd | xargs)" # remove comments and trim space
         cmd="$cmd;";  
 
-        [[ -z "$t" || -z "$(echo $t | xargs)" ]] && { echolog1 "    Find empty line"; } || continue
+        # M4: keep the raw line too (newline-preserved) for scripts-on-disk
+        rawBody="$rawBody${rawBody:+
+}${i%\\}"
+
+        if [ "$BLOCK_MODE" = end ]; then
+            # explicit mode: blank lines are body; only #@end (handled above) closes
+            continue
+        fi
+        [[ -z "$t" || -z "$(echo $t | xargs)" ]] && { echolog1 "    Find empty line"; blockClosedBy="${blockClosedBy:-blank}"; } || continue
+        fi
         
         echolog1 "    $cmd --before parsing"
 
@@ -353,6 +446,31 @@ firstRowBelowLoopStart=""; findLoopStart=""
         cmd="$tmp"
         echolog1 "    $cmd" --after parseing
         space="$oldspace"
+
+        # M4: build the escaped MULTI-LINE body for scripts-on-disk (#@end blocks).
+        # Same variable-scope rule as the --wrap path (a variable ASSIGNED inside
+        # the block is escaped so it expands on the node; submit-scope variables
+        # are left to expand at submission, when the driver's here-doc writes the
+        # per-job script). Quotes are left untouched -- a here-doc preserves them
+        # literally, which is the whole point (no more quote/heredoc mangling).
+        if [ "$blockClosedBy" = end ]; then
+            mlBody=""; mlAssigned=" "
+            while IFS= read -r bl; do
+                seg="$bl"
+                vs=$(echo "$seg" | grep -oP '\$\w+|\$\{\w+\}|\$\{\w+\#|\$\{\w+\%|\$\{\w+\/' | tr -d '${}#%/' | sort -u)
+                IFS=$' \t\n'   # conversion runs with IFS=''; restore splitting here
+                for v in $vs; do
+                    [[ "$mlAssigned" == *" $v="* ]] && { seg=${seg//\$$v/\\\$$v}; seg=${seg//\${$v/\\\$\{$v}; }
+                done
+                for a in $(echo "$seg" | grep -oE '(^|[; ])[A-Za-z_][A-Za-z0-9_]*=' | tr -d '; '); do
+                    mlAssigned="$mlAssigned${a%=}= "
+                done
+                IFS=''
+                seg=${seg//\$(/\\\$(}     # command substitution runs on the node
+                seg=${seg//\`/\\\`}
+                mlBody="$mlBody$seg"$'\n'
+            done <<< "$rawBody"
+        fi
         #
 
         #echo after remove space: ."$cmd".
@@ -463,18 +581,47 @@ firstRowBelowLoopStart=""; findLoopStart=""
         
         #echo "set +x" >> $run 
         
-        [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
-
         #cmd="{set -e; $cmd;}" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
         #cmd="set -e; $cmd" # && touch \$cwd/\$flag.success || touch \$cwd/\$flag.failed"
 
         [[ "$SPECIAL_MODE" == excludeFailedNodes ]] &&  excludeFailedNode="-X"
 
-        if [[ "$RUN_MODE" == dryrun ]]; then 
-            echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" dryrun)" >> $run
-        else 
-           echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
-        fi 
+        [ "$LINT_MODE" = yes ] && [ "$blockClosedBy" = blank ] && echolog "Lint: step '$step' ($name) uses legacy blank-line closure; consider '#@ ... #@end' for an explicit block."
+
+        # A+ progress: sample key (loop suffix; experiment-level -> __final) and a
+        # filename label (the job's input; falls back to the step name).
+        echo "${space}ssKey=\"$loper\"; [ -z \"\$ssKey\" ] && ssKey='__final'" >> $run
+        echo "${space}ssLabel=\"${inputs//./ $}\"; ssLabel=\$(echo \$ssLabel); { [ -z \"\$ssLabel\" ] || [ \"\$ssLabel\" = none ]; } && ssLabel='$name'" >> $run
+
+        if [ "$blockClosedBy" = end ]; then
+            # ---- M4 scripts-on-disk (explicit #@end block) ----
+            # Phase 2 instantiation: the driver writes a per-job script under
+            # jobs/<flag>/cmd.sh via a here-doc, so submit-scope vars (incl. loop
+            # variables) are baked now and in-block vars expand on the node. The
+            # exact bytes that run are persisted per job (conflict-free reruns),
+            # and the file is submitted instead of a flattened --wrap string.
+            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run
+            echo "${space}mkdir -p \$smartSlurmLogDir/jobs/\$flag" >> $run
+            echo "${space}cat > \$smartSlurmLogDir/jobs/\$flag/cmd.sh <<SMARTSLURM_CMD_EOF" >> $run
+            echo "#!/bin/bash" >> $run
+            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "rsyncToTmp ${ref//./ \$}" >> $run
+            printf '%s\n' "$mlBody" >> $run
+            echo "SMARTSLURM_CMD_EOF" >> $run
+            if [[ "$RUN_MODE" == dryrun ]]; then
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh dryrun)" >> $run
+            else
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh) " >> $run
+            fi
+        else
+            # ---- legacy blank-line block: flattened --wrap (unchanged) ----
+            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
+
+            if [[ "$RUN_MODE" == dryrun ]]; then 
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" dryrun)" >> $run
+            else 
+               echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
+            fi 
+        fi
         echo "${space}green=\"\\033[0;32m\$id\\033[0m\n\"" >> $run
         echo "${space}red=\"\\033[0;31m\$id\\033[0m\n\"" >> $run
         echo "${space}green1=\"Got output from ssbatch: \\033[0;32m\$id\\033[0m\n\"" >> $run
@@ -493,21 +640,24 @@ firstRowBelowLoopStart=""; findLoopStart=""
 
         #echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$id\n\" && id=\"\" ">> $run
 
-        echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && echo -e \"\$green\" && echo -e \"\$green1\" >> .smartSlurm.log && id=\${id##*Submitted batch job } && id=\${id%% *}">> $run
+        echo "${space}[[ \"\$id\" == *\"Submitted batch job \"* ]] && { [ \"\$ssV\" = verbose ] && echo -e \"\$green\"; echo -e \"\$green1\" >> .smartSlurm.log; id=\${id##*Submitted batch job }; id=\${id%% *}; }">> $run
 
-        echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && echo -e \"\$green\" && echo -e \"\$green\" >> .smartSlurm.log && id=\${id##*thisJobStillRunning } && id=\${id%% *}">> $run
+        echo "${space}[[ \"\$id\" == *\"thisJobStillRunning\"* ]] && { [ \"\$ssV\" = verbose ] && echo -e \"\$green\"; echo -e \"\$green\" >> .smartSlurm.log; id=\${id##*thisJobStillRunning }; id=\${id%% *}; }">> $run
 
         [[ "$TMP_MODE" == "useTmp" && ! -z "$ref" ]] && echo "${space}setPathBack $ref" >> $run
 
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
-        echo "${space}    echo -e \"\$green\" " >> $run 
+        echo "${space}    [ \"\$ssV\" = verbose ] && echo -e \"\$green\" " >> $run 
+        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"-\"" >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
         echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run
+        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"+\"" >> $run
 
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run
+        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"+\"" >> $run
 
         # # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         # if [[ "$de" == *\.* ]]; then
@@ -525,6 +675,7 @@ firstRowBelowLoopStart=""; findLoopStart=""
         echo "${space}    [ -z \"\${jobIDs[$step]}\" ] && jobIDs[$step]=\$id || jobIDs[$step]=\${jobIDs[$step]}:\$id"  >> $run
 
         echo "${space}else" >> $run
+        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"X\"; [ \"\$ssRowOpen\" = 1 ] && printf '\\n' && ssRowOpen=0" >> $run
         echo "${space}    echo -e \"\$red\" && echo -e \"\\033[0;31mJob \$flag is not submitted!\\033[0m\""  >> $run
         #echo "${space}    echo Please check .smartSlurm.log for detail logs." >> $run
         echo "${space}    exit 1"  >> $run
@@ -575,17 +726,23 @@ firstRowBelowLoopStart=""; findLoopStart=""
     fi
 done 
 
-[ $? == 1 ] && exit 0
+convRc=$?
+# M4: conversion-error handling + lint reporting
+if [ -f "$smartSlurmLogDir/.conversionError" ]; then
+    rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null
+    [ "$LINT_MODE" = yes ] && echolog "Lint: FAILED — fix the block-closure error(s) above."
+    exit 1
+fi
+[ "$LINT_MODE" = yes ] && { echolog "Lint: OK — no block-closure problems found."; exit 0; }
 
-# go back to the original folder?
-#echo "cd \$cwd/.." >> $run
-#exit
-echo "echo All submitted jobs: " >> $run
-#echo "cat \$cwd/\$smartSlurmLogDir/allJobs.txt" >> $run
-echo "awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt" >> $run
-echo "echo ---------------------------------------------------------" >> $run
+[ $convRc == 1 ] && exit 0
 
-[[ "$RUN_MODE" == "dryrun" ]] && echo "echo Note: This is just a dry run, so no job is actually submitted. In real run it should submit jobs and report as above." >> $run
+# A+ : print the one-line summary (closes the last progress row). The full job
+# table stays in the log; it only prints to stdout under -v.
+echo "ssSummary" >> $run
+echo "if [ \"\$ssV\" = verbose ]; then echo 'All submitted jobs: '; awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt; echo ---------------------------------------------------------; else awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt >> .smartSlurm.log; fi" >> $run
+
+[[ "$RUN_MODE" == "dryrun" ]] && echo "[ \"\$ssV\" != quiet ] && echo Note: This is a dry run, so no job was actually submitted." >> $run
 
 
 echo "early_exit=false" >> $run
@@ -594,10 +751,11 @@ echo "#cmd: $thisCmd" >> $run
 
 [[ "$PIPELINE_SPEC" = *" "* ]] && para=${PIPELINE_SPEC#* } || para=""
 
-echolog ==========
-echolog Stage 2: Submitting jobs
+[ "$VERBOSITY" != quiet ] && echolog ==========
+[ "$VERBOSITY" != quiet ] && echolog Stage 2: Submitting jobs
 #echo "echo $run $para is ready to run. Starting to run ..." >> $run
 
+export ssV="$VERBOSITY"
 eval "/bin/bash $run $para 2>&1" | tee -a .smartSlurm.log 
 
 echolog  
@@ -606,8 +764,12 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 GREEN='\033[0;32m'
 
-[[ "$RUN_MODE" == "dryrun" ]] && echolog -e "${GREEN}Dry run finished sumitting jobs.$NC" || echolog -e ${GREEN}runAsPipeline${NC} finished submitting jobs. 
-echolog Thank you for using Smart Slurm. You can run:
-echolog -e "${GREEN}less .smartSlurm.log${NC} to see detailed submission log."
-echolog -e "${GREEN}checkRun${NC} to check run status and submission logs"
-echolog -e "${RED}cancelAllJobs${NC} to cancel all jobs submitted from current directory."
+if [ "$VERBOSITY" = verbose ]; then
+  [[ "$RUN_MODE" == "dryrun" ]] && echolog -e "${GREEN}Dry run finished sumitting jobs.$NC" || echolog -e ${GREEN}runAsPipeline${NC} finished submitting jobs. 
+  echolog Thank you for using Smart Slurm. You can run:
+  echolog -e "${GREEN}less .smartSlurm.log${NC} to see detailed submission log."
+  echolog -e "${GREEN}checkRun${NC} to check run status and submission logs"
+  echolog -e "${RED}cancelAllJobs${NC} to cancel all jobs submitted from current directory."
+elif [ "$VERBOSITY" != quiet ]; then
+  [[ "$RUN_MODE" == "dryrun" ]] && echolog -e "${GREEN}Dry run finished.$NC  (cancelAllJobs to cancel, checkRun to monitor)" || echolog -e "${GREEN}runAsPipeline finished.$NC  cancelAllJobs to cancel  |  checkRun to monitor"
+fi

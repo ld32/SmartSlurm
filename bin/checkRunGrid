@@ -1,0 +1,357 @@
+#!/bin/bash
+# ===========================================================================
+# checkRunGrid  --  PROTOTYPE grid view for checkRun (Module M3a).
+#
+# Renders run status as a sample x step grid when the jobs decompose cleanly
+# into (sample, step); otherwise falls back to a linear, status-grouped list.
+# Also resolves an alphanumeric grid address (e.g. b2, e3) to the underlying
+# job log path(s). No live/arrow-key navigation -- static render + address prompt.
+#
+# Usage:
+#   checkRunGrid [--log DIR] [--linear] [--no-color]      # render
+#   checkRunGrid [--log DIR] <address>                     # resolve address->log(s)
+#
+# Status model (read from the log dir):
+#   <flag>.success              -> done      (+ green)
+#   <flag>.failed               -> error     (X red)   [? orange if "Unknown"]
+#   started (.out, no terminal) -> running   (> yellow)
+#   in allJobs, upstream errored -> orphaned (x red)
+#   otherwise                   -> pending   (- grey)
+# A cell backing >1 job renders as '@' (cyan), colored by aggregate status.
+#
+# Flag grammar (from rAP): step.depends.name[.sample[.fanout...]]
+#   - no loop suffix          -> experiment-level step (spans all samples)
+#   - first loop component     -> sample (outermost loop; user's convention)
+#   - remaining components     -> intra-cell fan-out (e.g. per-chromosome)
+# ===========================================================================
+set -uo pipefail
+
+LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"
+FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log) LOGDIR="$2"; shift 2;;
+    --linear) FORCE_LINEAR=1; shift;;
+    --no-color) USE_COLOR="off"; shift;;
+    --color) USE_COLOR="on"; shift;;
+    why) WHY=1; shift;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0;;
+    *) ADDR="$1"; shift;;
+  esac
+done
+
+[ -f "$LOGDIR/allJobs.txt" ] || { echo "no allJobs.txt in $LOGDIR" >&2; exit 1; }
+
+# color setup
+if [ "$USE_COLOR" = auto ]; then [ -t 1 ] && USE_COLOR=on || USE_COLOR=off; fi
+if [ "$USE_COLOR" = on ]; then
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GREY=$'\033[90m'
+  C_ORANGE=$'\033[38;5;208m'; C_CYAN=$'\033[36m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_BOLD=; C_OFF=; fi
+
+# ---- derive per-job fields in awk, then status in bash (clean globbing) ----
+# awk emits: flag|step|name|sample|fan|dep
+rawrows="$(
+  awk '
+    NR==1 { next }
+    NF<3 { next }
+    {
+      flag=$3; dep=$2
+      n=split(flag, f, ".")
+      step=f[1]; name=f[3]
+      sample=""; fan=""
+      if (n>=4) { sample=f[4]; for(k=5;k<=n;k++) fan=fan (fan==""?"":".") f[k] }
+      printf "%s|%s|%s|%s|%s|%s\n", flag, step, name, sample, fan, dep
+    }
+  ' "$LOGDIR/allJobs.txt"
+)"
+
+# squeue snapshot (real cluster): "<id>-R"/"<id>-P" tokens. Empty in the harness.
+ACTIVE=""
+if command -v squeue >/dev/null 2>&1; then
+  ACTIVE="$(squeue -u "${USER:-$(id -un)}" -t PD,R --noheader -o '%.18i-%t' 2>/dev/null)"
+fi
+# flag -> job_id map (last id wins, handles requeue)
+declare -A ID_OF
+if [ -f "$LOGDIR/allJobs.txt" ]; then
+  while read -r id _dep flag _rest; do
+    [ -n "$flag" ] && ID_OF["$flag"]="$id"
+  done < <(awk 'NR>1 && NF>=3{print $1, $2, $3}' "$LOGDIR/allJobs.txt")
+fi
+
+# status codes: done error running pending unknown  (orphan resolved in a 2nd pass)
+job_status() {   # $1=flag  -> echoes status
+  local f="$1"
+  if [ -e "$LOGDIR/$f.success" ]; then echo done; return; fi
+  # plain .failed OR requeue-exhausted markers (.failed.requeued.N.mem/.time/.oomoot/.fail)
+  if [ -e "$LOGDIR/$f.failed" ] || compgen -G "$LOGDIR/$f.failed.requeued.*" >/dev/null 2>&1; then
+    if grep -qiE 'jobStatus: Unknown|Not sure why' "$LOGDIR/$f.out" 2>/dev/null; then echo unknown; else echo error; fi
+    return
+  fi
+  # live scheduler truth, when available
+  local id="${ID_OF[$f]:-}"
+  if [ -n "$id" ] && [ -n "$ACTIVE" ]; then
+    case "$ACTIVE" in
+      *"$id-R"*) echo running; return;;
+      *"$id-P"*) echo pending; return;;
+    esac
+  fi
+  # fallback: a job that actually started writes body output (non-comment lines)
+  # to .out; ssbatch pre-writes a #-comment preamble even for cancelled jobs, so
+  # ".out exists" is NOT "it ran".
+  if [ -e "$LOGDIR/$f.out" ] && grep -qE '^[^#[:space:]]' "$LOGDIR/$f.out" 2>/dev/null; then
+    echo running; return
+  fi
+  echo pending
+}
+
+jobrows=""
+while IFS='|' read -r flag step name sample fan dep; do
+  [ -z "$flag" ] && continue
+  st="$(job_status "$flag")"
+  jobrows+="$flag|$step|$name|$sample|$fan|$st|$dep"$'\n'
+done <<<"$rawrows"
+jobrows="${jobrows%$'\n'}"
+
+# orphan pass: a pending job whose upstream dependency errored is orphaned (x).
+# Map job_id -> status via allJobs.txt (id in col1, flag in col3), then re-scan.
+idstatus="$(
+  paste -d'|' \
+    <(awk 'NR>1 && NF>=3 {print $1}' "$LOGDIR/allJobs.txt") \
+    <(awk 'NR>1 && NF>=3 {print $3}' "$LOGDIR/allJobs.txt") \
+  | while IFS='|' read -r id fl; do echo "$id|$(job_status "$fl")"; done
+)"
+declare -A ST_BY_ID
+while IFS='|' read -r id s; do [ -n "$id" ] && ST_BY_ID["$id"]="$s"; done <<<"$idstatus"
+
+neworows=""
+while IFS='|' read -r flag step name sample fan st dep; do
+  if [ "$st" = pending ] && [ -n "$dep" ] && [ "$dep" != null ]; then
+    IFS=':' read -ra deps <<<"${dep#afterok:}"
+    for d in "${deps[@]}"; do
+      [[ "$d" =~ ^[0-9]+$ ]] || continue
+      case "${ST_BY_ID[$d]:-}" in error|unknown|orphan) st=orphan;; esac
+    done
+  fi
+  neworows+="$flag|$step|$name|$sample|$fan|$st|$dep"$'\n'
+done <<<"$jobrows"
+jobrows="${neworows%$'\n'}"
+
+# ---- address resolution mode ----
+if [ -n "$ADDR" ]; then
+  # collect the flag(s) this address maps to, then either print log paths or,
+  # with `why`, run the M2 diagnosis engine on each.
+  resolved=""
+  if [[ "$ADDR" =~ ^[eE]([0-9]+)$ ]]; then
+    step="${BASH_REMATCH[1]}"
+    resolved="$(echo "$jobrows" | awk -F'|' -v s="$step" '$4=="" && $2==s {print $1}')"
+  elif [[ "$ADDR" =~ ^([a-zA-Z]+)([0-9]+)$ ]]; then
+    rowletters="${BASH_REMATCH[1],,}"; step="${BASH_REMATCH[2]}"
+    samples="$(echo "$jobrows" | awk -F'|' '$4!=""{print $4}' | sort -un 2>/dev/null)"
+    idx=0; n=${#rowletters}
+    for ((i=0;i<n;i++)); do c="${rowletters:$i:1}"; idx=$(( idx*26 + ($(printf '%d' "'$c") - 96) )); done
+    sample="$(echo "$samples" | sed -n "${idx}p")"
+    [ -z "$sample" ] && { echo "no such row: $rowletters" >&2; exit 1; }
+    resolved="$(echo "$jobrows" | awk -F'|' -v s="$sample" -v st="$step" '$4==s && $2==st {print $1}')"
+  else
+    echo "unrecognized address: $ADDR (use e.g. b2 or e3)" >&2; exit 1
+  fi
+  [ -z "$resolved" ] && { echo "no job at $ADDR" >&2; exit 1; }
+  cnt=$(echo "$resolved" | grep -c .)
+  if [ -n "$WHY" ]; then
+    # M2 diagnosis for each underlying job
+    [ "$cnt" -gt 1 ] && echo "$ADDR backs $cnt jobs:"
+    echo "$resolved" | while read -r fl; do
+      if command -v diagnose.sh >/dev/null 2>&1; then diagnose.sh "$fl" --log "$LOGDIR"
+      else "$(dirname "$0")/diagnose.sh" "$fl" --log "$LOGDIR"; fi
+    done
+  else
+    [ "$cnt" -gt 1 ] && echo "$ADDR is a multi-job cell ($cnt jobs):"
+    echo "$resolved" | while read -r fl; do echo "  $LOGDIR/$fl.out"; done
+  fi
+  exit 0
+fi
+
+# ---- decide grid vs linear ----
+# clean grid requires: at least one per-sample step, and no step that is BOTH
+# per-sample and experiment-level, and later per-sample steps' sample sets must
+# overlap the first per-sample step's samples (else axes differ -> ragged).
+read -r CLEAN SAMPLES_CSV STEPS_CSV EXP_CSV <<<"$(
+  echo "$jobrows" | awk -F'|' '
+    { step=$2; name=$3; sample=$4
+      stepname[step]=name
+      if (sample=="") expstep[step]=1
+      else { persample[step]=1; samp[sample]=1; stepsamp[step","sample]=1 }
+      steps[step]=1
+    }
+    END{
+      # ambiguous step?
+      amb=0; for(s in persample) if(s in expstep) amb=1
+      # ordered steps
+      ns=0; for(s in steps) ord[ns++]=s
+      # sort steps numerically
+      for(i=0;i<ns;i++)for(j=i+1;j<ns;j++)if(ord[i]+0>ord[j]+0){t=ord[i];ord[i]=ord[j];ord[j]=t}
+      # sample list (numeric sort if possible)
+      nsamp=0; for(x in samp) sl[nsamp++]=x
+      for(i=0;i<nsamp;i++)for(j=i+1;j<nsamp;j++)if(sl[i]+0>sl[j]+0){t=sl[i];sl[i]=sl[j];sl[j]=t}
+      # first per-sample step
+      firstps=""; for(i=0;i<ns;i++){ if(ord[i] in persample){firstps=ord[i];break} }
+      # coherence: every per-sample step shares >=1 sample with firstps
+      coherent=1
+      for(i=0;i<ns;i++){ s=ord[i]; if(!(s in persample))continue; ov=0;
+        for(k=0;k<nsamp;k++){ if((firstps","sl[k]) in stepsamp && (s","sl[k]) in stepsamp) ov=1 }
+        if(!ov) coherent=0
+      }
+      clean=(amb==0 && coherent==1 && firstps!="" && nsamp>0) ? 1 : 0
+      # build CSVs
+      sc=""; for(k=0;k<nsamp;k++) sc=sc (sc==""?"":",") sl[k]
+      pc=""; for(i=0;i<ns;i++){ if(ord[i] in persample) pc=pc (pc==""?"":",") ord[i]":"stepname[ord[i]] }
+      ec=""; for(i=0;i<ns;i++){ if(ord[i] in expstep)   ec=ec (ec==""?"":",") ord[i]":"stepname[ord[i]] }
+      print clean, (sc==""?"-":sc), (pc==""?"-":pc), (ec==""?"-":ec)
+    }'
+)"
+
+# status glyph+color for a single status code
+glyph() { case "$1" in
+  done) printf '%s' "${C_GREEN}+${C_OFF}";;
+  error) printf '%s' "${C_RED}X${C_OFF}";;
+  orphan) printf '%s' "${C_RED}x${C_OFF}";;
+  running) printf '%s' "${C_YEL}${C_BOLD}>${C_OFF}";;
+  unknown) printf '%s' "${C_ORANGE}?${C_OFF}";;
+  pending) printf '%s' "${C_GREY}-${C_OFF}";;
+  multi) printf '%s' "${C_CYAN}@${C_OFF}";;   # colored below by aggregate
+esac; }
+
+# aggregate status for a cell's job list (worst wins): error>unknown>running>pending>done
+agg() { local a="$1"; case "$a" in
+  *error*) echo error;; *unknown*) echo unknown;; *running*) echo running;;
+  *pending*) echo pending;; *) echo done;; esac; }
+
+# counts for the summary line
+summary="$(echo "$jobrows" | awk -F'|' '{c[$6]++} END{
+  printf "%d %d %d %d %d %d", c["done"], c["error"]+0, c["running"]+0, c["pending"]+0, c["unknown"]+0, c["orphan"]+0 }')"
+read -r n_done n_err n_run n_pend n_unk n_orph <<<"$summary"
+total=$(echo "$jobrows" | grep -c .)
+runname="$(basename "$(cd "$LOGDIR/.." && pwd)")"
+
+print_header() {
+  printf '%sRun:%s %s   %s   %s%d jobs%s\n' "$C_BOLD" "$C_OFF" "$runname" "$LOGDIR" "$C_BOLD" "$total" "$C_OFF"
+  printf 'Status:  %s %d done   %s %d error   %s %d running   %s %d pending' \
+    "${C_GREEN}✓${C_OFF}" "$n_done" "${C_RED}✗${C_OFF}" "$n_err" "${C_YEL}▸${C_OFF}" "$n_run" "${C_GREY}·${C_OFF}" "$n_pend"
+  [ "$n_unk"  -gt 0 ] && printf '   %s %d unknown' "${C_ORANGE}?${C_OFF}" "$n_unk"
+  [ "$n_orph" -gt 0 ] && printf '   %s %d orphaned' "${C_RED}x${C_OFF}" "$n_orph"
+  echo
+}
+
+print_legend() {
+  echo
+  printf 'Legend:  %s done  %s error  %s orphaned  %s running  %s pending  %s unknown  %s multi-job\n' \
+    "${C_GREEN}+${C_OFF}" "${C_RED}X${C_OFF}" "${C_RED}x${C_OFF}" "${C_YEL}>${C_OFF}" "${C_GREY}-${C_OFF}" "${C_ORANGE}?${C_OFF}" "${C_CYAN}@${C_OFF}"
+}
+
+# ================= LINEAR fallback =================
+render_linear() {
+  print_header
+  echo
+  echo "$jobrows" | awk -F'|' -v G="1" '
+    BEGIN{
+      # nothing
+    }
+    { rows[NR]=$0 }
+    END{
+      # group by status, ordered error,unknown,running,pending,done
+      order[1]="error";order[2]="unknown";order[3]="running";order[4]="pending";order[5]="done"
+    }' >/dev/null
+  # simple: print a numbered list grouped by status
+  local i=0
+  for grp in error unknown running pending done; do
+    local block
+    block="$(echo "$jobrows" | awk -F'|' -v g="$grp" '$6==g{print $1}')"
+    [ -z "$block" ] && continue
+    case "$grp" in
+      error) lbl="${C_RED}errors${C_OFF}";; unknown) lbl="${C_ORANGE}unknown${C_OFF}";;
+      running) lbl="${C_YEL}running${C_OFF}";; pending) lbl="${C_GREY}pending${C_OFF}";;
+      done) lbl="${C_GREEN}done${C_OFF}";; esac
+    printf '\n%s:\n' "$lbl"
+    while read -r fl; do i=$((i+1)); printf '  %3d  %s   %s\n' "$i" "$(glyph "$grp")" "$fl"; done <<<"$block"
+  done
+  print_legend
+  echo
+  echo "This run does not flatten to a clean sample x step grid; showing linear view."
+  echo "View a log:  checkRunGrid --log $LOGDIR <n>   (or open $LOGDIR/<flag>.out)"
+}
+
+# ================= GRID =================
+render_grid() {
+  print_header
+  IFS=',' read -ra SAMPLES <<<"$SAMPLES_CSV"
+  IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
+  IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
+
+  # column width for step name (adaptive): base on count, cap 8
+  local namew=7
+  # header row
+  local pad="   "
+  printf '\n%s%-4s %-10s' "$pad" "row" "sample"
+  local colnum=1
+  declare -a STEPNUM STEPNAME
+  for ps in "${PSTEPS[@]}"; do
+    [ "$ps" = "-" ] && continue
+    local num="${ps%%:*}" nm="${ps#*:}"
+    STEPNUM[$colnum]="$num"; STEPNAME[$colnum]="$nm"
+    printf ' %s%-*s%s' "$C_BOLD" "$((namew+2))" "$num ${nm:0:$namew}" "$C_OFF"
+    colnum=$((colnum+1))
+  done
+  echo
+
+  # data rows
+  local r=0
+  for s in "${SAMPLES[@]}"; do
+    [ "$s" = "-" ] && continue
+    local rl; rl="$(printf "\\$(printf '%03o' $((97+r)))")"   # a,b,c...
+    printf '%s%-4s %-10s' "$pad" "$rl" "$s"
+    local col=1
+    for ps in "${PSTEPS[@]}"; do
+      [ "$ps" = "-" ] && continue
+      local num="${ps%%:*}"
+      local jobs; jobs="$(echo "$jobrows" | awk -F'|' -v s="$s" -v st="$num" '$4==s && $2==st{print $6}')"
+      local cnt; cnt="$(echo -n "$jobs" | grep -c . 2>/dev/null)"; [ -z "$cnt" ] && cnt=0
+      local cell
+      if [ "$cnt" -eq 0 ]; then cell="${C_GREY}·${C_OFF}"      # blank: sample skips this step
+      elif [ "$cnt" -eq 1 ]; then cell="$(glyph "$jobs")"
+      else
+        # multi-job cell: '@' colored by aggregate status
+        local a; a="$(agg "$(echo "$jobs" | tr '\n' ' ')")"
+        local col_
+        case "$a" in error) col_="$C_RED";; unknown) col_="$C_ORANGE";; running) col_="$C_YEL";; pending) col_="$C_GREY";; *) col_="$C_GREEN";; esac
+        cell="${col_}@${C_OFF}"
+      fi
+      printf ' %-*b' "$((namew+2))" "$cell"
+      col=$((col+1))
+    done
+    echo
+    r=$((r+1))
+  done
+
+  # experiment-level steps
+  if [ "${ESTEPS[0]}" != "-" ]; then
+    printf '\n%sexperiment-level (across all samples):%s\n' "$C_BOLD" "$C_OFF"
+    for es in "${ESTEPS[@]}"; do
+      local num="${es%%:*}" nm="${es#*:}"
+      local st; st="$(echo "$jobrows" | awk -F'|' -v st="$num" '$4=="" && $2==st{print $6}' | head -1)"
+      [ -z "$st" ] && st="pending"
+      printf '%se%-3s %-10s %b   [step %s]\n' "$pad" "$num" "$nm" "$(glyph "$st")" "$num"
+    done
+  fi
+
+  print_legend
+  # step-name legend line (full names, since headers are truncated)
+  printf 'Steps:  '
+  for ps in "${PSTEPS[@]}"; do [ "$ps" = "-" ] || printf '%s=%s  ' "${ps%%:*}" "${ps#*:}"; done
+  for es in "${ESTEPS[@]}"; do [ "$es" = "-" ] || printf '%s=%s  ' "${es%%:*}" "${es#*:}"; done
+  echo; echo
+  echo "View a log:  type an address like ${C_BOLD}b2${C_OFF} (row+step), or ${C_BOLD}e3${C_OFF} for an experiment step."
+  echo "             '@' cells back multiple jobs; the address lists them.  (checkRunGrid --log $LOGDIR <addr>)"
+}
+
+if [ -n "$FORCE_LINEAR" ] || [ "$CLEAN" != 1 ]; then render_linear; else render_grid; fi
