@@ -147,7 +147,7 @@ if [ -n "$ADDR" ]; then
     resolved="$(echo "$jobrows" | awk -F'|' -v s="$step" '$4=="" && $2==s {print $1}')"
   elif [[ "$ADDR" =~ ^([a-zA-Z]+)([0-9]+)$ ]]; then
     rowletters="${BASH_REMATCH[1],,}"; step="${BASH_REMATCH[2]}"
-    samples="$(echo "$jobrows" | awk -F'|' '$4!=""{print $4}' | sort -un 2>/dev/null)"
+    samples="$(echo "$jobrows" | awk -F'|' '$4!=""{print $4}' | sort -u -V 2>/dev/null)"
     idx=0; n=${#rowletters}
     for ((i=0;i<n;i++)); do c="${rowletters:$i:1}"; idx=$(( idx*26 + ($(printf '%d' "'$c") - 96) )); done
     sample="$(echo "$samples" | sed -n "${idx}p")"
@@ -284,7 +284,9 @@ render_linear() {
 # ================= GRID =================
 render_grid() {
   print_header
-  IFS=',' read -ra SAMPLES <<<"$SAMPLES_CSV"
+  # order samples deterministically (sort -V: lexical for names, numeric for
+  # ids) so the row letters here match the address resolver above.
+  mapfile -t SAMPLES < <(echo "$SAMPLES_CSV" | tr ',' '\n' | sort -u -V)
   IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
   IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
 
@@ -326,7 +328,7 @@ render_grid() {
         case "$a" in error) col_="$C_RED";; unknown) col_="$C_ORANGE";; running) col_="$C_YEL";; pending) col_="$C_GREY";; *) col_="$C_GREEN";; esac
         cell="${col_}@${C_OFF}"
       fi
-      printf ' %-*b' "$((namew+2))" "$cell"
+      printf ' %b%*s' "$cell" "$((namew+1))" ''
       col=$((col+1))
     done
     echo
