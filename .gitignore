@@ -1,3 +1,7 @@
 .gitignore
 .DS_Store
 ._*
+test/checkrun_ui_tests.sh
+smartSlurmLog/
+gap.txt
+*.dryrun.sh
