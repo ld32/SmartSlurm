@@ -596,6 +596,8 @@ done < samples.txt
 
 ## Tutorial
 
+> **Note:** these tutorial scripts now live in `example-scripts/bashScript-tutorial/`. Run the commands below from that directory (or copy the scripts into your working directory).
+
 Start from a plain script, `bashScriptV1.sh`:
 
 ```bash

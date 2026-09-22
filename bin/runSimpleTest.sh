@@ -34,4 +34,4 @@ fi
 
 #[ -d $smartSlurmLogDir ] && rm -fr $smartSlurmLogDir/* 
 
-runAsPipeline "$(dirname $0)/../scripts/bashScriptV2x.sh 12345" "sbatch -A rccg -p short -c 1 --mem 4G -t 50:0" noTmp run
+runAsPipeline --script "$(dirname $0)/../example-scripts/bashScript-tutorial/bashScriptV2x.sh 12345" --sbatch-options "sbatch -A rccg -p short -c 1 --mem 4G -t 50:0" --tmp noTmp
