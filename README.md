@@ -9,6 +9,13 @@ It has two parts you can use together or separately:
 | **`ssbatch`** | A drop-in `sbatch` wrapper that estimates memory/time from your past jobs, picks a partition, resubmits on OOM/OOT, and sends informative emails. | You submit individual jobs and want smart resource sizing. |
 | **`runAsPipeline`** | A workflow runner built on `ssbatch`. You annotate an ordinary Bash script with `#@` markers; it wires up dependencies and submits each step as its own smart job. | You have a multi-step pipeline with dependencies. |
 
+Two companion tools help you watch and debug runs:
+
+| Tool | What it is |
+|------|-----------|
+| **`checkRun`** | An interactive monitor: a status **grid** of every step, with per-job log viewing, diagnosis, and reruns. |
+| **`diagnose.sh`** | A one-shot "what happened / why / what to do" report for a single job — used inside `checkRun`, or on its own. |
+
 > [!NOTE]
 > Because it is plain Bash, installation is just `git clone`, and it slots into existing command-line tools and pipelines (Snakemake, Nextflow, Cromwell) without rewriting them.
 
@@ -34,10 +41,17 @@ It has two parts you can use together or separately:
 - [runAsPipeline](#runaspipeline)
   - [Usage](#runaspipeline-usage)
   - [Writing a pipeline: the `#@` job block](#writing-a-pipeline-the--job-block)
+  - [Closing a block: `#@end` vs blank line](#closing-a-block-end-vs-blank-line)
+  - [Checking a pipeline without submitting: `--lint`](#checking-a-pipeline-without-submitting---lint)
   - [How runAsPipeline runs: the two phases](#how-runaspipeline-runs-the-two-phases)
+  - [Passing files and variables between steps](#passing-files-and-variables-between-steps)
   - [Loops](#loops)
+  - [Submission output and verbosity (`-v` / `-q`)](#submission-output-and-verbosity--v---q)
   - [Tutorial](#tutorial)
+  - [Example pipelines](#example-pipelines)
   - [checkRun: monitor and debug](#checkrun-monitor-and-debug)
+  - [diagnose.sh: explain one job](#diagnosesh-explain-one-job)
+  - [Rerunning a pipeline](#rerunning-a-pipeline)
   - [cancelAllJobs](#cancelalljobs)
   - [runAsPipeline FAQ](#runaspipeline-faq)
 - [Using ssbatch with other pipeline managers](#using-ssbatch-with-other-pipeline-managers)
@@ -58,7 +72,10 @@ It has two parts you can use together or separately:
 - **Optional checkpointing**: snapshot a long job before it hits its limit, then resume from the snapshot.
 - **Informative emails**: Slurm emails are just a subject line; SmartSlurm attaches the job script, the exact submit command, and the stdout/stderr logs.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
-- **(runAsPipeline) Smart reruns**: an unchanged script is reused as-is, and already-successful steps are skipped unless you ask to rerun them.
+- **(runAsPipeline) Explicit `#@ … #@end` blocks**: write a step's body verbatim to a per-job script (`awk`, quotes, heredocs, multi-line all survive), instead of flattening it into a single `--wrap` string.
+- **(runAsPipeline) `--lint`**: validate a pipeline's block structure without submitting anything.
+- **(runAsPipeline) Smart reruns**: an unchanged script is reused as-is; on re-issue you pick, from one menu, whether to redo everything, only failures, or from a chosen step.
+- **(checkRun) Status grid + diagnosis**: a sample × step grid, addressable per cell, with inline "why did this fail" powered by `diagnose.sh`.
 
 ---
 
@@ -72,7 +89,7 @@ git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 export PATH=$HOME/SmartSlurm/bin:$PATH
 ```
 
-**Optional** — only needed for the workflow-chart (`w`) option in `checkRun`:
+**Optional** — only needed for the workflow-chart (`w`/`g`) option in `checkRun`:
 
 ```bash
 module load conda/miniforge3/24.11.3-0
@@ -118,7 +135,7 @@ ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dr
 | `--wrap="CMD"` | Command to run. | Yes* |
 | `SCRIPT.sh [ARGS]` | A script to run instead of `--wrap`. Its first line must be a shebang. | Yes* |
 | `SBATCH_OPTIONS` | Any standard sbatch option (`-c`, `--mem`, `-t`, `-p`, `-A`, `--mail-user=`, …). Defaults exist for memory and time. | No |
-| `dryrun` | As the **last** argument: not actually submit, only estimates and builds the job script but does not submit. | No |
+| `dryrun` | As the **last** argument: does not actually submit, only estimates and builds the job script. | No |
 
 <sub>*Provide **either** `--wrap` **or** a script file.</sub>
 
@@ -219,7 +236,7 @@ Example rows:
 Ships at `SmartSlurm/config/config.txt`. It defines the partition time limits, the `adjustPartition` function, and defaults such as where records and logs live.
 
 > [!TIP]
-> Copy it to `~/.smartSlurm/config/config.txt` to override settings for just yourself. Your personal copy wins over the shared one — handy on a shared cluster. (SmartSlurm refuses to run if your personal copy is *older* than the shared one, to stop you using a stale config; run [`upgrade.sh`](#upgrading) to refresh it.)
+> Copy it to `~/.smartSlurm/config/config.txt` to override settings for just yourself. Your personal copy wins over the shared one — handy on a shared cluster. (SmartSlurm refuses to run if your personal copy is *older* than the shared one, to stop you using a stale config; see [Upgrading](#upgrading) to refresh it.)
 
 Key settings:
 
@@ -233,9 +250,9 @@ export defaultTime=120     # min — used until estimation is available
 export defaultExtraMem=500   # M   — safety margin added to estimates
 export defaultExtraTime=10  # min — safety margin added to estimates
 
-export partition1TimeLimit=720   # hours: run-time  >0h  and ≤12h
-export partition2TimeLimit=7200  # hours: run-time >12h  and ≤5 days
-export partition3TimeLimit=43200  # hours: run-time  >5d  and ≤30 days
+export partition1TimeLimit=720    # minutes: run-time  >0    and ≤12h  (720 min)
+export partition2TimeLimit=7200   # minutes: run-time >12h   and ≤5 days (7200 min)
+export partition3TimeLimit=43200  # minutes: run-time  >5d   and ≤30 days (43200 min)
 
 adjustPartition() { ...; }
 ```
@@ -320,14 +337,16 @@ On success it creates `<flag>.success` in `smartSlurmLogDir`. That file's presen
 
 - **Dependency management** — steps wait for the steps they depend on.
 - **Per-step smart sizing** — every step is an `ssbatch` job.
-- **Smart reruns** — an unchanged script is reused without reconversion; already-successful steps are skipped unless you choose to rerun.
+- **Smart reruns** — an unchanged script is reused without reconversion; on re-issue you choose what to redo ([Rerunning a pipeline](#rerunning-a-pipeline)).
 - **Failure containment** — if a step fails, its downstream steps are not run.
 - **Multi-account support** — add `-A`/`--account=` and all jobs use that Slurm account.
 
 ## runAsPipeline Usage
 
 ```
-runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--sbatch-options "SBATCH_OPTIONS"] [--mode dryrun] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]
+runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--sbatch-options "SBATCH_OPTIONS"]
+              [--mode dryrun] [--lint] [--email noEmail|noSuccEmail]
+              [--special checkpoint|excludeFailedNodes] [-v|--verbose | -q|--quiet]
 ```
 
 Arguments are **named options**:
@@ -338,15 +357,18 @@ Arguments are **named options**:
 | `--tmp useTmp\|noTmp` | Copy each step's `reference` files to node-local `/tmp` (faster for big references) or not. | Yes | n/a |
 | `--sbatch-options "SBATCH_OPTIONS"` | Default sbatch options for steps that don't specify their own. | No | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
 | `--mode dryrun` | Dry run only (builds the pipeline and logs planned jobs; no Slurm submission). | No | run (submit) |
+| `--lint` | Validate block structure and exit — no conversion driver is run, nothing is submitted. See [`--lint`](#checking-a-pipeline-without-submitting---lint). | No | off |
 | `--email noEmail\|noSuccEmail` | Silence all emails, or success emails only. | No | all emails |
 | `--special checkpoint\|excludeFailedNodes` | Enable checkpointing, or exclude nodes where this job type failed before. | No | none |
+| `-v\|--verbose` | Full firehose output (per-job "Submitted batch job N" + the jobs table). | No | off |
+| `-q\|--quiet` | Errors only; silent on success. | No | off |
 
 > [!NOTE]
 > If `--sbatch-options` is omitted, or provided but doesn't start with `sbatch`, the default sbatch string above is used. That means every step must then get its resources either from that default or from its own `#@` line.
 
 ## Writing a pipeline: the `#@` job block
 
-A **job block** is one `#@` annotation line plus the command line(s) directly beneath it:
+A **job block** is one `#@` annotation line plus the command line(s) that follow it:
 
 ```
 #@ stepID , dependIDs , name , reference , inputs , sbatchOptions
@@ -380,73 +402,64 @@ cat $number.*.txt > all$number.txt
 # Step 4 depends on steps 1 AND 3; one reference to sync, one input, custom resources:
 #@4,1.3,map,genome.fa,reads.fq,sbatch -p short -c 4 -t 2:0:0
 map.sh genome.fa reads.fq > out.bam
-
-# Step 3 depends on steps 1 AND 2; two references, no input, default sbatch:
-#@3,1.2,align,db1.db2,,
-align.sh $db1 $db2
 ```
 
 > [!TIP]
-> The multi-line command under a `#@` marker can be split with trailing backslashes. Every step's `stepID` must be unique, or the run aborts.
+> Every step's `stepID` must be unique, or the run aborts. In an `if/else` where a step exists in both branches, give the two branches **distinct** step IDs — reusing one ID across branches drops the second branch.
 
-### Comments, and where a job block ends
+## Closing a block: `#@end` vs blank line
+
+A block needs a clear end so the parser knows which lines belong to the job. There are **two ways**, and a pipeline uses one mode throughout (chosen automatically):
+
+### Explicit `#@end` (recommended)
+
+Close the block with a line containing exactly `#@end`. The body between the marker and `#@end` is written **verbatim** to a per-job script (`smartSlurmLog/jobs/<flag>/cmd.sh`) and that file is submitted:
+
+```bash
+#@3,2,measure,,in,sbatch -p short -c 1 --mem 100M -t 5:00
+# any awk, quotes, multi-line, heredocs, and command substitution survive intact:
+awk '{ print length(\$1)"\t"\$1 }' tokens.$s.txt | sort -k1,1nr -k2,2 > measured.$s.txt
+#@end
+```
+
+Because the body isn't flattened into a `--wrap` string, this is the robust choice for anything beyond a trivial one-liner. **If a pipeline uses `#@end` anywhere, it is in explicit mode: blank lines are ordinary body, and *only* `#@end` closes a block.**
+
+Two escaping rules apply to the body of an `#@end` block:
+
+- A `$` that must reach the **tool** literally (an `awk` field like `$1`, a `perl` `$_`) must be written **`\$`** — otherwise it is read as the pipeline's own shell variable. (See the `\$1` in the example above.)
+- A variable **assigned inside the block** expands on the node; a variable from **submit scope** (including the loop variable) is baked in at submission. See [Passing files and variables between steps](#passing-files-and-variables-between-steps).
+
+> [!TIP]
+> Avoid a `for`/`while` loop *inside* a block body — a loop variable assigned inside a block isn't recognized as node-scope. Use explicit names, or put the loop in submit scope wrapping the `#@` block (that's how fan-out works; see [Loops](#loops)).
+
+### Legacy blank-line close
+
+If a pipeline contains **no** `#@end`, blocks close the old way: a `#@` block collects every following line into one command and keeps going until it reaches a **blank line** (empty or all-whitespace). The block is flattened into a single `--wrap` string.
 
 > [!IMPORTANT]
-> A `#@` block collects **every following line into one command** and keeps going until it reaches a **blank line** (empty or all-whitespace). **A blank line is the only thing that ends a block.** This is why you must leave a blank line before a `done`, the next `#@`, or any following plain command — otherwise it gets swept into the previous job's command.
+> In legacy mode a **blank line is the only thing that ends a block** — leave one before a `done`, the next `#@`, or any following plain command, or it gets swept into the previous job's command.
 
-How each kind of comment is treated:
+How each kind of comment is treated **in legacy mode**:
 
 | Comment style | Ends the block? | In the job command? | Notes |
 |---|:---:|---|---|
 | Full-line `# comment` | No | No | Passed through to the converted script, but not part of the job's command. |
 | Trailing `code # comment` | No | Only the `code` before ` #` | Everything from the first space-`#` to end of line is stripped. |
-| Heredoc `: << EOF … EOF` | No | Mangled | **Not supported** — flattened into the command and breaks the block. |
-| **Blank line** | **Yes** | n/a | The intended, and only, way to close a block. |
-
-**Example 1 — full-line comments between two commands**
-
-```bash
-#@1,0,job1
-script1.sh
-# comment A
-# comment B
-script2.sh
-              # ← blank line ends the block
-```
-
-> **Does `script2.sh` run in job1? Yes.** Full-line comments don't end the block, so both commands are joined into a single job command (`script1.sh; script2.sh`) and run in job1. Comments A and B are copied into the converted script but are not part of the job.
-
-**Example 2 — trailing comments on the command lines**
-
-```bash
-#@1,0,job1
-script1.sh # comment A
-script2.sh # comment B
-              # ← blank line ends the block
-```
-
-> **Do both scripts run in job1? Yes.** Each ` # comment` is stripped from its line; the code before it (`script1.sh`, then `script2.sh`) is kept, so both run in job1.
-
-**Example 3 — a heredoc used as a comment**
-
-```bash
-#@1,0,job1
-script1.sh
-: << EOF
-a heredoc comment
-EOF
-script2.sh
-```
-
-> **Does `script2.sh` run in job1? No — the block is broken.** The parser is line-based and has no concept of heredocs. It joins every line with `;` and collapses whitespace into one line, producing roughly:
-> ```
-> script1.sh; : << EOF; a heredoc comment; EOF; script2.sh;
-> ```
-> With no real newlines, the `<< EOF` heredoc swallows everything after it — including `script2.sh` — as its body, so `script2.sh` never executes. **Don't use heredocs (or heredoc-style comments) inside a `#@` block; use `#` comments instead.**
+| Heredoc `: << EOF … EOF` | No | Mangled | **Not supported in legacy mode** — flattened into the command and breaks the block. Use `#@end` if you need a heredoc. |
+| **Blank line** | **Yes** | n/a | The intended, and only, way to close a legacy block. |
 
 > [!WARNING]
-> Inline-comment stripping is **textual, not shell-aware**: everything from the first space-`#` (` #`) to end of line is removed. So avoid a literal space-`#` inside your command — *even inside quotes* — or it will be truncated. For example `sed 's/ #/x/'` gets cut down to `sed 's/`. A `#` with no space before it (e.g. `grep '#'`) is safe.
+> Legacy inline-comment stripping is **textual, not shell-aware**: everything from the first space-`#` (` #`) to end of line is removed. Avoid a literal space-`#` inside a legacy command — *even inside quotes* — or it is truncated (e.g. `sed 's/ #/x/'` becomes `sed 's/`). A `#` with no space before it (`grep '#'`) is safe. The legacy `--wrap` flattener also **collapses quoted whitespace** (e.g. `tr -s ' '` loses its argument). Both problems disappear with `#@end`, which writes the body verbatim — prefer `#@end` for any non-trivial body.
 
+## Checking a pipeline without submitting: `--lint`
+
+`--lint` runs the conversion far enough to validate block structure, then stops — it never builds the run driver or submits anything.
+
+```bash
+runAsPipeline --script "myPipeline.sh args" --tmp noTmp --lint
+```
+
+It reports the block mode (explicit vs legacy), flags block-closure problems (orphan/duplicate `#@end`, a new `#@` before the previous block closed, an unclosed block at end-of-file), and — in explicit mode — notes any block still using a legacy blank-line close. Exit status is `0` when clean, non-zero on a structural error, so it drops into CI.
 
 ## How runAsPipeline runs: the two phases
 
@@ -456,7 +469,7 @@ Understanding **when** each line runs is critical when adapting scripts to use `
                  ┌─────────────────────── PHASE 1: CONVERT (once, on submit host) ──────────────────────┐
   your_script.sh │ read top → bottom:                                                                    │
                  │   • for/while/#loopStart  → remember the loop variable (becomes part of each job flag) │
-                 │   • #@ marker + command    → turn into an  ssbatch --wrap "command"  call              │
+                 │   • #@ marker + body      → turn into an ssbatch call (--wrap, or a per-job cmd.sh)    │
                  │   • any other line         → copy through unchanged                                    │
                  └──────────────────────────────────────────┬───────────────────────────────────────────┘
                                                              ▼
@@ -488,7 +501,7 @@ Understanding **when** each line runs is critical when adapting scripts to use `
 >     echo "$sample: $status" >> summary.txt
 > done
 > ```
-> **Fix:** move any logic that depends on a step's results into a *later* `#@` step, so it runs on a node after the upstream job finishes.
+> **Fix:** move any logic that depends on a step's results into a *later* `#@` step, so it runs on a node after the upstream job finishes. The same rule governs an `if/else` that chooses which step to submit — the **condition must be evaluable at submission time** (from the input/manifest), not from a job's output.
 
 > [!TIP]
 > Functions you define in the plain part of the script are **not** automatically available inside `#@` job blocks (those run in separate jobs). Export them first: `export -f myfunction`.
@@ -517,7 +530,7 @@ Because each job runs in its own node scope, you cannot hand a value from one jo
 2. The **producer** step writes to that path; the **consumer** step reads from it.
 3. Declare the dependency in the consumer's marker so it waits for the producer.
 
-The same submit-scope variable is substituted into both commands at submission, so both refer to the identical literal path — while the data itself flows through the filesystem, gated by the dependency. This is exactly what the proseq example does:
+The same submit-scope variable is substituted into both commands at submission, so both refer to the identical literal path — while the data itself flows through the filesystem, gated by the dependency:
 
 ```bash
 mapInputR1=$outDir/fastq/$sampleName.1.noadap.fastq   # submit scope: name the file once
@@ -533,20 +546,18 @@ refIndex=$bwtPath/${genomeRef}_$genomeSpike/${genomeRef}_$genomeSpike
 ... bowtie2 ... -1 $mapInputR1 -2 $mapInputR2 ... | samtools sort ... -o $bowtieOut ...   # consumer reads the files
 ```
 
-At submission `$mapInputR1` expands to the same path in step 1's and step 3's commands. Step 3's marker resolves `mapInputR1.mapInputR2` (its inputs) and `refIndex` (its reference) the same way. Step 3 depends on steps 1 and 2 (`#@3,1.2,...`), so it is held until they finish — only then does the file exist, get measured, and step 3 get sized and released.
+At submission `$mapInputR1` expands to the same path in step 1's and step 3's commands. Step 3 depends on steps 1 and 2 (`#@3,1.2,...`), so it is held until they finish — only then does the file exist, get measured, and step 3 get sized and released.
 
 > [!NOTE]
 > Listing a **produced** file as a downstream step's `inputs` is safe even though it doesn't exist at submission time. Dependent steps are submitted **held**, and their resource estimation is deferred until the upstream step completes and the file exists.
 
 ### Recommended convention: name paths in submit scope, next to the step
 
-Assign each step's input/output paths as plain variables **immediately above the `#@` marker that first uses them**, as the example does. This gives one source of truth per path, keeps producer and consumer in agreement automatically, and reads top-to-bottom as *"here is the file, here is the job that makes it, here is the job that uses it."*
-
-Hoisting every variable to the very top of the script also works for *static* paths, but it reads worse and is fragile inside loops — prefer define-near-use.
+Assign each step's input/output paths as plain variables **immediately above the `#@` marker that first uses them**. This gives one source of truth per path, keeps producer and consumer in agreement automatically, and reads top-to-bottom.
 
 > [!WARNING]
 > **Submit-scope variables persist across steps, branches, and loop iterations.** A value set for one step is still set when a later step is submitted, so a *missing* assignment silently reuses a stale value. Two habits prevent this:
-> - Assign the variable on **every branch** that leads to a step using it. (The proseq `if/else` sets `mapInputR1`/`mapInputR2` in *both* branches — do the same.)
+> - Assign the variable on **every branch** that leads to a step using it.
 > - Inside a **per-sample loop**, (re)assign paths **within the loop**, next to the step — not above the loop — or every iteration will submit jobs pointing at the first iteration's paths.
 
 ### Anti-patterns
@@ -569,10 +580,9 @@ do_something.sh $nReads                        # $nReads is empty/garbage
 ```
 Fix: move the `samtools view -c` **inside** step 2's block, where it runs on a node after step 1 completes.
 
-
 ## Loops
 
-`runAsPipeline` preserves loop structure but extracts the `#@` blocks inside. The **loop variable becomes part of each job's flag**, so per-iteration jobs get distinct names (e.g. `1.0.findNumber.1`, `1.0.findNumber.2`, …).
+`runAsPipeline` preserves loop structure but extracts the `#@` blocks inside. **Every enclosing loop variable becomes part of each job's flag**, so per-iteration jobs get distinct names (e.g. `1.0.findNumber.1`, `1.0.findNumber.2`, …), and a **nested** loop (fan-out) stays collision-free (`4.3.countchunk.$sample.$chunk`).
 
 **`for` loops** work directly — the variable right after `for` is detected automatically:
 
@@ -582,6 +592,19 @@ for file in `ls someFolder`; do
     process.sh $file
 done
 # each iteration submits a job flagged ...process.$file
+```
+
+**Fan-out / fan-in.** A nested `for` loop around a `#@` block submits one job per iteration (fan-out); a later step that depends on it waits for all of them (fan-in):
+
+```bash
+for c in 1 2 3; do
+    #@4,3,countchunk,,in,sbatch -p short -c 1 --mem 100M -t 5:00
+    wc -w < chunk.$s.$c > cc.$s.$c.txt      # 3 jobs: ...countchunk.$s.1/.2/.3
+    #@end
+done
+#@5,4,merge,,in,sbatch -p short -c 1 --mem 100M -t 5:00
+cat cc.$s.*.txt > merged.$s.txt             # depends on step 4 -> waits for all three
+#@end
 ```
 
 **`while` loops need a hint.** A `while` header doesn't name its loop variable in a position the parser can read, so declare it with `#loopStart:VAR` on the line above:
@@ -594,9 +617,39 @@ while read -r f1 f2 f3 f4; do
 done < samples.txt
 ```
 
+## Submission output and verbosity (`-v` / `-q`)
+
+During Stage 2, `runAsPipeline` prints a compact **live** table — one row per sample, each step's glyph appearing as that job submits:
+
+```text
+Stage 2: Submitting jobs
+
+  sample           steps
+---------------------------------------------------------
+  alpha            1✓ 2✓ 3✓ 4✓✓✓ 5✓ 6✓
+  bravo            1✓ 2✓ 3✓ 4✓✓✓ 5✓ 7✓
+  charlie          1✓ 2✓ 3✓ 4✓✓✓ 5✓ 6✓
+Submitted 24, kept 0, error 0.  Details: less .smartSlurm.log  |  checkRun to monitor.
+```
+
+- `✓` = submitted, `✗` = submission error, `-` = kept (an already-successful step that was skipped).
+- The step **number** prints when submission starts; its glyph is appended when Slurm returns.
+- A fan-out step (multiple jobs at the same step) collapses under one number: `4✓✓✓` = step 4 submitted three chunk jobs.
+- Rows are labelled by **sample** (the loop variable); an experiment-level step (no sample) is labelled by its job name.
+
+Two flags change the volume:
+
+| Flag | Output |
+|------|--------|
+| *(default)* | The compact live table above. |
+| `-v` / `--verbose` | The old firehose — per-job "Working on inputs…", "Submitted batch job N", and the full jobs table. |
+| `-q` / `--quiet` | Errors only; nothing on success. |
+
+The full per-job detail is always written to `.smartSlurm.log` regardless of verbosity (`less .smartSlurm.log`).
+
 ## Tutorial
 
-> **Note:** these tutorial scripts now live in `example-scripts/bashScript-tutorial/`. Run the commands below from that directory (or copy the scripts into your working directory).
+The tutorial scripts (`bashScriptV1.sh` … `bashScriptV3.sh`) live in `example-scripts/bashScript-tutorial/`. Run the commands below from that directory, or copy the scripts into your working directory. They rely on `createNumberFiles.sh` and `findNumber.sh` (both in `bin/`, on your PATH).
 
 Start from a plain script, `bashScriptV1.sh`:
 
@@ -632,10 +685,10 @@ cat $number.*.txt > all$number.txt
 
 **Reading the markers**
 
-- `#@1,0,findNumber,,input,sbatch …` — step **1**, depends on **nothing** (`0`), program **findNumber**, **no** reference, input is `$input`, with the given sbatch options. Because it's inside the `for` loop, it submits five jobs, one per `$i`.
-- `#@2,1,mergeNumber,,,sbatch …` — step **2**, depends on **step 1**, program **mergeNumber**, no reference, no input. Slurm holds it until all five step-1 jobs finish.
+- `#@1,0,findNumber,,input,sbatch …` — step **1**, depends on **nothing** (`0`), program **findNumber**, **no** reference, input is `$input`. Inside the `for` loop, it submits five jobs, one per `$i`.
+- `#@2,1,mergeNumber,,,sbatch …` — step **2**, depends on **step 1**. Slurm holds it until all five step-1 jobs finish.
 
-**Dry run** (adds `--mode dryrun`, so nothing is submitted — you just see the plan and fake IDs):
+**Dry run** (adds `--mode dryrun`, so nothing is submitted — you see the plan and fake IDs):
 
 ```bash
 runAsPipeline --script "bashScriptV2.sh 123" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp --mode dryrun
@@ -647,21 +700,13 @@ runAsPipeline --script "bashScriptV2.sh 123" --sbatch-options "sbatch -p short -
 runAsPipeline --script "bashScriptV2.sh 1234" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp
 ```
 
-Abbreviated output:
+Its Stage-2 output is the compact table described in [Submission output](#submission-output-and-verbosity--v---q) — one row per `$i`, five `findNumber` submissions plus the `mergeNumber` row. Add `-v` to see the full per-job "Submitted batch job N" firehose and the jobs table:
 
 ```text
-runAsPipeline run date: 2024-04-28_16-03-36
-Running: .../bin/runAsPipeline --script "bashScriptV2.sh 1234" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp
-===========
-Stage 1: Processing Pipeline
-    Converting pipeline to execution script (.../slurmPipeLine.<md5>.sh)
-==========
 Stage 2: Submitting jobs
----------------------------------------------------------
+...
 step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.1
 Submitted batch job 69308
-step: 1, depends on: 0, job name: findNumber, flag: 1.0.findNumber.2
-Submitted batch job 69309
 ...
 step: 2, depends on: 1, job name: mergeNumber, flag: 2.1.mergeNumber
 Submitted batch job 69313
@@ -669,100 +714,125 @@ Submitted batch job 69313
 All submitted jobs:
 job_id       depend_on                      job_flag          program     reference  inputs
 69308        null                           1.0.findNumber.1  findNumber  none       numbers1.txt
-69309        null                           1.0.findNumber.2  findNumber  none       numbers2.txt
 ...
 69313        69308:69309:69310:69311:69312  2.1.mergeNumber   mergeNumber none       none
----------------------------------------------------------
 ```
-
-> [!NOTE]
-> Steps without their own sbatch options use the command-line default (here `-t 10:0`). In the script above both steps set `-t 50:0` themselves, so they override the default. This is how you mix a global default with per-step overrides.
 
 After it runs:
 
 ```bash
-ls -l smartSlurmLog   # per-step .sh (job scripts), .out (logs), .success / .failed flags
-checkRun              # interactive status + log browser
+ls -l smartSlurmLog   # per-step .sh (job scripts), .out (logs), .success / .failed flags,
+                      # and (for #@end steps) a jobs/<flag>/cmd.sh
+checkRun              # interactive status grid + log/diagnosis browser
 cancelAllJobs         # cancel running/pending jobs from this directory
 ```
 
+## Example pipelines
+
+`example-scripts/` holds small, self-contained pipelines that double as templates and quick cluster smoke tests. Run each in its own directory.
+
+| Pipeline | Shows |
+|----------|-------|
+| `demo_linear_fan_branch.sh` | the full progression — a linear chain, a fan-out/fan-in pair, and an `if/else` that submits one of two alternative steps. |
+| `phrase_pipeline_end.sh` | a minimal `#@end` pipeline with an experiment-level fan-in `summary`. |
+| `phrase_pipeline_legacy.sh` | the legacy blank-line (`--wrap`) style and its constraints. |
+| `bashScript-tutorial/` | the tutorial above (`bashScriptV1`→`V2`, plus edge-case variants). |
+| `resource-estimation/` | a size-scaled load (`sizedLoad.sh`) for exercising jobRecord fitting and OOM/OOT reruns. |
+
+Each directory has its own README with the exact commands and expected output.
+
 ## checkRun: monitor and debug
 
-`checkRun` is an interactive, three-level browser for a pipeline's status and logs. **Run it from the directory where you launched `runAsPipeline`** (it needs the `.smartSlurm.log` file there).
+`checkRun` is an interactive monitor. **Run it from the directory where you launched `runAsPipeline`** (it reads `.smartSlurm.log` and `smartSlurmLog/` there):
 
 ```bash
 checkRun
 ```
 
-### Level 1 — pick a run
-
-Lists each log folder/file with its job count; dry runs are flagged.
-
-| Key | Action |
-|-----|--------|
-| *number* | Open that run |
-| `r` | Reload (refresh the list and job states) |
-| `h` | Show/hide runs that submitted no jobs |
-| `q` | Quit |
-
-### Level 2 — job status table
-
-Shows every job from `allJobs.txt`, each with a colored status label:
-
-| Label | Meaning |
-|-------|---------|
-| `Done` | finished successfully (`.success` exists) |
-| `Fail` | finished with failure (`.failed` exists) |
-| `Runn` | currently running |
-| `Pend` | pending in the queue |
-| `Requ` | was requeued (e.g. after OOM/OOT) |
-| `Unkn` | no success/failure flag and not in the queue — often killed or a node failure |
-
-| Key | Action |
-|-----|--------|
-| *number* | Open that job's log files (Level 3) |
-| `w` | Render the dependency DAG as an image (needs graphviz; see below) |
-| `p` | Show/hide pending jobs |
-| `q` | Back to Level 1 |
-| `qq` | Quit |
-
-### Level 3 — pick a log file
-
-Lists the files for the selected job, tagged in plain language:
-
-| Tag | File | Contents |
-|-----|------|----------|
-| `out` | `<flag>.out` | **stdout/stderr — start here to see the actual error** |
-| `sh` | `<flag>.sh` | the generated Slurm script for the step |
-| `adjust` | `<flag>.adjust` | resource-adjustment log |
-| `success` / `failed` | flag files | status only, no contents |
-
-| Key | Action |
-|-----|--------|
-| *number* | Open the file in `less` |
-| `q` | Back to Level 2 |
-| `qq` | Quit |
-
-**Typical debugging flow**
+It opens on a **status grid** — samples down the side, steps across the top, one glyph per cell:
 
 ```text
-checkRun
-  → [Level 1] pick your run
-  → [Level 2] find the row labeled  Fail  or  Unkn
-  → [Level 3] open its  out  log to read the error
+Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
+
+   row  sample      normali tokeniz  split  countch  merge  detaile  brief
+                       1       2       3       4       5       6       7
+   a    alpha      │   +   │   +   │   +   │   @   │   +   │   +   │   ·   │
+   b    bravo      │   +   │   +   │   +   │   @   │   +   │   ·   │   +   │
+   ...
 ```
 
-**Workflow chart (`w`)** requires graphviz in the `smartSlurmEnv` conda environment (see [Installation](#installation)):
+| Glyph | Meaning |
+|:-----:|---------|
+| `+` | done (`.success`) |
+| `X` | error (`.failed`) |
+| `x` | orphaned (an upstream dependency didn't succeed) |
+| `>` | running |
+| `-` | pending |
+| `?` | unknown (no flag and not in the queue — often killed / node failure) |
+| `@` | multi-job cell (a fan-out step; resolving its address lists all the jobs) |
+| `·` | not applicable (this sample never ran this step — e.g. the untaken `if/else` branch) |
+
+**Addressing a cell.** A job address is a **row letter + step number** — `b2` is row b, step 2; `e3` is experiment-level step 3. Both orders parse (`b2` or `2b`). At the prompt:
+
+| Type | Action |
+|------|--------|
+| `b2` | view that job's log (the `.out`) |
+| `d b2` | **diagnose** — why it failed / what to do (runs [`diagnose.sh`](#diagnosesh-explain-one-job)) |
+| `a b2` | ask the AI helper about the job |
+| `r b2` | view the job's raw files (`.out` / `.err` / `.sh` …) |
+| `o` | browse other SmartSlurm log folders in this directory |
+| `l` | list view (the classic per-job browser; all its capabilities are preserved) |
+| `g` | workflow chart (DAG image; needs graphviz — see [Installation](#installation)) |
+| `p` | show/hide pending jobs |
+| `Enter` | refresh (re-query `squeue`, redraw) |
+| `q` / `qq` | back up a level / quit |
+
+**Non-interactive verbs.** The same grid and diagnosis are available without entering the UI:
 
 ```bash
-module load conda/miniforge3/24.11.3-0
-conda activate smartSlurmEnv
+checkRun grid              # print the status grid and exit
+checkRun why b2            # diagnose the job at address b2 and exit
+checkRun log b2            # print the path to that job's .out
+checkRun --json            # a diagnose.sh JSON record for every job (for scripts)
 ```
 
-`checkRun` then generates and displays a DAG of the pipeline's jobs.
+`checkRunGrid` is the underlying render/resolve engine; `checkRun` calls it.
 
-> [!NOTE]
-> To keep things fast, `checkRun` caches the `squeue` result for ~2 minutes and a generated DAG for ~10 minutes. Use `r` at Level 1 to force a refresh.
+**Typical debugging flow:** open `checkRun`, find a cell showing `X` (or `x`/`?`), type `d <addr>` to get the cause and suggested action, then `<addr>` to read the log.
+
+## diagnose.sh: explain one job
+
+`diagnose.sh` answers "what happened, why, and what to do" for a single job. It is authoritative about *whether* a job succeeded (`.success` + sacct) and heuristic about *why* (an ordered pattern table over the tool's output region), and it never asserts a cause without an evidence line.
+
+```bash
+diagnose.sh <flag> [--log DIR] [--json]
+# e.g.
+diagnose.sh 1.0.normalize.alpha
+diagnose.sh 1.0.normalize.alpha --json     # machine-readable record
+```
+
+The human report gives a one-line state/action header (e.g. `[OK]`, `[RETRYABLE]`, `[DOOMED]`, `[INSPECT]`), a plain-language summary, the evidence line it keyed on (with file:line), and the log path. The `--json` record carries fields `state, category, action, retryable, evidence, summary, log` — consume it by field name.
+
+## Rerunning a pipeline
+
+Re-issue the **same** `runAsPipeline` command to rerun. The unchanged script reuses its converted driver (same md5), so failed and never-run steps rerun automatically; already-successful steps prompt once, up front, with a single menu:
+
+| Choice | Effect |
+|--------|--------|
+| `all` | re-run everything, including completed steps. |
+| `failed` *(default)* | re-run only failed/incomplete steps; keep successful ones. |
+| `step` → *N* | re-run from a chosen step onward (offers only steps that actually completed). |
+| `cancel` | do nothing. |
+
+For scripts/CI, set the choice non-interactively with the (ephemeral) `smartSlurmRerun` environment variable:
+
+```bash
+smartSlurmRerun=failed        runAsPipeline --script "..." ...   # default
+smartSlurmRerun=all           runAsPipeline --script "..." ...
+smartSlurmRerun=fromStep:3    runAsPipeline --script "..." ...
+```
+
+Rerunning a step re-runs its downstream steps too (their dependency is satisfied by a fresh upstream run).
 
 ## cancelAllJobs
 
@@ -778,6 +848,12 @@ cancelAllJobs
 <summary><b>Do later jobs wait for the first jobs before getting estimated resources?</b></summary>
 
 If a step's jobs are independent, `runAsPipeline` submits them all at once, lets the first `firstBatchCount` (5) run, and holds the rest. Once early jobs finish and produce ≥3 records, the held jobs are released with estimated resources.
+</details>
+
+<details>
+<summary><b>Should I use `#@end` or the blank-line close?</b></summary>
+
+Prefer **`#@end`** for anything beyond a trivial one-liner: the body is written verbatim to a per-job script, so `awk`, quotes, heredocs, multi-line bodies, and command substitution all work. The legacy blank-line close flattens the body into a single `--wrap` string, which mangles quoted whitespace and multi-line bodies. A pipeline is all-one-mode: if it uses `#@end` anywhere, every block must close with `#@end`.
 </details>
 
 <details>
@@ -799,19 +875,13 @@ Yes — dot-join them in the marker (`#@2,1,find,,input1.input2,...`) or use a s
 <details>
 <summary><b>Fewer or no emails?</b></summary>
 
-Add `noSuccEmail` (failures only) or `noEmail` (none) with `--email`:
-```bash
-runAsPipeline --script "bashScriptV2.sh 123" --sbatch-options "sbatch -p short -t 10:0 -c 1" --tmp useTmp --email noSuccEmail
-```
+Add `noSuccEmail` (failures only) or `noEmail` (none) with `--email`.
 </details>
 
 <details>
 <summary><b>Can I drop the command-line sbatch options?</b></summary>
 
-Yes, **if every step sets its own** `sbatchOptions`. Then omit `--sbatch-options`:
-```bash
-runAsPipeline --script "bashScriptV2.sh 123" --tmp useTmp
-```
+Yes, **if every step sets its own** `sbatchOptions`. Then omit `--sbatch-options`.
 </details>
 
 <details>
@@ -925,12 +995,12 @@ sbatchAndTop job.sh
 
 # Upgrading
 
-`backup your config.txt before upgrade`:
+Back up your config before upgrading, then pull:
 
 ```bash
 cd ~/SmartSlurm
 cp ~/.smartSlurm/config/config.txt ~/.smartSlurm/config/config.txt.backup
 git pull
 
-# the modify the new config.txt manually
+# then re-apply any personal changes to the new config.txt manually
 ```
