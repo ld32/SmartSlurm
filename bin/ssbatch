@@ -760,7 +760,7 @@ else
             else 
 
                 # this is never called? Because runAsPipeline usa --wrap ? 
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir && touch $succFlag" >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir || : ; }" >> $job
             fi     
         fi
     fi
