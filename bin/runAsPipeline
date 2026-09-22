@@ -214,24 +214,43 @@ echo "xsubd=\"$SBATCH_OPTIONS\"" >> $run
 # the full per-job firehose; quiet = errors + final summary only. No CR / no
 # in-place rewrite: each step appends "<step><glyph> " to the current row and a
 # newline closes the row. Glyphs: + submitted, - kept(skipped), H held, X error.
-echo "ssV=\"\${ssV:-normal}\"" >> $run
-echo "ssCur=''; ssRowOpen=0; ssNs=0; ssSub=0; ssKept=0; ssHeld=0; ssErr=0" >> $run
-echo "ssTick() {  # key label step glyph" >> $run
-echo "  case \"\$4\" in +) ssSub=\$((ssSub+1));; -) ssKept=\$((ssKept+1));; H) ssHeld=\$((ssHeld+1));; X) ssErr=\$((ssErr+1));; esac" >> $run
-echo "  [ \"\$ssV\" = normal ] || return 0" >> $run
-echo "  if [ \"\$1\" != \"\$ssCur\" ]; then" >> $run
-echo "    [ \"\$ssRowOpen\" = 1 ] && printf '\\n'" >> $run
-echo "    ssCur=\"\$1\"; ssNs=\$((ssNs+1))" >> $run
-echo "    lbl=\"\$2\"; lbl=\$(echo \$lbl); [ -z \"\$lbl\" ] && lbl='(no input)'" >> $run
-echo "    printf '  %-24s ' \"\$lbl\"; ssRowOpen=1" >> $run
-echo "  fi" >> $run
-echo "  printf '%s%s ' \"\$3\" \"\$4\"" >> $run
-echo "}" >> $run
-echo "ssSummary() {" >> $run
-echo "  [ \"\$ssRowOpen\" = 1 ] && printf '\\n'; ssRowOpen=0" >> $run
-echo "  [ \"\$ssV\" = quiet ] && return 0" >> $run
-echo "  printf 'Submitted %s, kept %s, error %s.  Details: less .smartSlurm.log  |  checkRun to monitor.\\n' \"\$ssSub\" \"\$ssKept\" \"\$ssErr\"" >> $run
-echo "}" >> $run
+cat >> $run <<'SSHELPERS'
+ssV="${ssV:-normal}"
+ssCur=''; ssRowOpen=0; ssLastStep=''
+ssSub=0; ssKept=0; ssErr=0; ssHdr=0
+ssG() { case "$1" in
+    +) g=$'\033[32m\342\234\223\033[0m' ;;
+    X) g=$'\033[31m\342\234\227\033[0m' ;;
+    -) g=$'\033[2m-\033[0m' ;;
+    *) g="$1" ;; esac; }
+ssHeader() { [ "$ssHdr" = 1 ] && return 0; ssHdr=1; [ "$ssV" = normal ] || return 0
+  printf '  %-16s %s\n' sample steps; echo ---------------------------------------------------------; }
+ssStart() {  # key label step -- print the step number BEFORE the submit (live "working on N")
+  [ "$ssV" = normal ] || return 0
+  ssHeader
+  if [ "$1" = __final ]; then grp=__final; else x="${1#.}"; grp=".${x%%.*}"; fi
+  if [ "$grp" != "$ssCur" ]; then
+    [ "$ssRowOpen" = 1 ] && printf '\n'
+    ssCur="$grp"; ssLastStep=''
+    if [ "$grp" = __final ]; then lbl="$2"; else lbl="${grp#.}"; fi
+    lbl=$(echo $lbl); [ -z "$lbl" ] && lbl='(no input)'
+    printf '  %-16s' "$lbl"; ssRowOpen=1
+  fi
+  if [ "$3" != "$ssLastStep" ]; then printf ' %s' "$3"; ssLastStep="$3"; fi
+  return 0
+}
+ssMark() {  # glyph -- append the outcome glyph once submission returns; tally
+  case "$1" in +) ssSub=$((ssSub+1)) ;; -) ssKept=$((ssKept+1)) ;; X) ssErr=$((ssErr+1)) ;; esac
+  [ "$ssV" = normal ] || return 0
+  ssG "$1"; printf '%s' "$g"
+  return 0
+}
+ssSummary() {
+  [ "$ssRowOpen" = 1 ] && printf '\n'; ssRowOpen=0
+  [ "$ssV" = quiet ] && return 0
+  printf 'Submitted %s, kept %s, error %s.  Details: less .smartSlurm.log  |  checkRun to monitor.\n' "$ssSub" "$ssKept" "$ssErr"
+}
+SSHELPERS
 
 
 echo "rm \$smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
@@ -251,7 +270,7 @@ echo "[ -f \$smartSlurmLogDir/allJobs.txt ] && cp \$smartSlurmLogDir/allJobs.txt
 echo "rm -r \$smartSlurmLogDir/downsteamjob.adjusting \$smartSlurmLogDir/job.adjusting.lock \$smartSlurmLogDir/requeue.start \$smartSlurmLogDir/skipAllSuccessJobs*.txt \$smartSlurmLogDir/reRunAllSuccessJobs*.txt \$smartSlurmLogDir/*requeued* 2>/dev/null" >> $run
 
 echo "[ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n\" job_id depend_on job_flag program reference inputs comment > \$smartSlurmLogDir/allJobs.txt || echo -e \"\n\`date\`\" >> \$smartSlurmLogDir/allJobs.txt">> $run
-echo "[ \"\$ssV\" != quiet ] && echo ---------------------------------------------------------" >> $run
+echo "[ \"\$ssV\" = verbose ] && echo ---------------------------------------------------------" >> $run
 
 [ "$TMP_MODE" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
 
@@ -592,6 +611,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         # filename label (the job's input; falls back to the step name).
         echo "${space}ssKey=\"$loper\"; [ -z \"\$ssKey\" ] && ssKey='__final'" >> $run
         echo "${space}ssLabel=\"${inputs//./ $}\"; ssLabel=\$(echo \$ssLabel); { [ -z \"\$ssLabel\" ] || [ \"\$ssLabel\" = none ]; } && ssLabel='$name'" >> $run
+        echo "${space}ssStart \"\$ssKey\" \"\$ssLabel\" \"$step\"" >> $run
 
         if [ "$blockClosedBy" = end ]; then
             # ---- M4 scripts-on-disk (explicit #@end block) ----
@@ -648,16 +668,16 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
 
         echo "${space}if [[ \"\$id\" == *skipThisJob* ]]; then"  >> $run
         echo "${space}    [ \"\$ssV\" = verbose ] && echo -e \"\$green\" " >> $run 
-        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"-\"" >> $run
+        echo "${space}    ssMark \"-\"" >> $run
         echo "${space}    jobID[$step]=\"\"" >> $run
         echo "${space}elif [[ \"\$id\" == *\"thisJobStillRunning\"* ]]; then" >> $run
         echo "${space}    id=\${id##*thisJobStillRunning } && jobID[$step]=\${id%% *}">> $run
-        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"+\"" >> $run
+        echo "${space}    ssMark \"+\"" >> $run
 
         echo "${space}elif [[ \"\$id\" =~ ^[0-9]+\$ ]]; then"  >> $run
         #echo "${space}    touch \$cwd/\$flag.submitted" >> $run
         echo "${space}    alljobs=\"\$alljobs \$id\"" >> $run
-        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"+\"" >> $run
+        echo "${space}    ssMark \"+\"" >> $run
 
         # # tell this is out of the loop for the depending job (de), so that we clear the job id list for the next step with depends on 'de'
         # if [[ "$de" == *\.* ]]; then
@@ -675,7 +695,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         echo "${space}    [ -z \"\${jobIDs[$step]}\" ] && jobIDs[$step]=\$id || jobIDs[$step]=\${jobIDs[$step]}:\$id"  >> $run
 
         echo "${space}else" >> $run
-        echo "${space}    ssTick \"\$ssKey\" \"\$ssLabel\" \"$step\" \"X\"; [ \"\$ssRowOpen\" = 1 ] && printf '\\n' && ssRowOpen=0" >> $run
+        echo "${space}    ssMark \"X\"" >> $run
         echo "${space}    echo -e \"\$red\" && echo -e \"\\033[0;31mJob \$flag is not submitted!\\033[0m\""  >> $run
         #echo "${space}    echo Please check .smartSlurm.log for detail logs." >> $run
         echo "${space}    exit 1"  >> $run
