@@ -2,14 +2,36 @@
 
 #set -x
 
+# checkRun -- interactive controller for SmartSlurm / runAsPipeline runs.
+#
+# Users launch it as `checkRun` (no arguments). All navigation happens by
+# keyboard INSIDE the tool. The 2-D grid is the persistent home screen and is
+# redrawn on every return; addresses (b2, e3) and plain job numbers are entered
+# at the same prompt. checkRunGrid (render + resolve engine) and diagnose.sh
+# (per-job M2 diagnosis) are internal plumbing called from here, never by the
+# user.
+#
+# Home keys:
+#   <addr>        view the job's .out              (addr = b2 / e3 / a number)
+#   <addr>d       diagnose the job (M2 card)
+#   <addr>a       ask AI (diagnosis + tool output)
+#   <addr>r       browse the job's raw files (.out/.err/.sh/.success/...)
+#   l             full list view (every legacy capability)
+#   g             workflow / DAG
+#   p             show/hide pending
+#   <Enter>       refresh data + redraw
+#   q             back (folder list)      qq   quit
+
 showPending=""
 
 submttingLog=.smartSlurm.log
 
-if [[ $1 == "-h" ||  $i == "--help" ]]; then
-    echo "checkRun: This script can guide the user to debug smartSlurm runs." 
-    exit 1; 
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "checkRun: interactive helper to inspect/debug SmartSlurm runs."
+    echo "Usage: checkRun          (no arguments; navigate with the keyboard)"
+    exit 0
 fi
+
 if [ -f ~/.smartSlurm/config/config.txt ]; then
     source ~/.smartSlurm/config/config.txt
 else
@@ -23,49 +45,387 @@ fi
 # Path to the setuid AI helper binary (holds the HMS AI token securely)
 _AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
 
-# ---- M3a/M3b: non-interactive front-ends -----------------------------------
-# New verbs dispatch to the grid view (M3a), the diagnosis engine (M2), and the
-# Bare `checkRun` keeps the interactive browser below, now
-# with a grid dashboard shown first. The AI path further down is untouched.
+# Engine locations (siblings in the same bin/). checkRun never asks the user to
+# invoke these; it calls them itself.
 _bindir=$(dirname $0)
 _deflog="${smartSlurmLogDir:-smartSlurmLog}"
-case "$1" in
-  grid)   shift; exec "$_bindir/checkRunGrid" --log "$_deflog" "$@" ;;
-  why)    shift; exec "$_bindir/checkRunGrid" --log "$_deflog" why "$@" ;;
-  log)    shift
-          _p=$("$_bindir/checkRunGrid" --log "$_deflog" "$@" 2>/dev/null | grep -m1 '\.out *$' | tr -d ' ')
-          [ -n "$_p" ] && exec less "$_p"
-          echo "no log for address: $*"; exit 1 ;;
-  --json) for _f in $(awk 'NR>1&&NF>=3{print $3}' "$_deflog/allJobs.txt" 2>/dev/null); do
-            "$_bindir/diagnose.sh" "$_f" --log "$_deflog" --json
-          done; exit 0 ;;
-esac
 
- 
+# scratch file for capturing engine stderr on a failed resolve
+_errf=$(mktemp 2>/dev/null || echo /tmp/checkRun.$$.err)
+trap 'rm -f "$_errf"' EXIT
+
+# ===========================================================================
+# helpers
+# ===========================================================================
+
+pause() { echo -en "${GREY}[press Enter]${NC} "; read -p "" _ </dev/tty; }
+
+# clear the screen (used on first paint and for full-screen sub-views).
+_clear() { clear 2>/dev/null || printf '\033[H\033[2J'; }
+# seamless in-place redraw: move cursor home WITHOUT erasing, overwrite, then
+# erase whatever is left below. pln prints a line and clears to end-of-line so a
+# shorter line never leaves stale characters behind.
+_home() { printf '\033[H'; }
+pln()   { printf '%b\033[K\n' "$1"; }
+
+# is $1 a grid/linear address?  row-letters+step (a3), experiment (E4, shown
+# capitalised; e4 also accepted), a plain number (3), or the reversed row form
+# (3a) — verbs are separate tokens, so a lone token with a digit is an address.
+_is_addr() { [[ "$1" =~ ^([a-zA-Z]*[0-9]+|[0-9]+[a-zA-Z]+)$ ]]; }
+
+# parse_input LINE  -> sets ADDR and VERB (v=view d=diagnose a=ai r=raw).
+# Forgiving about order and spacing so every natural form works:
+#     b2            view b2                 (bare address = view)
+#     d b2 / b2 d   diagnose b2             (verb + address, either order)
+#     b2d           diagnose b2             (glued, for speed)
+#     d2 / 2d       d2 is an address (view); 2d is "diagnose job 2"
+# returns 0 with ADDR+VERB set; 2 for a lone verb (caller prompts for address);
+# 1 if it isn't an action at all.
+# parse_input LINE  -> sets ADDR and VERB (v=view d=diagnose a=ai r=raw).
+# An action verb is ALWAYS a separate token, so an address and a verb can never
+# collide:
+#     a3            view a3                 (bare address = view)
+#     d a3 / a3 d   diagnose a3             (verb + address, either order)
+#     d / a / r     lone verb               (caller prompts for the address)
+# A single token is only ever an address or a lone verb; e.g. "3a" is NOT
+# "job 3 + AI" — it isn't a valid address at all (addresses are letters-then-
+# digits), so it errors instead of silently running the wrong action.
+# returns 0 (ADDR+VERB set), 2 (lone verb), or 1 (not an action).
+parse_input() {
+    ADDR=""; VERB=""
+    local oldifs="$IFS"; IFS=' '; set -- $1; IFS="$oldifs"
+    if [ $# -eq 1 ]; then
+        case "$1" in
+            [vdar]) VERB="$1"; return 2;;               # lone verb
+        esac
+        if _is_addr "$1"; then ADDR="$1"; VERB="v"; return 0; fi   # bare address = view
+        return 1
+    elif [ $# -eq 2 ]; then                             # verb + address, either order
+        if   [[ "$1" =~ ^[vdar]$ ]] && _is_addr "$2"; then VERB="$1"; ADDR="$2"; return 0
+        elif [[ "$2" =~ ^[vdar]$ ]] && _is_addr "$1"; then VERB="$2"; ADDR="$1"; return 0
+        fi
+        return 1
+    fi
+    return 1
+}
+
+# resolve_addr ADDR FOLDER -> prints flag(s) one per line (stdout), or the
+# engine's error message; returns non-zero on miss. Single source of truth is
+# checkRunGrid --resolve.
+resolve_addr() {
+    "$_bindir/checkRunGrid" --resolve "$1" --log "$2" 2>"$_errf"
+}
+
+# pick_flag FLAGS -> echoes one chosen flag; auto when single, prompts when many
+# (prompt text goes to stderr so the chosen flag is the only thing on stdout).
+# returns non-zero if the user cancels.
+pick_flag() {
+    local flags="$1" n i sel
+    n=$(printf '%s\n' "$flags" | grep -c .)
+    if [ "$n" -le 1 ]; then printf '%s' "$flags"; return 0; fi
+    echo "This address backs $n jobs:" >&2
+    i=1
+    printf '%s\n' "$flags" | while read -r f; do echo "  $i) $f" >&2; i=$((i+1)); done
+    echo -en "Select 1..$n (or q to cancel): " >&2
+    read -p "" sel </dev/tty
+    [ "$sel" = q ] && return 1
+    case "$sel" in ''|*[!0-9]*) return 1;; esac
+    { [ "$sel" -ge 1 ] && [ "$sel" -le "$n" ]; } || return 1
+    printf '%s\n' "$flags" | sed -n "${sel}p"
+}
+
+view_log() {   # FLAG FOLDER
+    local out="$2/$1.out"
+    if [ -f "$out" ]; then less "$out"
+    else MSG="${YELLOW}No .out log for $1${NC}"; fi
+}
+
+diagnose_card() {   # FLAG FOLDER
+    _clear
+    "$_bindir/diagnose.sh" "$1" --log "$2"
+    echo; pause
+}
+
+# ai_explain FLAG FOLDER -- feeds the M2 card + M1 tool region to the AI helper.
+ai_explain() {
+    local flag="$1" folder="$2" logFile="$2/$1.out" region
+    if [ ! -x "$_AI_CALL" ]; then MSG="${RED}AI unavailable (ai_call not found or not executable).${NC}"; return; fi
+    if [ ! -f "$logFile" ]; then MSG="${YELLOW}No .out log for $flag${NC}"; return; fi
+    _clear
+    echo -e "${BLUE}Asking AI to analyze $flag...${NC}"
+    {
+        echo "I am running a Slurm pipeline with SmartSlurm. A job has failed. Below is an automated diagnosis, then the job's own tool output. Explain what went wrong and how to fix it; be specific and concise."
+        echo ""
+        echo "=== Job: $flag ==="
+        echo ""
+        echo "--- SmartSlurm automated diagnosis ---"
+        "$_bindir/diagnose.sh" "$flag" --log "$folder" 2>/dev/null || echo "(diagnosis unavailable)"
+        echo ""
+        echo "--- Tool output ---"
+        # M1: the tool's own output sits between these sentinels; fall back to a
+        # plain tail for legacy logs that predate them.
+        region=$(awk '/SmartSlurm step output:/{f=1;next} /SmartSlurm job report:/{f=0} f' "$logFile")
+        if [ -n "$region" ]; then echo "$region" | tail -n 150; else tail -n 150 "$logFile"; fi
+    } | "$_AI_CALL" || {
+        echo -e "${RED}AI call failed.${NC}"
+        echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."
+    }
+    echo; pause
+}
+
+# browse_raw FLAG FOLDER -- the raw-file picker (same mechanism as before: list
+# the job's files, pick one to page). Numbering is built from the same list it
+# selects from, so the number shown always maps to the file opened.
+browse_raw() {
+    local flag="$1" folder="$2" f base label xxx
+    while true; do
+        _clear
+        local files=(); local n=0
+        echo "Raw files for $flag:"
+        for f in "$folder/$flag"*; do
+            [ -e "$f" ] || continue
+            n=$((n+1)); files[$n]="$f"; base="${f##*/}"
+            case "$f" in
+                *.adjust)            label="adjust   (adjusted-resources log)";;
+                *.out)               label="out      (stdout/stderr)";;
+                *.out.*)             label="${base#*.out.}      (job-id marker)";;
+                *.err)               label="err      (stderr)";;
+                *.sh)                label="sh       (runAsPipeline converted script)";;
+                *.success)           label="success  (exit-status marker, no contents)";;
+                *.failed.requeued.*) label="${base##*.failed.}   (requeue marker)";;
+                *.failed)            label="failed   (exit-status marker, no contents)";;
+                *)                   label="$base";;
+            esac
+            printf "  ${GREEN}%d${NC} %s\n" "$n" "$label"
+        done
+        if [ "$n" -eq 0 ]; then echo "  (no files)"; pause; return; fi
+        echo
+        echo -e "Select a file to view, ${RED}q${NC} to go back, ${RED}qq${NC} to quit:"
+        read -p "" xxx </dev/tty
+        [ "$xxx" = q ] && return
+        [ "$xxx" = qq ] && exit
+        case "$xxx" in ''|*[!0-9]*) echo -e "${RED}Please enter a number.${NC}"; continue;; esac
+        { [ "$xxx" -ge 1 ] && [ "$xxx" -le "$n" ]; } || { echo -e "${RED}Out of range. 1..$n${NC}"; continue; }
+        less "${files[$xxx]}"
+    done
+}
+
+# workflow_dag FOLDER -- build (if stale) and display the DAG. Unchanged logic.
+workflow_dag() {
+    local folder="$1" cache_mtime current_time
+    if [ -f "$folder/dag.svg" ]; then
+        cache_mtime=$(stat -c %Y "$folder/dag.svg"); current_time=$(date +%s)
+        [ $((current_time - cache_mtime)) -gt 600 ] && rm -f "$folder/dag.svg"
+    fi
+    if [ ! -f "$folder/dag.svg" ]; then
+        module load conda/miniforge3/24.11.3-0 2>/dev/null
+        conda activate smartSlurmEnv 2>/dev/null
+        workflowPlot.py "$folder" && dot -Tsvg "$folder/jobs.dot" -o "$folder/dag.svg"
+    fi
+    if [ -f "$folder/dag.svg" ]; then display "$folder/dag.svg"
+    else echo -e "${YELLOW}Could not build the workflow graph.${NC}"; pause; fi
+}
+
+# ---------------------------------------------------------------------------
+# list_view FOLDER -- the legacy status list with every capability preserved:
+# per-row M2 summary, AI (Na), workflow (w), pending toggle (p), raw browsing.
+# Retired as the default (behind `l`) but otherwise faithful to the old browser.
+# ---------------------------------------------------------------------------
+list_view() {
+    local logFolder="$1" lines line id name error xx aiJobNum aiJob flag
+    lines=$(grep -v ^job_id "$logFolder/allJobs.txt" | awk 'NF>2{print $1, $2, $3}')
+
+    local toShow="Summary for jobs in allJobs.txt:"
+    IFS=$'\n'
+    for line in $lines; do
+        if [ ! -z "${line/ /}" ]; then
+            id=${line%% *}; name=${line##* }
+            error=$("$_bindir/diagnose.sh" "$name" --log "$logFolder" --json 2>/dev/null | grep -o '"summary":"[^"]*"' | cut -d'"' -f4)
+            [ -z "$error" ] && error='(no diagnosis)'
+            line="$line $error"
+            if   [ -f "$logFolder/$name.success" ];               then toShow="$toShow\n${NC}Done $line"
+            elif [ -f "$logFolder/$name.failed" ];                then toShow="$toShow\n${RED}Fail${NC} $line"
+            elif [[ "$activeJobs" == *$id-R* ]];                  then toShow="$toShow\n${GREEN}Runn${NC} $line"
+            elif [[ "$activeJobs" == *$id-P* ]];                  then toShow="$toShow\n${YELLOW}Pend${NC} $line"
+            elif [ -f "$logFolder/$name.failed.requeued.1.time" ];then toShow="$toShow\n${ORANGE}Requ${NC} $line"
+            else toShow="$toShow\n${RED}Unkn${NC} $line"
+            fi
+        fi
+    done
+
+    while true; do
+        _clear
+        echo "Available logs:"
+        local count1=1 i
+        IFS=$'\n'
+        for i in $(echo -e "$toShow" | tail -n +2); do
+            if [ -z "$showPending" ]; then
+                [[ "$i" != *Pend* ]] && echo -e "$GREEN$count1${NC} ${i#*\/}"
+            else
+                echo -e "$GREEN$count1${NC} ${i#*\/}"
+            fi
+            count1=$((count1 + 1))
+        done
+        echo "Current working folder: $logFolder"
+        if [ -x "$_AI_CALL" ]; then
+            echo -e "Select a job number to view its raw files, or append ${BLUE}a${NC} for AI (e.g. ${BLUE}1a${NC}). ${RED}w${NC} workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} back, ${RED}qq${NC} quit:"
+        else
+            echo -e "Select a job number to view its raw files. ${RED}w${NC} workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} back, ${RED}qq${NC} quit:"
+            echo -e "  ${YELLOW}(AI unavailable: ai_call not found or not executable.)${NC}"
+        fi
+        read -p "" xx </dev/tty
+
+        [ "$xx" = q ] && return
+        [ "$xx" = qq ] && exit
+        if [ "$xx" = p ]; then [ -z "$showPending" ] && showPending=yes || showPending=""; continue; fi
+        if [ "$xx" = w ]; then workflow_dag "$logFolder"; continue; fi
+
+        if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
+            aiJobNum="${BASH_REMATCH[1]}"
+            { [ "$aiJobNum" -gt 0 ] && [ "$aiJobNum" -lt "$count1" ]; } || { echo -e "${RED}Out of range. 1..$((count1-1))${NC}"; continue; }
+            aiJob=$(echo -e "$toShow" | tail -n +2 | head -n "$aiJobNum" | tail -n1 | awk '{print $4}')
+            ai_explain "$aiJob" "$logFolder"
+            continue
+        fi
+
+        case "$xx" in ''|*[!0-9]*) echo -e "${RED}Please enter a number.${NC}"; continue;; esac
+        { [ "$xx" -gt 0 ] && [ "$xx" -lt "$count1" ]; } || { echo -e "${RED}Out of range. 1..$((count1-1))${NC}"; continue; }
+        flag=$(echo -e "$toShow" | tail -n +2 | head -n "$xx" | tail -n1 | awk '{print $4}')
+        browse_raw "$flag" "$logFolder"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# home_loop FOLDER -- the grid is the home screen. It is CLEARED and redrawn in
+# place each iteration (no scrolling/flooding). One prompt accepts addresses and
+# plain numbers; actions are "<verb> <address>" in either order (or a bare
+# address to view). Transient notices ride in $MSG and appear under the grid.
+# ---------------------------------------------------------------------------
+home_loop() {
+    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact
+    MSG=""
+    while true; do
+        # Capture the grid once, with color forced on (a pipe is not a tty, so the
+        # engine would otherwise drop color). No 2>/dev/null: a broken engine must
+        # be visible. On real failure -> list view.
+        grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>&1)
+        if [ $? -ne 0 ]; then
+            _clear; echo -e "${YELLOW}(grid engine unavailable -- falling back to list view)${NC}"
+            list_view "$logFolder"; return
+        fi
+
+        # ---- height check: does the full frame fit? if not, compact the chrome
+        # and use a full clear (rather than cursor-home overwrite, which misbehaves
+        # once content scrolls) so a tall grid degrades cleanly instead of stacking.
+        others=$((nRunDirs - 1)); [ "$others" -lt 0 ] && others=0
+        abspath="$(cd "$logFolder" 2>/dev/null && pwd || echo "$logFolder")"
+        term_lines="${LINES:-$(tput lines 2>/dev/null || echo 24)}"
+        cap_lines=$(printf '%s\n' "$grid" | wc -l)
+        # top band (~4) + engine capture + full usage (~8) + margins
+        if [ $((cap_lines + 14)) -gt "$term_lines" ]; then compact=1; else compact=; fi
+
+        if [ -n "$compact" ] || [ -n "$_first" ]; then _clear; _first=""; else _home; fi
+
+        # ---- location band on top: which run is on screen (full path) ----------
+        _rule
+        pln "${BOLD}Showing run:${NC} ${abspath}"
+        _rule
+        [ "$others" -gt 0 ] && pln "${GREY}--> ${others} other run(s) available — press ${NC}${BOLD}o${NC}${GREY} to switch${NC}"
+        pln ""
+
+        # ---- engine output (Found / Status / grid / experiment / boxed legend) -
+        printf '%s\n' "$grid" | sed "s/\$/$(printf '\033[K')/"
+        pln ""
+
+        # ---- command area (full when it fits, one compact line when tight) -----
+        if [ -n "$compact" ]; then
+            pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+        else
+            pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
+            pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
+            pln "   ${BOLD}d b2${NC}          diagnose        ${GREY}(why it failed / what to do)${NC}"
+            [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
+            pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
+            pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
+            pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+        fi
+
+        pln ""
+        pln "$MSG"; MSG=""            # always one (EOL-cleared) notice line -> no stale text
+        printf '\033[J'              # erase anything left below from a taller prior frame
+
+        read -p "> " tok </dev/tty
+
+        # single-word commands first
+        case "$tok" in
+            "")   loadData force; _refresh_others; continue ;;   # Enter = LIVE refresh + redraw
+            q|qq) exit ;;                                   # grid home is top level: quit
+            o)    if run_switcher; then
+                      if [ -d "$SWITCH_SEL" ]; then
+                          if _dir_ready "$SWITCH_SEL"; then logFolder="$SWITCH_SEL"
+                          else MSG="${YELLOW}That run has no job breakdown yet.${NC}"; fi
+                      elif [ -f "$SWITCH_SEL" ]; then less "$SWITCH_SEL"; fi
+                  fi
+                  continue ;;
+            l)    list_view "$logFolder"; continue ;;
+            g)    workflow_dag "$logFolder"; continue ;;
+            p)    if [ -z "$showPending" ]; then showPending=yes; MSG="${GREY}Pending jobs now shown in the list view.${NC}"
+                  else showPending=""; MSG="${GREY}Pending jobs now hidden in the list view.${NC}"; fi
+                  continue ;;
+        esac
+
+        parse_input "$tok"
+        case $? in
+          2)  # lone verb: ask for the address
+              case "$VERB" in v) vn="view";; d) vn="diagnose";; a) vn="ask AI about";; r) vn="raw files for";; esac
+              echo -en "Address to $vn (e.g. ${BOLD}b2${NC}), or blank to cancel: "
+              read -p "" addr </dev/tty
+              [ -z "$addr" ] && continue
+              if _is_addr "$addr"; then ADDR="$addr"; else MSG="${RED}Not an address: '$addr'${NC}"; continue; fi
+              ;;
+          1)  MSG="${RED}Did not understand '$tok'. Type an address (e.g. ${BOLD}b2${NC}${RED} or ${BOLD}2b${NC}${RED}), or 'd b2' to diagnose; l/g/p/o/q/qq for menus.${NC}"
+              continue ;;
+        esac
+
+        flags=$(resolve_addr "$ADDR" "$logFolder")
+        if [ -z "$flags" ]; then
+            MSG="${RED}$(cat "$_errf" 2>/dev/null)${NC}"
+            continue
+        fi
+
+        flag=$(pick_flag "$flags") || continue
+
+        case "$VERB" in
+            v)   view_log      "$flag" "$logFolder" ;;
+            d)   diagnose_card "$flag" "$logFolder" ;;
+            a)   ai_explain    "$flag" "$logFolder" ;;
+            r)   browse_raw    "$flag" "$logFolder" ;;
+        esac
+    done
+}
+
+# ===========================================================================
+# loadData -- enumerate log folders/files and build the picker list (verbatim).
+# ===========================================================================
 function loadData() {
-    logFolders=`ls -d -t $smartSlurmLogDir $smartSlurmLogDir.* 2>/dev/null; ls -d -t $submttingLog* 2>/dev/null`
+    logFolders=`ls -d -t ${smartSlurmLogDir:-smartSlurmLog} ${smartSlurmLogDir:-smartSlurmLog}.* 2>/dev/null; ls -d -t $submttingLog* 2>/dev/null`
 
-    [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage 
+    [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage
 
-    IFS=$'\n' 
+    IFS=$'\n'
 
-    # Cache file path and TTL (2 minutes)
+    # squeue snapshot, cached (2 min TTL) so redraws don't hammer the scheduler.
+    # Called as `loadData force` (e.g. on an explicit refresh) to bypass the cache
+    # and hit squeue live. An unreadable cache is treated as a miss; an empty one
+    # is valid (it just means no active jobs).
     SQUEUE_CACHE_FILE="squeue_cache.txt"
     SQUEUE_CACHE_TTL=120
-
-    # Check if cache exists and is recent enough
-    if [ -f "$SQUEUE_CACHE_FILE" ]; then
-        cache_mtime=$(stat -c %Y "$SQUEUE_CACHE_FILE")
-        current_time=$(date +%s)
-        if [ $((current_time - cache_mtime)) -lt $SQUEUE_CACHE_TTL ]; then
-            activeJobs=$(cat "$SQUEUE_CACHE_FILE")
-        else
-            activeJobs=$(squeue -u $USER -t PD,R --noheader -o "%.18i-%t")
-            echo "$activeJobs" > "$SQUEUE_CACHE_FILE"
-        fi
+    if [ "${1:-}" != force ] && [ -r "$SQUEUE_CACHE_FILE" ] && \
+       [ $(( $(date +%s) - $(stat -c %Y "$SQUEUE_CACHE_FILE" 2>/dev/null || echo 0) )) -lt "$SQUEUE_CACHE_TTL" ]; then
+        activeJobs=$(cat "$SQUEUE_CACHE_FILE" 2>/dev/null)
     else
-        activeJobs=$(squeue -u $USER -t PD,R --noheader -o "%.18i-%t")
-        echo "$activeJobs" > "$SQUEUE_CACHE_FILE"
+        activeJobs=$(squeue -u $USER -t PD,R --noheader -o "%.18i-%t" 2>/dev/null)
+        printf '%s\n' "$activeJobs" > "$SQUEUE_CACHE_FILE" 2>/dev/null
     fi
 
     RED='\033[0;31m'
@@ -75,294 +435,202 @@ function loadData() {
     YELLOW='\033[0;33m'
     ORANGE='\033[0;35m'
     GREY='\033[0;37m'
+    BOLD='\033[1m'
 
-    records=""; count=1; all=n 
+    records=""; count=1; all=n; nRunDirs=0
     for i in $logFolders; do
-        
-        if [ -d $i ]; then 
-            if [ -f $i/allJobs.txt ]; then 
+
+        if [ -d $i ]; then
+            nRunDirs=$((nRunDirs + 1))
+            if [ -f $i/allJobs.txt ]; then
              nJobs=$(grep -v ^job_id $i/allJobs.txt | wc -l) || nJobs=0
              lastRow=`tail -n 1 $i/allJobs.txt`
              if [[ $lastRow == 0* ]]; then # job id starts with 0
                  records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs ${RED}dry run${NC} jobs submitted")\n"
-             else 
+             else
                  records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "$nJobs jobs submitted")\n"
              fi
-            else 
+            else
                 records="$records${RED}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " folder: $i" "0 jobs submitted")\n"
             fi
 
-
-           
             count=$((count + 1))
 
-        elif [ -f "$i" ]; then 
+        elif [ -f "$i" ]; then
             nJobs=$(grep "^Submitted batch job" $i | wc -l)
 
-            if grep 'dryrun' $i >/dev/null 2>&1; then 
+            if grep 'dryrun' $i >/dev/null 2>&1; then
                 records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs ${RED}dry run${NC} jobs submitted")\n"
-            else 
+            else
                 records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
             fi
-            
-            #records="$records${GREEN}$(printf "%-2s\n" $count)${NC})$(printf "%-50s %-15s\n" " file:   $i" "$nJobs jobs submitted")\n"
-            count=$((count + 1))    
-        fi    
+            count=$((count + 1))
+        fi
     done
 }
 
-loadData
+# ===========================================================================
+# run resolution: launch on the most recent READY run; otherwise wait.
+# ===========================================================================
 
-# M3a: show the grid dashboard for the most recent run before browsing.
-if [ -d "$_deflog" ] && [ -f "$_deflog/allJobs.txt" ]; then
-    "$_bindir/checkRunGrid" --log "$_deflog" 2>/dev/null
-    echo
-    echo -e "(${BLUE}checkRun why <addr>${NC} e.g. b2 for a diagnosis, re-issue your ${BLUE}runAsPipeline${NC} command to re-run, or browse below)"
-    echo
-fi
+# a run directory is "ready" once its per-job breakdown exists and is non-empty.
+# (We deliberately do NOT parse the header here: the only not-ready state that
+# matters is "folder/allJobs.txt not written yet", and any layout with content
+# is showable. Over-strict parsing here was stranding real completed runs on the
+# waiting screen.)
+_dir_ready() { [ -s "$1/allJobs.txt" ]; }
 
-while true; do
-    echo Path: $PWD
-    
-    if [[ "$all" == y ]]; then 
-        echo Availale logFolders or files:
-        echo  -e "$records" #| grep -v " 0 jobs submitted"
-    fi 
-  
-    if [[ "$all" == n ]]; then 
-        echo By default, only show most recent folder. Please type q to see all folders or files. 
-        x=1; 
-    elif [[ $count -eq 2 && -z "$x" ]]; then
-        echo Only one logFolder. No need to select.
-        x=1 
-        #firstRound=y
-        #x=1
-    else
-        #if [ -z "$all" ]; then 
-        #    echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit:"
-        #else 
-            echo -e "Please select the logFolder you want to check or type ${RED}q${NC} to quit, or type ${BLUE}r${NC} to reload and ${GREEN}h${NC} to show/hide no job logs:"
-        #fi 
-        read -p "" x </dev/tty
-        
-        [[ "$x" == q ]] && break
+# a dry-run log folder: runAsPipeline generated its script(s) but never submitted,
+# so there is no allJobs.txt and there never will be — recognised by a *.dryrun.sh.
+_is_dryrun_dir() { [ ! -s "$1/allJobs.txt" ] && ls "$1"/*.dryrun.sh >/dev/null 2>&1; }
 
-        #[[ "$x" == qq ]] && exit 
+# full-width section divider (double line, distinct from the grid's single-line
+# cell borders). Capped so ultra-wide terminals don't draw an absurd rule.
+_rule() {
+    local w="${COLUMNS:-$(tput cols 2>/dev/null || echo 78)}" i=0 s=""
+    [ "$w" -gt 100 ] && w=100
+    while [ "$i" -lt "$w" ]; do s="$s═"; i=$((i + 1)); done
+    printf '%s\033[K\n' "$s"
+}
 
-        [[ "$x" == r ]] && loadData && continue
-
-        if [[ "$x" == h ]]; then 
-            [[ "$all" = y ]] && all="" || all=y 
-            continue
-        fi     
-    
-        [[ "$x" =~ ^[0-9]+$ && "$x" -lt $count && "$x" -ne 0 ]] || { echo -e "${RED}Out of range. Should be between > 0 and < $count"; continue; }
-    fi
-    
-    logFolder=`echo $logFolders | cut -d' ' -f$x`
-
-    [ -f "$logFolder" ] && less $logFolder && continue
-
-    lines=`grep -v ^job_id $logFolder/allJobs.txt | awk 'NF>2{print $1, $2, $3}'`
-
-    succ=0; fail=0; running=0; pending=0; requeue=0; unknown=0
-    failedJobs=""
-    toShow="Summary for jobs in allJobs.txt:"
-    for line in $lines; do
-        if [ ! -z "${line/ /}" ]; then
-            id=${line%% *}; name=${line##* }
-            # M2: replace the old `grep -i error | head -1 -> NoErrInLog` heuristic
-            # with the diagnosis engine's one-line summary (cause, not noise).
-            error=`"$_bindir/diagnose.sh" $name --log $logFolder --json 2>/dev/null | grep -o '"summary":"[^"]*"' | cut -d'"' -f4`
-            [ -z "$error" ] && error='(no diagnosis)'
-
-            line="$line $error"
-
-            if [ -f $logFolder/$name.success ]; then
-                toShow="$toShow\n${NC}Done $line"
-                succ=$((succ + 1))
-            elif [ -f $logFolder/$name.failed ]; then
-                toShow="$toShow\n${RED}Fail${NC} $line"
-                failedJobs="$failedJobs $name"
-                fail=$((fail + 1))
-            elif [[ "$activeJobs" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-                toShow="$toShow\n${GREEN}Runn${NC} $line"
-                running=$((running + 1))
-            elif [[ "$activeJobs" == *$id-P* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
-                toShow="$toShow\n${YELLOW}Pend${NC} $line"
-                pending=$((pending + 1))
-            elif [ -f $logFolder/$name.failed.requeued.1.time ]; then 
-                toShow="$toShow\n${ORANGE}Requ${NC} $line"
-                requeue=$((requeue + 1))    
-            else
-                toShow="$toShow\n${RED}Unkn${NC} $line"
-                unknown=$((unknown + 1))
-            fi
-        fi
+# HOME_FOLDER <- the run directory to open at launch. Prefer the resolved default
+# log dir checked DIRECTLY (robust even if the enumeration glob or an unset
+# smartSlurmLogDir missed it), then fall back to the most-recent ready dir among
+# the enumerated runs. Returns 1 only if nothing ready exists anywhere.
+find_home_folder() {
+    HOME_FOLDER=""
+    local d i
+    d="${smartSlurmLogDir:-smartSlurmLog}"
+    [ -d "$d" ] && _dir_ready "$d" && { HOME_FOLDER="$d"; return 0; }
+    for i in $logFolders; do
+        [ -d "$i" ] && _dir_ready "$i" && { HOME_FOLDER="$i"; return 0; }
     done
+    return 1
+}
 
+# is there anything to switch to besides the current run? (older dirs / the file)
+_refresh_others() { [ "$count" -gt 2 ] && _haveOthers=y || _haveOthers=""; }
+
+# run_switcher: the explicit "other runs / logs" chooser (reached with `o`). Sets
+# SWITCH_SEL to the chosen path (a run dir to re-root to, or the raw submission
+# file to page) and returns 0; returns 1 on cancel. This is the ONLY place the
+# older dated runs and the raw .smartSlurm.log are reachable -- never a default.
+run_switcher() {
+    SWITCH_SEL=""
+    loadData; _refresh_others
+    _clear
+    echo -e "${BOLD}Runs and logs in $PWD${NC}  (most recent first):"
+    echo
+    echo -e "$records"
+    echo -e "${GREY}A ${NC}folder:${GREY} entry is a run (opens its grid); a ${NC}file:${GREY} entry is the raw submission log (opens in the pager).${NC}"
+    echo -e "Pick a number to switch, or ${RED}q${NC} to go back to the grid:"
+    local sel; read -p "> " sel </dev/tty
+    { [ "$sel" = q ] || [ -z "$sel" ]; } && return 1
+    case "$sel" in *[!0-9]*) return 1;; esac
+    { [ "$sel" -lt "$count" ] && [ "$sel" -ne 0 ]; } || return 1
+    SWITCH_SEL=`echo $logFolders | cut -d' ' -f"$sel"`
+    return 0
+}
+
+# dry_run_screen DIR -- for a dry-run folder (scripts generated, nothing
+# submitted): let the user page the generated file(s), then quit. No grid, no
+# countdown -- there is nothing to wait for.
+dry_run_screen() {
+    local dir="$1" f xxx abspath n
+    abspath="$(cd "$dir" 2>/dev/null && pwd || echo "$dir")"
     while true; do
-        echo Available logs:
-        count1=1
-        IFS=$'\n'
-        #set -x 
-        for i in `echo -e "$toShow" | tail -n +2`; do
-            if [ -z "$showPending" ]; then 
-                [[ "$i" != *Pend* ]] && echo -e "$GREEN$count1${ne} ${i#*\/}" 
-            else     
-                echo -e "$GREEN$count1${ne} ${i#*\/}"
-            fi
-            count1=$((count1 + 1))
+        _clear
+        pln "${BOLD}Dry-run log folder:${NC} ${abspath}"
+        _rule
+        pln ""
+        pln "runAsPipeline generated the pipeline script(s) here but did ${BOLD}not submit${NC} any"
+        pln "jobs, so there is no per-job status to display. You can page the file(s) below."
+        pln ""
+        local files=(); n=0
+        for f in "$dir"/*; do
+            [ -e "$f" ] || continue
+            n=$((n + 1)); files[$n]="$f"
+            printf "  ${GREEN}%d${NC} %s\n" "$n" "${f##*/}"
         done
-        echo Current working folder: $logFolder and job: $failedJob
-        if [ $count1 -eq 2 ] && [ -z "$xx" ]; then
-            echo Only one failed step. No need to select.
-            xx=1
-        else  #Or ${RED}r${NC} to run the job command. 
-            
-            #[ ! -z "$xx" ] && echo -en "Type ${RED}s${NC} to see the slurm script for last .out log. Or ${RED}l${NC} to list all log file related to this job. Or "
-            if [ -x "$_AI_CALL" ]; then
-                echo -e "Please select a job number to view its log, or append ${BLUE}a${NC} to ask AI (e.g. ${BLUE}1a${NC}, ${BLUE}2a${NC}). Or ${RED}w${NC} for workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} upper menu, ${RED}qq${NC} quit:"
-            else
-                echo -e "Please select a job to check the .out log file, or ${RED}w${NC} for workflow chart, or type ${RED}q${NC} to quit to upper menu, ${RED}qq${NC} to quit. Type ${RED}p${NC} to show/hide pending jobs, or:"
-                echo -e "  ${YELLOW}(AI unavailable: ai_call not found or not executable. Build from bin/ai_call.c and ask admin to add you to ~/.smartSlurm/allowed_users.txt)${NC}"
-            fi
-            read -p "" xx </dev/tty;
-        
-            #[[ "$xx" == s ]] && less $logFolder/$failedJob.sh && continue
-
-            # if [[ "$xx" == r ]]; then 
-            #     #set -x 
-            #     echo -e "${RED}Command to re-run the job interactively:"
-            #     echo 
-            #     jobStep=${failedJob##*/}
-            #     jobStep=${jobStep%%.*}
-            #     file=`ls -lrt $logFolder/slurm*.run.sh`
-            #     txt=`cat ${file##* }`
-            #     txt=${txt%%\#@$jobStep*}
-            #     echo -e "$txt" | grep "module load \|export PATH" 
-                 
-            #     txt=`grep pipefail $logFolder/$failedJob.sh`
-            #     txt=${txt#*-c \'}
-            #     txt=${txt%\' && touch*}
-            #     echo $txt | less 
-            #     #set +x 
-            #     continue
-            # fi 
-            [[ "$xx" == q ]] &&  all=y && break
-
-            if [[ "$xx" == p ]]; then 
-                [ -z "$showPending" ] && showPending=yes || showPending="" 
-                continue
-            fi
-            
-            [[ "$xx" == qq ]] && exit
-
-            # Handle Na: ask AI about job N (e.g. "1a", "2a")
-            if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
-                aiJobNum="${BASH_REMATCH[1]}"
-                if [ ! -x "$_AI_CALL" ]; then
-                    echo -e "${RED}ai_call not found.${NC}"
-                    continue
-                fi
-                if [[ ! "$aiJobNum" -gt 0 || ! "$aiJobNum" -lt $count1 ]]; then
-                    echo -e "${RED}Out of range. Should be > 0 and < $count1${NC}"
-                    continue
-                fi
-                aiJob=`echo -e "$toShow" | tail -n +2 | head -n $aiJobNum | tail -n1 | awk '{print $4}'`
-                logFile="$logFolder/$aiJob.out"
-                if [ ! -f "$logFile" ]; then
-                    echo "No .out log found for job $aiJob"
-                    continue
-                fi
-                echo -e "${BLUE}Asking AI to analyze job $aiJobNum ($aiJob)...${NC}"
-                {
-                    echo "I am running a Slurm pipeline with SmartSlurm. A job has failed. Below is an automated diagnosis, then the job's own tool output. Explain what went wrong and how to fix it; be specific and concise."
-                    echo ""
-                    echo "=== Job: $aiJob ==="
-                    echo ""
-                    echo "--- SmartSlurm automated diagnosis ---"
-                    "$_bindir/diagnose.sh" "$aiJob" --log "$logFolder" 2>/dev/null || echo "(diagnosis unavailable)"
-                    echo ""
-                    echo "--- Tool output ---"
-                    # M1: the tool's own output sits between these sentinels, with
-                    # SmartSlurm setup/teardown noise excluded. Fall back to a plain
-                    # tail for legacy logs that predate the sentinels.
-                    region=$(awk '/SmartSlurm step output:/{f=1;next} /SmartSlurm job report:/{f=0} f' "$logFile")
-                    if [ -n "$region" ]; then echo "$region" | tail -n 150; else tail -n 150 "$logFile"; fi
-                } | "$_AI_CALL" || {
-                    echo -e "${RED}AI call failed.${NC}"
-                    echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."
-                }
-                continue
-            fi
-
-            if [[ "$xx" == w ]]; then 
-
-                if [ -f "$logFolder/dag.svg" ]; then 
-                    cache_mtime=$(stat -c %Y "$logFolder/dag.svg")
-                    current_time=$(date +%s)
-                    if [ $((current_time - cache_mtime)) -gt 600 ]; then
-                        rm $logFolder/dag.svg
-                    fi 
-                fi 
-                #rm $logFolder/dag.svg
-                if [ ! -f $logFolder/dag.svg ]; then 
-                    #set -x 
-                    module load conda/miniforge3/24.11.3-0
-                    conda activate smartSlurmEnv
-                    workflowPlot.py $logFolder &&  dot -Tsvg $logFolder/jobs.dot -o $logFolder/dag.svg
-                fi 
-                display $logFolder/dag.svg 
-            fi
-
-            [[ "$xx" =~ ^[0-9]+$ && "$xx" -lt $count1 && "$xx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count1";  continue; }
-
-
-        fi
-        
-        #set -x 
-        failedJob=`echo -e "$toShow" | tail -n +2 | head -n $xx | tail -n1 | awk '{print $4}'`
-
-        toShow1="Available logs:"; 
-        for j in `ls $logFolder/$failedJob*`; do
-            toShow1="$toShow1\n$j" 
-        done
-
-        while true; do 
-            count2=1
-            echo "Available logs:"
-            for i in `echo -e "$toShow1" | tail -n +2`; do
-                if [[ "$i" == *.adjust ]]; then 
-                   echo -e "${GREY}$count2 adjust                  -- (adj. res. for adjument log)${NC}"; 
-                elif [[ "$i" == *.out ]]; then 
-                   echo -e "${GREEN}$count2 out                    -- (stdout/stderr)${NC}"
-                elif [[ "$i" == *.out.* ]]; then
-                   echo -e "${GREY}$count2 ${i#*.out.}                  -- job ID${NC}"
-                elif [[ "$i" == *.sh ]]; then
-                   echo -e "${GREEN}$count2 sh                     -- (runAsPipeline converted script)${NC}"
-                elif [[ "$i" == *.success ]]; then 
-                   echo -e "${GREY}$count2 success                -- (reports exit status.  no contents)${NC}"
-                elif [[ "$i" == *.failed ]]; then
-                   echo -e "${GREY}$count2 failed                 -- (reports exit status.  no contents)${NC}"
-                fi
-                count2=$((count2 + 1))
-            done
-            echo 
-
-            if [ $count2 -gt 1 ]; then
-                echo -e "Please select the log file to view or type ${RED}q${NC} to go back, or ${RED}qq${NC} to quit:"
-                read -p "" xxx </dev/tty
-                
-                [[ "$xxx" == q ]] && break
-                [[ "$xxx" == qq ]] && exit
-                [[ "$xxx" =~ ^[0-9]+$ && "$xxx" -lt $count2 && "$xxx" -ne 0 ]] || { echo -e "${RED}Out of range. Should be > 0 and < $count2";  continue; }
-            
-                file=`echo -e "$toShow1" | tail -n +2 | head -n $xxx | tail -n1`
-                less $file 
-            else 
-                break
-            fi
-        done 
+        [ "$n" -eq 0 ] && pln "  (folder is empty)"
+        pln ""
+        pln "Select a file to view with the pager, or ${BOLD}q${NC}/${BOLD}qq${NC} to quit."
+        printf '\033[J'
+        read -p "> " xxx </dev/tty
+        { [ "$xxx" = q ] || [ "$xxx" = qq ]; } && exit 0
+        case "$xxx" in ''|*[!0-9]*) continue;; esac
+        { [ "$xxx" -ge 1 ] && [ "$xxx" -le "$n" ]; } || continue
+        less "${files[$xxx]}"
     done
-done
+}
+
+# waiting screen: the ONLY auto-refreshing screen. Shown when no run is ready yet
+# (the brief post-runAsPipeline race). Counts down and re-checks, but gives up
+# after ~CHECKRUN_WAIT_MAX seconds total rather than spinning forever -- if the
+# folder is a dry run or the run died before writing allJobs.txt, waiting is
+# pointless. Keys work instantly during the countdown.
+wait_for_run() {
+    local tok secs first=y d interval="${CHECKRUN_WAIT_SECS:-15}" elapsed=0 maxwait="${CHECKRUN_WAIT_MAX:-60}"
+    while true; do
+        loadData; _refresh_others
+        find_home_folder && return 0                       # ready now -> open its grid
+        d="${smartSlurmLogDir:-smartSlurmLog}"
+        [ -d "$d" ] && _is_dryrun_dir "$d" && dry_run_screen "$d"   # a stub appeared -> browse & exit
+        [ "$elapsed" -ge "$maxwait" ] && break             # give up (see message below)
+        secs="$interval"
+        while [ "$secs" -ge 0 ]; do
+            if [ -n "$first" ]; then _clear; first=""; else _home; fi
+            pln "${BOLD}Waiting for the run to be ready...${NC}"
+            pln ""
+            pln "runAsPipeline writes each run's per-job breakdown (its ${BOLD}allJobs.txt${NC})"
+            pln "a moment after submitting."
+            pln ""
+            pln "This page will refresh in ${BOLD}${secs}${NC} sec  ${GREY}(giving up after ~${maxwait}s total).${NC}"
+            pln ""
+            pln "  ${BOLD}Enter${NC} / ${BOLD}r${NC}    check now"
+            [ -n "$logFolders" ] && pln "  ${BOLD}o${NC}            browse other runs / the raw submission log"
+            pln "  ${BOLD}q${NC} / ${BOLD}qq${NC}      quit"
+            printf '\033[J'
+            if read -t 1 -p "> " tok </dev/tty; then
+                case "$tok" in
+                    ""|r) break ;;                 # check now
+                    o)    if run_switcher; then
+                              if [ -d "$SWITCH_SEL" ] && _dir_ready "$SWITCH_SEL"; then HOME_FOLDER="$SWITCH_SEL"; return 0
+                              elif [ -f "$SWITCH_SEL" ]; then less "$SWITCH_SEL"; fi
+                          fi; first=y; break ;;
+                    q|qq) exit 0 ;;
+                    *)    : ;;                      # ignore junk, keep counting
+                esac
+            else
+                secs=$((secs - 1)); elapsed=$((elapsed + 1))
+                [ "$elapsed" -ge "$maxwait" ] && break
+            fi
+        done
+    done
+    # cap reached: stop waiting and tell the user how to investigate.
+    _clear
+    echo "None of the expected files have appeared yet and the run's status is uncertain."
+    echo
+    echo "  - Check the scheduler directly:   squeue -u $USER"
+    echo "  - Or rerun the pipeline with runAsPipeline."
+    echo "  - The cluster may be slow right now; wait a few minutes and run checkRun again."
+    exit 1
+}
+
+# ===========================================================================
+# main: launch on the most recent ready run; otherwise handle a dry-run stub
+# or wait briefly for a run that is still being written.
+# ===========================================================================
+loadData; _refresh_others
+
+if find_home_folder; then
+    home_loop "$HOME_FOLDER"                 # a ready run exists -> grid home
+else
+    _d="${smartSlurmLogDir:-smartSlurmLog}"
+    if [ -d "$_d" ] && _is_dryrun_dir "$_d"; then
+        dry_run_screen "$_d"                 # dry-run stub -> browse scripts & exit
+    else
+        wait_for_run                         # bounded wait; sets HOME_FOLDER or exits
+        home_loop "$HOME_FOLDER"
+    fi
+fi

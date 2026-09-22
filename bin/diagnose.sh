@@ -100,6 +100,11 @@ else
     # sacct says COMPLETED but there is no .success flag -> the tool ran but its
     # success was never recorded: this is the classic "Unknown" tool-failure.
     [ "$s" = COMPLETED ] && STATE=COMPLETED_NOSUCCESS || STATE="$s"
+  elif [ -e "$LOGDIR/$FLAG.failed" ]; then
+    # cleanUp wrote an authoritative .failed flag. Trust it even when the sacct
+    # region is unreadable (e.g. pre-M1 logs with no sentinels): the job failed,
+    # so fall through to the FAILED branch which scans the log for the cause.
+    STATE=FAILED
   else
     STATE=UNCONFIRMED     # no flag, no scheduler state: infrastructure-uncertain
   fi
