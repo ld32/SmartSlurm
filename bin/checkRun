@@ -256,16 +256,18 @@ list_view() {
     while true; do
         _clear
         echo "Available logs:"
-        local count1=1 i
-        IFS=$'\n'
-        for i in $(echo -e "$toShow" | tail -n +2); do
-            if [ -z "$showPending" ]; then
-                [[ "$i" != *Pend* ]] && echo -e "$GREEN$count1${NC} ${i#*\/}"
-            else
-                echo -e "$GREEN$count1${NC} ${i#*\/}"
-            fi
-            count1=$((count1 + 1))
+        # Build the visible (pending-filtered) list ONCE so the number shown and
+        # the job selected always match. Print each line whole (the old ${i#*/}
+        # truncated any line whose diagnosis summary contained a '/').
+        local -a ALL VIS=(); local i k oldifs="$IFS"
+        set -f; IFS=$'\n'; ALL=( $(echo -e "$toShow" | tail -n +2) ); IFS="$oldifs"; set +f
+        for i in "${ALL[@]}"; do
+            [ -z "$i" ] && continue
+            if [ -z "$showPending" ] && [[ "$i" == *Pend* ]]; then continue; fi
+            VIS+=("$i")
         done
+        for k in "${!VIS[@]}"; do printf '%b %b\n' "${GREEN}$((k + 1))${NC}" "${VIS[$k]}"; done
+        [ "${#VIS[@]}" -eq 0 ] && echo "  (no jobs to show — try 'p' to include pending)"
         echo "Current working folder: $logFolder"
         if [ -x "$_AI_CALL" ]; then
             echo -e "Select a job number to view its raw files, or append ${BLUE}a${NC} for AI (e.g. ${BLUE}1a${NC}). ${RED}w${NC} workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} back, ${RED}qq${NC} quit:"
@@ -280,18 +282,13 @@ list_view() {
         if [ "$xx" = p ]; then [ -z "$showPending" ] && showPending=yes || showPending=""; continue; fi
         if [ "$xx" = w ]; then workflow_dag "$logFolder"; continue; fi
 
-        if [[ "$xx" =~ ^([0-9]+)a$ ]]; then
-            aiJobNum="${BASH_REMATCH[1]}"
-            { [ "$aiJobNum" -gt 0 ] && [ "$aiJobNum" -lt "$count1" ]; } || { echo -e "${RED}Out of range. 1..$((count1-1))${NC}"; continue; }
-            aiJob=$(echo -e "$toShow" | tail -n +2 | head -n "$aiJobNum" | tail -n1 | awk '{print $4}')
-            ai_explain "$aiJob" "$logFolder"
-            continue
-        fi
-
-        case "$xx" in ''|*[!0-9]*) echo -e "${RED}Please enter a number.${NC}"; continue;; esac
-        { [ "$xx" -gt 0 ] && [ "$xx" -lt "$count1" ]; } || { echo -e "${RED}Out of range. 1..$((count1-1))${NC}"; continue; }
-        flag=$(echo -e "$toShow" | tail -n +2 | head -n "$xx" | tail -n1 | awk '{print $4}')
-        browse_raw "$flag" "$logFolder"
+        # a trailing 'a' means "AI on that number"; otherwise view raw files
+        local n wantai=""
+        if [[ "$xx" =~ ^([0-9]+)a$ ]]; then n="${BASH_REMATCH[1]}"; wantai=1; else n="$xx"; fi
+        case "$n" in ''|*[!0-9]*) echo -e "${RED}Please enter a number (or Na for AI).${NC}"; continue;; esac
+        { [ "$n" -ge 1 ] && [ "$n" -le "${#VIS[@]}" ]; } || { echo -e "${RED}Out of range. 1..${#VIS[@]}${NC}"; continue; }
+        flag=$(printf '%s\n' "${VIS[$((n - 1))]}" | awk '{print $4}')
+        if [ -n "$wantai" ]; then ai_explain "$flag" "$logFolder"; else browse_raw "$flag" "$logFolder"; fi
     done
 }
 
@@ -306,11 +303,15 @@ home_loop() {
     MSG=""
     while true; do
         # Capture the grid once, with color forced on (a pipe is not a tty, so the
-        # engine would otherwise drop color). No 2>/dev/null: a broken engine must
-        # be visible. On real failure -> list view.
-        grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>&1)
+        # engine would otherwise drop color). Capture stderr separately so a real
+        # failure shows WHY rather than a bare "unavailable".
+        grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>"$_errf")
         if [ $? -ne 0 ]; then
-            _clear; echo -e "${YELLOW}(grid engine unavailable -- falling back to list view)${NC}"
+            _clear
+            echo -e "${RED}The grid engine (checkRunGrid) failed for this run.${NC}"
+            [ -s "$_errf" ] && { echo; sed 's/^/    /' "$_errf"; echo; }
+            echo -e "${YELLOW}Falling back to the list view...${NC}"
+            echo; pause
             list_view "$logFolder"; return
         fi
 

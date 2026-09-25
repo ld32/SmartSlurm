@@ -67,9 +67,17 @@ rawrows="$(
     {
       flag=$3; dep=$2
       n=split(flag, f, ".")
-      step=f[1]; name=f[3]
-      sample=""; fan=""
-      if (n>=4) { sample=f[4]; for(k=5;k<=n;k++) fan=fan (fan==""?"":".") f[k] }
+      step=f[1]
+      # The flag is  step . <dep> . <dep> ... . name . sample [. suffix]
+      # with a VARIABLE number of numeric dependency fields between the step and
+      # the name (a step can depend on several upstream steps). Skip that numeric
+      # run to find the name, then take the sample as the next field. (The old
+      # code assumed name=f[3], sample=f[4], which only held for single-dependency
+      # steps and mis-read every multi-dependency step -> incoherent -> linear.)
+      i=2; while (i<=n && f[i] ~ /^[0-9]+$/) i++
+      name=(i<=n)?f[i]:""; i++
+      sample=(i<=n)?f[i]:""
+      fan=""; for(k=i+1;k<=n;k++) fan=fan (fan==""?"":".") f[k]
       printf "%s|%s|%s|%s|%s|%s\n", flag, step, name, sample, fan, dep
     }
   ' "$LOGDIR/allJobs.txt"
@@ -372,7 +380,7 @@ render_linear() {
   print_legend
   echo
   echo "This run does not flatten to a clean sample x step grid; showing linear view."
-  [ -z "$NO_HINT" ] && echo "Type a job number to view its log."
+  if [ -z "$NO_HINT" ]; then echo "Type a job number to view its log."; fi
 }
 
 # ================= GRID =================
@@ -383,6 +391,13 @@ render_grid() {
   mapfile -t SAMPLES < <(echo "$SAMPLES_CSV" | tr ',' '\n' | sort -u -V)
   IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
   IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
+
+  # Sample names are often long, near-identical paths. Strip their longest common
+  # prefix so row labels differ; the full names are listed in a legend below.
+  local SLCP="${SAMPLES[0]}" _s
+  for _s in "${SAMPLES[@]}"; do
+    while [ -n "$SLCP" ] && [ "${_s#"$SLCP"}" = "$_s" ]; do SLCP="${SLCP%?}"; done
+  done
 
   local COLW=7 pad="   "
   # collect the visible per-sample step columns
@@ -420,7 +435,8 @@ render_grid() {
   for s in "${SAMPLES[@]}"; do
     [ "$s" = "-" ] && continue
     local rl; rl="$(printf "\\$(printf '%03o' $((97+r)))")"   # a,b,c...
-    printf '%s%-4s %-11s│' "$pad" "$rl" "${s:0:11}"
+    local slabel="${s#"$SLCP"}"
+    printf '%s%-4s %-11s│' "$pad" "$rl" "${slabel:0:11}"
     for ((c=0;c<n;c++)); do
       local num="${SNUM[$c]}"
       local jobs; jobs="$(echo "$jobrows" | awk -F'|' -v s="$s" -v st="$num" '$4==s && $2==st{print $6}')"
@@ -441,6 +457,24 @@ render_grid() {
     r=$((r+1))
   done
   printf '%s%s\n' "$LEAD" "$bot"       # bottom edge of the grid
+
+  # row -> sample key. Only worth printing when the labels don't fully identify
+  # the sample (a common prefix was stripped, or a name is longer than the label).
+  local _needkey="" _rr=0 _sx
+  if [ -n "$SLCP" ]; then _needkey=1; else
+    for _sx in "${SAMPLES[@]}"; do [ "${#_sx}" -gt 11 ] && { _needkey=1; break; }; done
+  fi
+  if [ -n "$_needkey" ]; then
+    printf '\n%ssamples:%s' "$C_BOLD" "$C_OFF"
+    [ -n "$SLCP" ] && printf '  %s(common prefix %s… omitted)%s' "$C_GREY" "$SLCP" "$C_OFF"
+    echo
+    for _sx in "${SAMPLES[@]}"; do
+      [ "$_sx" = "-" ] && continue
+      local _rl; _rl="$(printf "\\$(printf '%03o' $((97+_rr)))")"
+      printf '%s%s%s%s  %s\n' "$pad" "$C_BOLD" "$_rl" "$C_OFF" "${_sx#"$SLCP"}"
+      _rr=$((_rr+1))
+    done
+  fi
 
   # experiment-level steps
   if [ "${ESTEPS[0]}" != "-" ]; then
@@ -472,3 +506,4 @@ render_grid() {
 }
 
 if [ -n "$FORCE_LINEAR" ] || [ "$CLEAN" != 1 ]; then render_linear; else render_grid; fi
+exit 0   # a successful render always exits 0 (never let a trailing command leak a non-zero code)
