@@ -175,12 +175,41 @@ else
     fi
 fi 
 
-if [ -z $mem ] || [ -z $min ]; then 
-    mem=$defaultMem    
+if [ -z $mem ] || [ -z $min ]; then
+    mem=$defaultMem
     min=$defaultMin
 fi
 
-if [[ $adjust == "adjust" ]]; then 
+# ---------------------------------------------------------------------------
+# Failure floor (issue B2): never submit at or near a proven-insufficient
+# allocation. For this (program,ref), find the largest allocation that OOM'd/OOT'd
+# at an input size <= this one (by monotonicity, a smaller input that needed more
+# proves this larger input needs more too), then escalate it with the SAME helper
+# auto-rerun uses. The final request is max(estimate, floor), so initial submit,
+# auto-rerun, and a fresh manual rerun can never drop below a known failure.
+command -v nextMemAfterFail >/dev/null 2>&1 || { _sjrd="$smartSlurmJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_sjrd" ] && smartSlurmJobRecordDir="$_sjrd"; }
+jr=$smartSlurmJobRecordDir/jobRecord.txt
+if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
+    recentFails=`awk -F, -v a="$program" -v b="$ref" -v t="$(date -d '1 hour ago' +%s)" '$9!="COMPLETED" && $21>t && $12==a && $13==b' "$jr" 2>/dev/null | wc -l`
+    maxFailMem=`awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" '$12==a && $13==b && $2 ~ /^[0-9]+$/ && $2<=sz && $9 ~ /OOM/ {if($5>m)m=$5} END{print m+0}' "$jr"`
+    maxFailTime=`awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" '$12==a && $13==b && $2 ~ /^[0-9]+$/ && $2<=sz && $9 ~ /OOT/ {if($6>t)t=$6} END{print t+0}' "$jr"`
+    if [ "${maxFailMem:-0}" -gt 0 ]; then
+        memFloor=`nextMemAfterFail "$maxFailMem" "$recentFails"`
+        if [ "${memFloor:-0}" -gt "${mem:-0}" ]; then
+            resAjust="$resAjust\n#Failure floor: raising mem from $mem to $memFloor M (proven-insufficient OOM alloc was $maxFailMem M)."
+            mem=$memFloor
+        fi
+    fi
+    if [ "${maxFailTime:-0}" -gt 0 ]; then
+        timeFloor=`nextTimeAfterFail "$maxFailTime" "$recentFails"`
+        if [ "${timeFloor:-0}" -gt "${min:-0}" ]; then
+            resAjust="$resAjust\n#Failure floor: raising time from $min to $timeFloor min (proven-insufficient OOT alloc was $maxFailTime min)."
+            min=$timeFloor
+        fi
+    fi
+fi
+
+if [[ $adjust == "adjust" ]]; then
     echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
 fi  
 
