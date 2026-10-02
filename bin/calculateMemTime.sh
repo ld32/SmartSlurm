@@ -32,28 +32,28 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
 
     #cat ~/.rcbio/$software.$ref.mem.stat.final 1>&2
 
-    Finala=`printf "%.15f\n" $Finala`
-    Finalb=`printf "%.15f\n" $Finalb`
+    # Robust numeric defaults: a missing/empty stat key must not break arithmetic
+    # (e.g. STDFIT is empty for perfectly collinear history).
+    : "${Finala:=0}" "${Finalb:=0}" "${Maximum:=0}" "${STDFIT:=0}" "${SCount:=0}"
 
-    Maximum=`printf "%.15f\n" $Maximum`
-    STDFIT=`printf "%.15f\n" $STDFIT`
-    
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
     echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
-    if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )); then 
-        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
+    # Compute within the observed range, or extrapolate only with enough data;
+    # otherwise report outOfRange and let the caller use defaults.
+    if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )) || (( $(echo "$SCount > 9" |bc -l) )); then
+        # Round and floor to 100 M with awk. awk (not bc + ${mem%.*} + [[ -le ]])
+        # because bc prints sub-1 negatives as "-.3", which ${mem%.*} turns into
+        # "-", breaking the integer test and silently passing garbage downstream.
+        # A negative/low prediction (flat or noise-driven slope) floors cleanly.
+        mem=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
+             'BEGIN{ v = a*x + b + 2*s; if (v < 100) v = 100; printf "%d", v + 0.5 }'`
         memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
-        mem=${mem%.*}; [[ "$mem" -le 100 ]] && mem=100
-    elif (( $SCount > 9 )); then 
-        mem=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
-        memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
-        mem=${mem%.*}; [[ "$mem" -lt 100 ]] && mem=100
-    else 
-        echoerr outOfRange 
+    else
+        echoerr outOfRange
         echo outOfRange
-        exit  
+        exit
     fi
     echoerr
 else
@@ -74,28 +74,24 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
 
     #cat ~/.rcbio/$software.$ref.time.stat.final 1>&2
 
-    Finala=`printf "%.15f\n" $Finala`
-    Finalb=`printf "%.15f\n" $Finalb`
-    Maximum=`printf "%.15f\n" $Maximum`
-    STDFIT=`printf "%.15f\n" $STDFIT`
-    RSquare=`printf "%.15f\n" $RSquare`
-    
+    : "${Finala:=0}" "${Finalb:=0}" "${Maximum:=0}" "${STDFIT:=0}" "${SCount:=0}" "${RSquare:=0}"
+
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
     echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
 
-    time=`echo "( $Finala * $inputSize + $Finalb + $STDFIT * 2 ) * 1.0" |bc `
+    # Round and floor to 10 min with awk (same robustness as the mem branch).
+    time=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
+          'BEGIN{ v = a*x + b + 2*s; if (v < 10) v = 10; printf "%d", v + 0.5 }'`
     timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb+$STDFIT*2
-    #echoerr "time formula: ( $Finala x $inputSize + $Finalb ) x 1.0"
-  
-    time=${time%.*}; [[ "$time" -lt 10 ]] && time=10
-else 
+else
     time=0
 fi
 echoerr Got $time
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes
+: "${RSquare:=0}"
 output="$mem $time \n\n$memFormu\n$timeFormu\nRSquare=$RSquare" 
       
 echo $output
