@@ -17,9 +17,22 @@ echoerr Running: $0 $@
 # fi   
 
 software=$1
-ref=$2 
+ref=$2
 inputSize=$3
- 
+
+# Target first-pass completion rate (issue B1). Used as the percentile for the
+# size-independent (constant) model. Overridable via config/env; default 93%.
+: "${targetFirstPassPct:=93}"
+
+# pctile <datafile "size value" per line> <percentile> -> integer p-th percentile
+# of the value column (rounded). Empty output if the file has no usable rows.
+pctile() {
+    cut -d' ' -f2 "$1" 2>/dev/null | sort -n | awk -v p="$2" '
+        { v[NR] = $1 }
+        END { if (NR == 0) exit
+              i = int(p/100*NR + 0.9999); if (i < 1) i = 1; if (i > NR) i = NR
+              printf "%d", v[i] + 0.5 }'
+}
 
 echoerr Calculating mem:
 memFormu=memFormu:
@@ -38,22 +51,34 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
 
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    echoerr "mem formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
-
-    # Compute within the observed range, or extrapolate only with enough data;
-    # otherwise report outOfRange and let the caller use defaults.
-    if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )) || (( $(echo "$SCount > 9" |bc -l) )); then
-        # Round and floor to 100 M with awk. awk (not bc + ${mem%.*} + [[ -le ]])
-        # because bc prints sub-1 negatives as "-.3", which ${mem%.*} turns into
-        # "-", breaking the integer test and silently passing garbage downstream.
-        # A negative/low prediction (flat or noise-driven slope) floors cleanly.
-        mem=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
-             'BEGIN{ v = a*x + b + 2*s; if (v < 100) v = 100; printf "%d", v + 0.5 }'`
-        memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
+    # Issue A1/A2: choose the model per dimension.
+    #  - Positive slope  -> the fitted LINE captures real size dependence (and is
+    #    monotone non-decreasing, so no bigger-input-uses-less inversion).
+    #  - Slope <= 0       -> a non-positive slope cannot be trusted to extrapolate
+    #    and usually means the resource is size-INDEPENDENT (e.g. constant memory,
+    #    only time scales) or the slope is just scheduler/perf noise. Fall back to
+    #    a size-independent CONSTANT model: the target percentile of observed usage.
+    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
+        echoerr "mem model: LINE ( $Finala x $inputSize + $Finalb + $STDFIT * 2 )"
+        # Within observed range, or extrapolate only with enough data; else outOfRange.
+        if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )) || (( $(echo "$SCount > 9" |bc -l) )); then
+            # Round and floor to 100 M with awk (robust to negative/sub-1 results).
+            mem=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
+                 'BEGIN{ v = a*x + b + 2*s; if (v < 100) v = 100; printf "%d", v + 0.5 }'`
+            memFormu=$memFormu${Finala}X${inputSize}+$Finalb+$STDFIT*2
+        else
+            echoerr outOfRange
+            echo outOfRange
+            exit
+        fi
     else
-        echoerr outOfRange
-        echo outOfRange
-        exit
+        # Constant model: p-th percentile of observed memUsed (size-independent, so
+        # no outOfRange guard). Falls back to Maximum if the raw data file is gone.
+        mem=`pctile "$smartSlurmJobRecordDir/stats/$software.$ref.mem" "$targetFirstPassPct"`
+        [ -z "$mem" ] && mem=$Maximum
+        mem=`awk -v v="$mem" 'BEGIN{ if (v < 100) v = 100; printf "%d", v + 0.5 }'`
+        memFormu=${memFormu}const.p${targetFirstPassPct}=${mem}
+        echoerr "mem model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $mem"
     fi
     echoerr
 else
@@ -78,12 +103,20 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
 
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    echoerr "time formula: ( $Finala x $inputSize + $Finalb + $STDFIT * 2 ) x 1.0"
-
-    # Round and floor to 10 min with awk (same robustness as the mem branch).
-    time=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
-          'BEGIN{ v = a*x + b + 2*s; if (v < 10) v = 10; printf "%d", v + 0.5 }'`
-    timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb+$STDFIT*2
+    # Issue A1/A2: same per-dimension model choice as mem. Positive slope -> line;
+    # otherwise size-independent constant model (p-th percentile of observed time).
+    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
+        echoerr "time model: LINE ( $Finala x $inputSize + $Finalb + $STDFIT * 2 )"
+        time=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v s="$STDFIT" \
+              'BEGIN{ v = a*x + b + 2*s; if (v < 10) v = 10; printf "%d", v + 0.5 }'`
+        timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb+$STDFIT*2
+    else
+        time=`pctile "$smartSlurmJobRecordDir/stats/$software.$ref.time" "$targetFirstPassPct"`
+        [ -z "$time" ] && time=$Maximum
+        time=`awk -v v="$time" 'BEGIN{ if (v < 10) v = 10; printf "%d", v + 0.5 }'`
+        timeFormu=${timeFormu}:const.p${targetFirstPassPct}=${time}
+        echoerr "time model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $time"
+    fi
 else
     time=0
 fi

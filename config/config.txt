@@ -18,6 +18,7 @@ export smartSlurmInputDir=inputSmartSlurm
 export smartSlurmOutputDir=$PWD/outputSmartSlurm
 
 export firstBatchCount=5
+export targetFirstPassPct=93   # aim: ~this %% of jobs complete on first submission (estimate upper-bound percentile)
 
 export defaultMem=4096  # in M
 export defaultTime=120  # in min
