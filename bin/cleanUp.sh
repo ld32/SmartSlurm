@@ -300,69 +300,22 @@ if [ ! -f $succFile ]; then
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
             mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
-            
-            # Calculate new memory
-            if [ $totalM -lt 100 ]; then
-                totalM=100
-                newMemFactor=8
-            elif [ $totalM -lt 200 ]; then
-                totalM=200
-                newMemFactor=5
-            elif [ $totalM -lt 512 ]; then
-                totalM=512
-                newMemFactor=4
-            elif [ $totalM -lt 1024 ]; then
-                totalM=1024
-                newMemFactor=3
-            elif [ $totalM -lt 10240 ]; then
-                newMemFactor=2
-            elif [ $totalM -lt 51200 ]; then
-                newMemFactor=1.5
-            else
-                newMemFactor=1.2
-            fi
 
-            if [ $recentFails -gt 3 ]; then
-                newMemFactor=$( echo "$newMemFactor * 4" | bc )
-                echo recentFails is $recentFails, set newMemFactor to $newMemFactor
-            fi
-            mem=`echo "($totalM*$newMemFactor*1.2+$maxExtra*2)/1" | bc`
+            # Calculate new memory via the shared escalation helper (config.txt) so a
+            # later manual rerun's failure floor escalates identically. (+2*maxExtra
+            # margin preserved.)
+            mem=`nextMemAfterFail $totalM $recentFails $((maxExtra*2))`
             echo "Calculated new memory: $mem M"
         else
             # For OOT only, keep existing memory
             mem=$totalM
         fi
 
-        # Handle time adjustment for OOT or OOMOOT  
+        # Handle time adjustment for OOT or OOMOOT
         if [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
             echo "Processing time adjustment for $jobStatus"
-            
-            # Calculate new time
-            if [ $min -lt 20 ]; then
-                min=20
-                newTimeFactor=2
-            elif [ $min -lt 30 ]; then
-                min=30
-                newTimeFactor=4
-            elif [ $min -lt 60 ]; then
-                min=60
-                newTimeFactor=3
-            elif [ $min -lt 120 ]; then
-                min=120
-                newTimeFactor=2
-            elif [ $min -lt 480 ]; then
-                min=480
-                newTimeFactor=1.5
-            else
-                newTimeFactor=1.2
-            fi
-
-            if [ $recentFails -gt 3 ]; then
-                newTimeFactor=$( echo "$newTimeFactor * 4" | bc )
-                echo recentFails is $recentFails, set newTimeFactor to $newTimeFactor
-            fi
-
-            min=`echo "($min*$newTimeFactor*1.2)/1" | bc`
+            # Calculate new time via the shared escalation helper (config.txt).
+            min=`nextTimeAfterFail $min $recentFails`
             echo "Calculated new time: $min minutes"
         fi
 
