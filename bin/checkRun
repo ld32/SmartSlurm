@@ -226,6 +226,23 @@ workflow_dag() {
     else echo -e "${YELLOW}Could not build the workflow graph.${NC}"; pause; fi
 }
 
+# sample_table FOLDER -- page a  row | truncated (as shown) | full sample-name
+# table, so the grid's short labels can always be mapped back to full names.
+sample_table() {
+    local folder="$1" out
+    out="$("$_bindir/checkRunGrid" --samples --log "$folder" 2>/dev/null)"
+    if [ -z "$out" ]; then MSG="${YELLOW}This run has no per-sample rows to list.${NC}"; return; fi
+    # format as an aligned table in awk (no dependency on 'column', which isn't
+    # guaranteed on every cluster). 3-space gaps; full name is the last column.
+    { printf 'row\ttruncated (as shown)\tfull sample name\n'
+      printf '%s\n' "$out"
+    } | awk -F'\t' '
+        { r[NR]=$1; t[NR]=$2; f[NR]=$3; n=NR
+          if(length($1)>w1)w1=length($1); if(length($2)>w2)w2=length($2) }
+        END{ for(i=1;i<=n;i++) printf "%-*s   %-*s   %s\n", w1, r[i], w2, t[i], f[i] }
+      ' | less
+}
+
 # ---------------------------------------------------------------------------
 # list_view FOLDER -- the legacy status list with every capability preserved:
 # per-row M2 summary, AI (Na), workflow (w), pending toggle (p), raw browsing.
@@ -299,20 +316,26 @@ list_view() {
 # address to view). Transient notices ride in $MSG and appear under the grid.
 # ---------------------------------------------------------------------------
 home_loop() {
-    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact
+    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y
     MSG=""
     while true; do
+        # Rebuild the grid only when the user asked for fresh data (Enter) or
+        # switched runs (o). Going in and out of logs reuses the cached render so
+        # returning to the grid is instant instead of paying a full rebuild.
         # Capture the grid once, with color forced on (a pipe is not a tty, so the
         # engine would otherwise drop color). Capture stderr separately so a real
         # failure shows WHY rather than a bare "unavailable".
-        grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>"$_errf")
-        if [ $? -ne 0 ]; then
-            _clear
-            echo -e "${RED}The grid engine (checkRunGrid) failed for this run.${NC}"
-            [ -s "$_errf" ] && { echo; sed 's/^/    /' "$_errf"; echo; }
-            echo -e "${YELLOW}Falling back to the list view...${NC}"
-            echo; pause
-            list_view "$logFolder"; return
+        if [ -n "$_need_render" ]; then
+            grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>"$_errf")
+            if [ $? -ne 0 ]; then
+                _clear
+                echo -e "${RED}The grid engine (checkRunGrid) failed for this run.${NC}"
+                [ -s "$_errf" ] && { echo; sed 's/^/    /' "$_errf"; echo; }
+                echo -e "${YELLOW}Falling back to the list view...${NC}"
+                echo; pause
+                list_view "$logFolder"; return
+            fi
+            _need_render=""
         fi
 
         # ---- height check: does the full frame fit? if not, compact the chrome
@@ -340,13 +363,14 @@ home_loop() {
 
         # ---- command area (full when it fits, one compact line when tight) -----
         if [ -n "$compact" ]; then
-            pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+            pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
         else
             pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
             pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
             pln "   ${BOLD}d b2${NC}          diagnose        ${GREY}(why it failed / what to do)${NC}"
             [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
             pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
+            pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
             pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
             pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
         fi
@@ -359,16 +383,17 @@ home_loop() {
 
         # single-word commands first
         case "$tok" in
-            "")   loadData force; _refresh_others; continue ;;   # Enter = LIVE refresh + redraw
+            "")   loadData force; _refresh_others; _need_render=y; continue ;;   # Enter = LIVE refresh + redraw
             q|qq) exit ;;                                   # grid home is top level: quit
             o)    if run_switcher; then
                       if [ -d "$SWITCH_SEL" ]; then
-                          if _dir_ready "$SWITCH_SEL"; then logFolder="$SWITCH_SEL"
+                          if _dir_ready "$SWITCH_SEL"; then logFolder="$SWITCH_SEL"; _need_render=y
                           else MSG="${YELLOW}That run has no job breakdown yet.${NC}"; fi
                       elif [ -f "$SWITCH_SEL" ]; then less "$SWITCH_SEL"; fi
                   fi
                   continue ;;
             l)    list_view "$logFolder"; continue ;;
+            s)    sample_table "$logFolder"; continue ;;
             g)    workflow_dag "$logFolder"; continue ;;
             p)    if [ -z "$showPending" ]; then showPending=yes; MSG="${GREY}Pending jobs now shown in the list view.${NC}"
                   else showPending=""; MSG="${GREY}Pending jobs now hidden in the list view.${NC}"; fi
