@@ -164,16 +164,14 @@ jobrows="${neworows%$'\n'}"
 # ---- linear ordering: the ONE source of truth ------------------------------
 # Both the linear render (render_linear) and the plain-integer address resolver
 # derive their numbering from this exact sequence, so the number a user sees in
-# the linear view always resolves to the same job.  Group order first, then
-# jobrows order within a group.  Change the order in exactly one place: here.
-# NB: 'orphan' MUST be here or orphaned jobs are invisible/unaddressable in the
-# linear view (a latent bug in the original render_linear, which omitted it).
-LINEAR_ORDER_GROUPS="error orphan unknown running pending done"
-linear_flags() {   # emit flags in linear-view order, one per line (1-based)
-  local grp
-  for grp in $LINEAR_ORDER_GROUPS; do
-    echo "$jobrows" | awk -F'|' -v g="$grp" '$6==g{print $1}'
-  done
+# the linear view always resolves to the same job.  Order is SUBMISSION order
+# (allJobs.txt / jobrows order: step 1 jobs above step 2 above step 3, as the
+# user submitted them) -- NOT grouped by status, which reordered the list
+# confusingly (a running step 3 floating above a done step 1).  Status stays
+# visible via each row's glyph.  Every row is included (orphans too), so no job
+# is unaddressable.  Change the order in exactly one place: here.
+linear_flags() {   # emit flags in submission order, one per line (1-based)
+  echo "$jobrows" | awk -F'|' '$1!=""{print $1}'
 }
 
 # _resolve_row ROWLETTERS STEP -> echo the per-sample flag(s) for that grid cell.
@@ -439,31 +437,15 @@ print_legend() {
 render_linear() {
   print_header
   echo
-  echo "$jobrows" | awk -F'|' -v G="1" '
-    BEGIN{
-      # nothing
-    }
-    { rows[NR]=$0 }
-    END{
-      # group by status, ordered error,unknown,running,pending,done
-      order[1]="error";order[2]="unknown";order[3]="running";order[4]="pending";order[5]="done"
-    }' >/dev/null
-  # simple: print a numbered list grouped by status.
-  # Iterate the SAME group order (and the same per-group awk) as linear_flags(),
-  # so the number printed here is exactly what `--resolve <N>` returns.
-  local i=0
-  for grp in $LINEAR_ORDER_GROUPS; do
-    local block
-    block="$(echo "$jobrows" | awk -F'|' -v g="$grp" '$6==g{print $1}')"
-    [ -z "$block" ] && continue
-    case "$grp" in
-      error) lbl="${C_RED}errors${C_OFF}";; orphan) lbl="${C_RED}orphaned${C_OFF}";;
-      unknown) lbl="${C_ORANGE}unknown${C_OFF}";;
-      running) lbl="${C_YEL}running${C_OFF}";; pending) lbl="${C_GREY}pending${C_OFF}";;
-      done) lbl="${C_GREEN}done${C_OFF}";; esac
-    printf '\n%s:\n' "$lbl"
-    while read -r fl; do i=$((i+1)); printf '  %3d  %s   %s\n' "$i" "$(glyph "$grp")" "$fl"; done <<<"$block"
-  done
+  # One numbered list in SUBMISSION order (allJobs.txt order), so step 1 jobs sit
+  # above step 2 above step 3 regardless of status.  Status is shown per row via
+  # the glyph, not used to reorder.  The number printed is exactly what
+  # `--resolve <N>` returns, since both derive from linear_flags()'s order.
+  local i=0 fl st
+  while IFS='|' read -r fl _ _ _ _ st _; do
+    [ -z "$fl" ] && continue
+    i=$((i+1)); printf '  %3d  %s   %s\n' "$i" "$(glyph "$st")" "$fl"
+  done <<<"$jobrows"
   print_legend
   echo
   echo "This run does not flatten to a clean sample x step grid; showing linear view."
