@@ -787,6 +787,19 @@ Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
 | `Enter` | refresh (re-query `squeue`, redraw) |
 | `q` / `qq` | back up a level / quit |
 
+**Row labels scale (large runs).** Row labels are bijective base-26 — `a`…`z`, then `aa`, `ab`, … `az`, `ba`, … — so a run with **more than 26 samples** stays fully labelled and every row remains addressable (`aa3`, `ab3`, …). Press `s` for a `row → full sample name` table when the on-grid labels are trimmed.
+
+**Linear (flat) view.** Some runs don't flatten into a clean sample × step grid — e.g. different steps operate on different sample sets, or the run is just a flat list of jobs. `checkRun` then shows a **linear view**: every job on its own numbered row with its status glyph, in **submission order** (step 1 jobs above step 2 above step 3, as you submitted them — *not* reordered by status). Here a job is addressed by its **number**, and the command hint switches to numbers automatically:
+
+| Type | Action |
+|------|--------|
+| `3` | view job 3's log |
+| `d 3` | diagnose job 3 |
+| `a 3` | ask the AI helper about job 3 |
+| `r 3` | view job 3's raw files |
+
+The number shown for a job always resolves to that same job (`checkRun log 3` / `checkRun why 3` work non-interactively too).
+
 **Non-interactive verbs.** The same grid and diagnosis are available without entering the UI:
 
 ```bash
