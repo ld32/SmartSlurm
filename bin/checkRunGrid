@@ -27,7 +27,7 @@
 set -uo pipefail
 
 LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"
-FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""
+FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) LOGDIR="$2"; shift 2;;
@@ -44,6 +44,7 @@ while [ $# -gt 0 ]; do
     # --render : explicit alias for the default no-address render path, so callers
     #            name the mode instead of relying on "no arg = render".
     --render) RENDER=1; shift;;
+    --samples) SAMPLES_MODE=1; shift;;
     -h|--help) sed -n '2,20p' "$0"; exit 0;;
     *) ADDR="$1"; shift;;
   esac
@@ -163,16 +164,14 @@ jobrows="${neworows%$'\n'}"
 # ---- linear ordering: the ONE source of truth ------------------------------
 # Both the linear render (render_linear) and the plain-integer address resolver
 # derive their numbering from this exact sequence, so the number a user sees in
-# the linear view always resolves to the same job.  Group order first, then
-# jobrows order within a group.  Change the order in exactly one place: here.
-# NB: 'orphan' MUST be here or orphaned jobs are invisible/unaddressable in the
-# linear view (a latent bug in the original render_linear, which omitted it).
-LINEAR_ORDER_GROUPS="error orphan unknown running pending done"
-linear_flags() {   # emit flags in linear-view order, one per line (1-based)
-  local grp
-  for grp in $LINEAR_ORDER_GROUPS; do
-    echo "$jobrows" | awk -F'|' -v g="$grp" '$6==g{print $1}'
-  done
+# the linear view always resolves to the same job.  Order is SUBMISSION order
+# (allJobs.txt / jobrows order: step 1 jobs above step 2 above step 3, as the
+# user submitted them) -- NOT grouped by status, which reordered the list
+# confusingly (a running step 3 floating above a done step 1).  Status stays
+# visible via each row's glyph.  Every row is included (orphans too), so no job
+# is unaddressable.  Change the order in exactly one place: here.
+linear_flags() {   # emit flags in submission order, one per line (1-based)
+  echo "$jobrows" | awk -F'|' '$1!=""{print $1}'
 }
 
 # _resolve_row ROWLETTERS STEP -> echo the per-sample flag(s) for that grid cell.
@@ -295,6 +294,25 @@ agg() { local a="$1"; case "$a" in
 
 # repeat a (possibly multibyte) char N times
 _repeat() { local n="$1" c="$2" s=""; while [ "$n" -gt 0 ]; do s="$s$c"; n=$((n-1)); done; printf '%s' "$s"; }
+# display width of a sample label. The only non-ASCII char it can contain is the
+# ellipsis '…' (3 bytes, 1 column), so printf's byte-based %-*s under-pads such
+# labels. Count '…' via substring removal (locale-independent) and measure the
+# remaining ASCII with ${#}: width = ascii-chars + ellipsis-count.
+_dwidth() {
+  local s="$1" a t d=0
+  a="${s//…/}"                                  # strip … -> pure ASCII remainder
+  t="$s"; while [ "${t#*…}" != "$t" ]; do d=$((d+1)); t="${t#*…}"; done
+  printf '%s' $(( ${#a} + d ))                  # ASCII cols (1 byte=1 col) + one col per …
+}
+# _rowlabel : 0-based row index -> bijective base-26 label (a..z, aa..zz, aaa..),
+# the inverse of _resolve_row's decoder, so labels stay universally-printable
+# lowercase letters no matter how many samples there are (the old chr(97+r) ran
+# off the end of the alphabet into '{ | } ~', DEL, then invalid bytes shown as ).
+# Sets REPLY (no subshell, so it stays cheap across a full render).
+_rowlabel() {
+  local n=$(( $1 + 1 )) r; local a='abcdefghijklmnopqrstuvwxyz'; REPLY=''
+  while [ "$n" -gt 0 ]; do r=$(( (n-1) % 26 )); n=$(( (n-1) / 26 )); REPLY="${a:$r:1}$REPLY"; done
+}
 # center plain (escape-free) text within a field of visible width $2
 _center() {
   local t="$1" w="$2" len l r
@@ -333,6 +351,73 @@ read -r n_done n_err n_run n_pend n_unk n_orph <<<"$summary"
 total=$(echo "$jobrows" | grep -c .)
 runname="$(basename "$(cd "$LOGDIR/.." && pwd)")"
 
+# _sample_labels : given the SAMPLES[] array, set TRUNC[] (parallel), plus SPFX
+# and SSFX (the stripped common prefix/suffix). General, assumption-free: strip
+# the longest common prefix AND suffix, then if the remaining "middle" is wider
+# than the target width, slide a window to the offset where the samples are most
+# distinct (so hierarchically-similar names still differ in the label). All the
+# heavy lifting is one awk pass, so it costs nothing per redraw.
+SAMPLE_W="${CHECKRUN_SAMPLE_W:-26}"
+# Trailing sequencing tokens (Illumina lane/sample index, read, chunk, extension)
+# are unique per file yet uninformative, and being unique they dominate the
+# right-anchored window and push the descriptive name off the left. Strip them
+# before trimming so the label shows the meaningful part. Override with
+# CHECKRUN_TRIM_SUFFIX_RE; set it empty to disable. The default only matches the
+# Illumina _S<n>_L<n> block, so non-sequencing names are untouched. The full name
+# is unaffected elsewhere (the 's' table and --samples still show it in full).
+SAMPLE_TRIM_RE="${CHECKRUN_TRIM_SUFFIX_RE-_S[0-9]+_L[0-9]+(_R[0-9]+)?(_[0-9]+)?([.]fastq)?([.]gz)?$}"
+_sample_labels() {
+  TRUNC=(); SPFX=""; SSFX=""
+  [ "${#SAMPLES[@]}" -eq 0 ] && return
+  local out
+  out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" '
+    { s[NR]=$0; if(STRIP!="") sub(STRIP,"",s[NR]); n=NR }
+    END{
+      if(n==0) exit
+      lcp=s[1]
+      for(i=2;i<=n;i++){ while(length(lcp)>0 && substr(s[i],1,length(lcp))!=lcp) lcp=substr(lcp,1,length(lcp)-1) }
+      lcs=s[1]
+      for(i=2;i<=n;i++){ while(length(lcs)>0 && substr(s[i],length(s[i])-length(lcs)+1)!=lcs) lcs=substr(lcs,2) }
+      lp=length(lcp); ls=length(lcs)
+      # never let prefix+suffix swallow a whole sample
+      redo=1
+      while(redo){ redo=0
+        for(i=1;i<=n;i++){ if(length(s[i])-lp-ls<1){ if(ls>0){ls--} else if(lp>0){lp--} else break; redo=1; break } }
+      }
+      maxm=0
+      for(i=1;i<=n;i++){ m[i]=substr(s[i],lp+1,length(s[i])-lp-ls); if(length(m[i])>maxm) maxm=length(m[i]) }
+      off=0
+      if(maxm>W){
+        best=-1
+        # slide the window from the RIGHT edge inward and keep the right-most
+        # offset that leaves the labels distinct. Sample names put their most
+        # distinguishing token (id / lane / replicate) near the end, so a tail
+        # reads far better than a floating interior fragment; sliding left only
+        # happens when the tail itself is not distinct. Breaking on the first
+        # fully-distinct window (often the right edge) also trims the scan cost.
+        for(o=maxm-W;o>=0;o--){ delete seen; d=0
+          for(i=1;i<=n;i++){ w=substr(m[i],o+1,W); if(!(w in seen)){seen[w]=1;d++} }
+          if(d>best){ best=d; off=o; if(d==n) break }
+        }
+      }
+      printf "#INFO\t%s\t%s\n", lcp, lcs
+      for(i=1;i<=n;i++){
+        li=length(m[i]); eo=off
+        # a middle shorter than the global offset cannot fill the window there;
+        # anchor that row to its own tail so its label is never blank.
+        if(eo>li-W){ eo=li-W; if(eo<0) eo=0 }
+        lab=substr(m[i],eo+1,W)
+        printf "%s%s%s\n", (eo>0?"…":""), lab, ((eo+W)<li?"…":"")
+      }
+    }')"
+  local first=1 line
+  while IFS= read -r line; do
+    if [ "$first" = 1 ]; then first=0
+      SPFX="$(printf '%s' "$line" | cut -f2)"; SSFX="$(printf '%s' "$line" | cut -f3)"
+    else TRUNC+=("$line"); fi
+  done <<<"$out"
+}
+
 print_header() {
   printf '%sFound %d jobs%s\n\n' "$C_BOLD" "$total" "$C_OFF"
   printf 'Status:  %s %d done   %s %d error   %s %d running   %s %d pending' \
@@ -352,31 +437,15 @@ print_legend() {
 render_linear() {
   print_header
   echo
-  echo "$jobrows" | awk -F'|' -v G="1" '
-    BEGIN{
-      # nothing
-    }
-    { rows[NR]=$0 }
-    END{
-      # group by status, ordered error,unknown,running,pending,done
-      order[1]="error";order[2]="unknown";order[3]="running";order[4]="pending";order[5]="done"
-    }' >/dev/null
-  # simple: print a numbered list grouped by status.
-  # Iterate the SAME group order (and the same per-group awk) as linear_flags(),
-  # so the number printed here is exactly what `--resolve <N>` returns.
-  local i=0
-  for grp in $LINEAR_ORDER_GROUPS; do
-    local block
-    block="$(echo "$jobrows" | awk -F'|' -v g="$grp" '$6==g{print $1}')"
-    [ -z "$block" ] && continue
-    case "$grp" in
-      error) lbl="${C_RED}errors${C_OFF}";; orphan) lbl="${C_RED}orphaned${C_OFF}";;
-      unknown) lbl="${C_ORANGE}unknown${C_OFF}";;
-      running) lbl="${C_YEL}running${C_OFF}";; pending) lbl="${C_GREY}pending${C_OFF}";;
-      done) lbl="${C_GREEN}done${C_OFF}";; esac
-    printf '\n%s:\n' "$lbl"
-    while read -r fl; do i=$((i+1)); printf '  %3d  %s   %s\n' "$i" "$(glyph "$grp")" "$fl"; done <<<"$block"
-  done
+  # One numbered list in SUBMISSION order (allJobs.txt order), so step 1 jobs sit
+  # above step 2 above step 3 regardless of status.  Status is shown per row via
+  # the glyph, not used to reorder.  The number printed is exactly what
+  # `--resolve <N>` returns, since both derive from linear_flags()'s order.
+  local i=0 fl st
+  while IFS='|' read -r fl _ _ _ _ st _; do
+    [ -z "$fl" ] && continue
+    i=$((i+1)); printf '  %3d  %s   %s\n' "$i" "$(glyph "$st")" "$fl"
+  done <<<"$jobrows"
   print_legend
   echo
   echo "This run does not flatten to a clean sample x step grid; showing linear view."
@@ -392,12 +461,9 @@ render_grid() {
   IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
   IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
 
-  # Sample names are often long, near-identical paths. Strip their longest common
-  # prefix so row labels differ; the full names are listed in a legend below.
-  local SLCP="${SAMPLES[0]}" _s
-  for _s in "${SAMPLES[@]}"; do
-    while [ -n "$SLCP" ] && [ "${_s#"$SLCP"}" = "$_s" ]; do SLCP="${SLCP%?}"; done
-  done
+  # trimmed, distinct sample labels (prefix/suffix stripped, windowed)
+  _sample_labels
+  local NAMEW=$((SAMPLE_W + 2))     # +2 for the leading/trailing … markers
 
   local COLW=7 pad="   "
   # collect the visible per-sample step columns
@@ -408,9 +474,12 @@ render_grid() {
   done
   local n=${#SNUM[@]} i
 
-  # label area (row letter + sample) is printed to the LEFT of the framed grid;
-  # LEAD is that same width in blanks, used to indent the frame borders.
-  local LEAD; LEAD="${pad}$(printf '%-4s %-11s' '' '')"
+  # label area = pad + name(NAMEW) + ' ' + row-letter (right-aligned in 3) + 2
+  # spaces of breathing room before the frame edge, so the letter doesn't sit
+  # jammed against '│'. The 'row' header lines up over the letter; the frame and
+  # step columns are indented by this same width so everything stays aligned.
+  local LABW=$((NAMEW + 6))
+  local LEAD; LEAD="${pad}$(printf '%*s' "$LABW" '')"
 
   # box-border pieces (top / bottom), one segment per step column
   local dash; dash="$(_repeat "$COLW" '─')"
@@ -420,35 +489,53 @@ render_grid() {
     else top="$top$dash┐"; bot="$bot$dash┘"; fi
   done
 
-  # --- header: step NAMES on one row, step NUMBERS on the row nearest the cells
-  printf '\n%s%-4s %-11s' "$pad" "row" "sample"
+  # --- header: step NAMES on one row, step NUMBERS on the row nearest the cells.
+  printf '\n%s%-*s %3s  ' "$pad" "$NAMEW" "sample" "row"
   for ((i=0;i<n;i++)); do printf ' %s%s%s' "$C_BOLD" "$(_center "${SNAME[$i]:0:$COLW}" "$COLW")" "$C_OFF"; done
   echo
-  printf '%s%-4s %-11s' "$pad" '' ''
+  printf '%s%*s' "$pad" "$LABW" ''
   for ((i=0;i<n;i++)); do printf ' %s%s%s' "$C_BOLD" "$(_center "${SNUM[$i]}" "$COLW")" "$C_OFF"; done
   echo
   printf '%s%s\n' "$LEAD" "$top"      # top edge of the grid, right under the numbers
 
-  # --- data rows (framed) ---
+  # --- data rows (framed): sample name, then the BOLD row-letter next to the grid
   local r=0 s c glyph_l glyph_r
   glyph_l=$(( (COLW-1)/2 )); glyph_r=$(( COLW-1-glyph_l ))
+
+  # Index every job into its (sample|step) cell ONCE per render, and precompute
+  # the status->glyph map, so the rows×cols inner loop is a plain array lookup
+  # instead of forking awk+grep (and glyph/agg subshells) for every cell on every
+  # redraw. That per-cell forking was the bulk of the redraw cost.
+  local -A CELL GLYPH1
+  GLYPH1[done]="${C_GREEN}+${C_OFF}";      GLYPH1[error]="${C_RED}X${C_OFF}"
+  GLYPH1[orphan]="${C_RED}x${C_OFF}";      GLYPH1[running]="${C_YEL}${C_BOLD}>${C_OFF}"
+  GLYPH1[unknown]="${C_ORANGE}?${C_OFF}";  GLYPH1[pending]="${C_GREY}-${C_OFF}"
+  local _f _stp _nm _sm _fn _s6 _dp
+  while IFS='|' read -r _f _stp _nm _sm _fn _s6 _dp; do
+    [ -z "$_f" ] && continue
+    CELL["$_sm|$_stp"]+="$_s6 "                 # per-cell space-joined status list
+  done <<<"$jobrows"
+
   for s in "${SAMPLES[@]}"; do
     [ "$s" = "-" ] && continue
-    local rl; rl="$(printf "\\$(printf '%03o' $((97+r)))")"   # a,b,c...
-    local slabel="${s#"$SLCP"}"
-    printf '%s%-4s %-11s│' "$pad" "$rl" "${slabel:0:11}"
+    local rl; _rowlabel "$r"; rl="$REPLY"   # a,b,…,z,aa,ab,… (base-26)
+    local _lab="${TRUNC[$r]}" _dw _lp
+    _dw=$(_dwidth "$_lab"); _lp=$((NAMEW - _dw)); [ "$_lp" -lt 0 ] && _lp=0
+    printf '%s%s%*s %s%3s%s  │' "$pad" "$_lab" "$_lp" '' "$C_BOLD" "$rl" "$C_OFF"
     for ((c=0;c<n;c++)); do
-      local num="${SNUM[$c]}"
-      local jobs; jobs="$(echo "$jobrows" | awk -F'|' -v s="$s" -v st="$num" '$4==s && $2==st{print $6}')"
-      local cnt; cnt="$(echo -n "$jobs" | grep -c . 2>/dev/null)"; [ -z "$cnt" ] && cnt=0
-      local cell
-      if [ "$cnt" -eq 0 ]; then cell="${C_GREY}·${C_OFF}"      # blank: sample skips this step
-      elif [ "$cnt" -eq 1 ]; then cell="$(glyph "$jobs")"
+      local _k="$s|${SNUM[$c]}" jobs=""
+      [ -n "${CELL[$_k]+x}" ] && jobs="${CELL[$_k]}"   # empty when the sample skips this step (set -u safe)
+      local -a _js=($jobs)                        # statuses are plain words; safe split
+      local cell col_ cnt=${#_js[@]}
+      if   [ "$cnt" -eq 0 ]; then cell="${C_GREY}·${C_OFF}"    # blank: sample skips this step
+      elif [ "$cnt" -eq 1 ]; then cell="${GLYPH1[${_js[0]}]}"  # single job: its status glyph
       else
-        # multi-job cell: '@' colored by aggregate status
-        local a; a="$(agg "$(echo "$jobs" | tr '\n' ' ')")"
-        local col_
-        case "$a" in error) col_="$C_RED";; unknown) col_="$C_ORANGE";; running) col_="$C_YEL";; pending) col_="$C_GREY";; *) col_="$C_GREEN";; esac
+        # multi-job cell: '@' colored by aggregate status (same precedence as agg())
+        case "$jobs" in
+          *error*)   col_="$C_RED";;    *unknown*) col_="$C_ORANGE";;
+          *running*) col_="$C_YEL";;    *pending*) col_="$C_GREY";;
+          *)         col_="$C_GREEN";;
+        esac
         cell="${col_}@${C_OFF}"
       fi
       printf '%*s%b%*s│' "$glyph_l" '' "$cell" "$glyph_r" ''
@@ -457,33 +544,16 @@ render_grid() {
     r=$((r+1))
   done
   printf '%s%s\n' "$LEAD" "$bot"       # bottom edge of the grid
-
-  # row -> sample key. Only worth printing when the labels don't fully identify
-  # the sample (a common prefix was stripped, or a name is longer than the label).
-  local _needkey="" _rr=0 _sx
-  if [ -n "$SLCP" ]; then _needkey=1; else
-    for _sx in "${SAMPLES[@]}"; do [ "${#_sx}" -gt 11 ] && { _needkey=1; break; }; done
-  fi
-  if [ -n "$_needkey" ]; then
-    printf '\n%ssamples:%s' "$C_BOLD" "$C_OFF"
-    [ -n "$SLCP" ] && printf '  %s(common prefix %s… omitted)%s' "$C_GREY" "$SLCP" "$C_OFF"
-    echo
-    for _sx in "${SAMPLES[@]}"; do
-      [ "$_sx" = "-" ] && continue
-      local _rl; _rl="$(printf "\\$(printf '%03o' $((97+_rr)))")"
-      printf '%s%s%s%s  %s\n' "$pad" "$C_BOLD" "$_rl" "$C_OFF" "${_sx#"$SLCP"}"
-      _rr=$((_rr+1))
-    done
-  fi
+  # (the full row -> sample mapping lives behind checkRun's 's' command, not inline)
 
   # experiment-level steps
   if [ "${ESTEPS[0]}" != "-" ]; then
     printf '\n%sexperiment-level (across all samples):%s\n' "$C_BOLD" "$C_OFF"
     for es in "${ESTEPS[@]}"; do
       local num="${es%%:*}" nm="${es#*:}"
-      local st; st="$(echo "$jobrows" | awk -F'|' -v st="$num" '$4=="" && $2==st{print $6}' | head -1)"
-      [ -z "$st" ] && st="pending"
-      printf '%sE%-3s %-10s %b   [step %s]\n' "$pad" "$num" "$nm" "$(glyph "$st")" "$num"
+      local _ek="|$num" _e=""; [ -n "${CELL[$_ek]+x}" ] && _e="${CELL[$_ek]}"
+      local -a _ejs=($_e); local st="${_ejs[0]:-pending}"   # experiment cell: empty sample
+      printf '%sE%-3s %-10s %b   [step %s]\n' "$pad" "$num" "$nm" "${GLYPH1[$st]}" "$num"
     done
   fi
 
@@ -504,6 +574,19 @@ render_grid() {
     echo "'@' cells back multiple jobs; the address lists them."
   fi
 }
+
+if [ -n "$SAMPLES_MODE" ]; then
+  # emit one line per sample:  <row-letter>TAB<trimmed label>TAB<full name>
+  mapfile -t SAMPLES < <(echo "$jobrows" | awk -F'|' '$4!=""{print $4}' | sort -u -V)
+  _sample_labels
+  _i=0
+  for _s in "${SAMPLES[@]}"; do
+    _rowlabel "$_i"; _rl="$REPLY"
+    printf '%s\t%s\t%s\n' "$_rl" "${TRUNC[$_i]}" "$_s"
+    _i=$((_i+1))
+  done
+  exit 0
+fi
 
 if [ -n "$FORCE_LINEAR" ] || [ "$CLEAN" != 1 ]; then render_linear; else render_grid; fi
 exit 0   # a successful render always exits 0 (never let a trailing command leak a non-zero code)
