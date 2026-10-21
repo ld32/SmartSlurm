@@ -316,7 +316,7 @@ list_view() {
 # address to view). Transient notices ride in $MSG and appear under the grid.
 # ---------------------------------------------------------------------------
 home_loop() {
-    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y
+    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y _view
     MSG=""
     while true; do
         # Rebuild the grid only when the user asked for fresh data (Enter) or
@@ -362,17 +362,38 @@ home_loop() {
         pln ""
 
         # ---- command area (full when it fits, one compact line when tight) -----
-        if [ -n "$compact" ]; then
-            pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+        # The engine renders either a sample x step grid or a linear list, and the
+        # address grammar differs: the grid is addressed by row-letter+step (b2),
+        # the linear list by a plain job number (3). Detect which view is on screen
+        # (render_linear emits the "showing linear view" sentinel) and show the
+        # matching instructions, so the hint never tells a flat-list user to type
+        # "b2" when there are no grid addresses.
+        case "$grid" in *"showing linear view"*) _view=linear ;; *) _view=grid ;; esac
+        if [ "$_view" = linear ]; then
+            if [ -n "$compact" ]; then
+                pln "${BOLD}3${NC} view  ${BOLD}d 3${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a 3${NC} AI  ")${BOLD}r 3${NC} raw  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+            else
+                pln "${BOLD}Usage:${NC}  type a job ${BOLD}number${NC} from the list — e.g. ${BOLD}3${NC}"
+                pln "   ${BOLD}3${NC}             view log        ${GREY}(just type the number)${NC}"
+                pln "   ${BOLD}d 3${NC}           diagnose        ${GREY}(why it failed / what to do)${NC}"
+                [ -x "$_AI_CALL" ] && pln "   ${BOLD}a 3${NC}           ask AI about the job"
+                pln "   ${BOLD}r 3${NC}           view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
+                pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
+                pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+            fi
         else
-            pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
-            pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
-            pln "   ${BOLD}d b2${NC}          diagnose        ${GREY}(why it failed / what to do)${NC}"
-            [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
-            pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
-            pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
-            pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
-            pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+            if [ -n "$compact" ]; then
+                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+            else
+                pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
+                pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
+                pln "   ${BOLD}d b2${NC}          diagnose        ${GREY}(why it failed / what to do)${NC}"
+                [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
+                pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
+                pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
+                pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
+                pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+            fi
         fi
 
         pln ""
