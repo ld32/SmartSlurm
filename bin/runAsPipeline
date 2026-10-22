@@ -309,7 +309,7 @@ fi
 
 [ -z "$slurmAccount" ] && [ `sshare -Uu $USER | wc -l` -ge "4" ] && { echolog Missing slurm account: $SBATCH_OPTIONS; exit 1; } 
 
-firstRowBelowLoopStart=""; findLoopStart=""
+firstRowBelowLoopStart=""; findLoopStart=""; loopDepth=0
 
 # M4: choose block-closure mode. If the pipeline uses '#@end' anywhere, the whole
 # script is parsed in strict explicit-closure mode: blank lines are body, only
@@ -350,6 +350,12 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
     # means the user forgot the closing #@end.
     if [[ "$i" == '#@__SMARTSLURM_EOF__' ]]; then
         [ -n "$findjob" ] && [ "$BLOCK_MODE" = end ] && { echolog "Error: step '$step' was opened with '#@' but never closed with '#@end' before the end of the script."; touch "$smartSlurmLogDir/.conversionError"; exit 1; }
+        # Loop-nesting balance check: every 'for'/'#loopStart:' that pushed a loop
+        # suffix must be matched by a 'done'. A non-zero depth here means a one-line
+        # 'for ...; done' slipped through, a 'for' was miscounted, or a 'done' is
+        # missing -- any of which would corrupt downstream job flags. Fail loudly
+        # instead of emitting corrupted flags.
+        [ "${loopDepth:-0}" -ne 0 ] && { echolog "Error: unbalanced loop nesting at end of script: $loopDepth loop(s) opened with 'for'/'#loopStart:' were never closed by a 'done'. Check for a one-line 'for ...; done', a 'for' with no simple loop variable, or a missing 'done'."; touch "$smartSlurmLogDir/.conversionError"; exit 1; }
         continue
     fi
 
@@ -718,24 +724,50 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         #    echo find loop end: $i
         #    space=${space%    }
         #    loper=${loper%.\$*}
+        fw="${i%% *}"      # first space-delimited word of the (leading-trimmed) line
         if [[ "$i" == \#loopStart:* ]]; then
-            echolog1; echolog1 find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#\#loopStart:}; a=${a%% *}
-            loper="$loper.\$$a"
-            #loper="$loper.for"
-            findLoopStart=yes
-        elif [[ "$i" == done* ]]; then
-            #echolog
+            # '#loopStart:VAR' is the explicit way to declare a fan-out loop variable
+            # (for while/until/C-style loops, or any case auto-detection can't read).
+            # Validate it the same way as an auto-detected 'for' variable so a
+            # malformed marker warns instead of pushing a garbage flag suffix.
+            if [[ "$a" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                echolog1; echolog1 find loop start: $i
+                loper="$loper.\$$a"; loopDepth=$((loopDepth+1))
+                findLoopStart=yes
+            else
+                echolog1 "Warn: '#loopStart:' with an invalid or empty loop variable (ignored): $i  (expected '#loopStart:NAME')"
+            fi
+        elif [ "${fw%;}" = done ]; then
+            # Close a loop only when 'done' is the FIRST WORD of the line. A 'done'
+            # mid-line (e.g. a one-line 'for ...; done') is handled on the 'for'
+            # side; a line like 'done_file=...' is not a loop close.
             echolog1 "find loop end: $i"
             #space=${space%    }
-            loper=${loper%.\$*}
-        elif [[ "$i" == for* ]]; then
-            echolog1; echolog1 find for loop start: $i
-            [ ! -z "$firstRowBelowLoopStart" ] && firstRowBelowLoopStart="" && continue
-            #a=`echo $i | xargs`  # remove leading space and tailing space
-            a=${i#* }; a=${a%% *}
-            loper="$loper.\$$a"
+            if [ "$loopDepth" -gt 0 ]; then loper=${loper%.\$*}; loopDepth=$((loopDepth-1))
+            else echolog1 "Warn: 'done' with no open loop (ignored): $t"; fi
+        elif [ "$fw" = for ]; then
+            # Open a loop only when 'for' is the FIRST WORD (so 'format...',
+            # 'foremost...', 'foreach...' are NOT misread as loops), and only when
+            # it actually introduces a fan-out loop variable.
+            if [ ! -z "$firstRowBelowLoopStart" ]; then
+                firstRowBelowLoopStart=""                       # real 'for' after #loopStart: already counted
+            elif [[ "$i" == *[\ \;]done || "$i" == *[\ \;]done[\ \;]* ]]; then
+                # one-line 'for ... ; done': opens and closes on the same line, so it
+                # wraps no step and must not push a suffix (it would never be popped).
+                echolog1 "one-line for...done (no fan-out), ignored: $i"
+            else
+                a=${i#* }; a=${a%% *}                            # the loop variable, right after 'for'
+                if [[ "$a" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                    echolog1; echolog1 find for loop start: $i
+                    loper="$loper.\$$a"; loopDepth=$((loopDepth+1))
+                else
+                    # not a plain 'for VAR in ...' (e.g. C-style 'for ((...))'): no
+                    # positional loop variable. Use '#loopStart:VAR' to fan out flags.
+                    echolog1 "Warn: 'for' without a simple loop variable (no fan-out suffix): $i  (use #loopStart:VAR)"
+                fi
+            fi
         #    loper="$loper.for"
         #else
 
