@@ -272,7 +272,7 @@ if [ ! -f $succFile ]; then
             if [ ! -f $backup ]; then 
                 mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
                 echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref." 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a || $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
                 rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
