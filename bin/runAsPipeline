@@ -726,12 +726,19 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         #    loper=${loper%.\$*}
         fw="${i%% *}"      # first space-delimited word of the (leading-trimmed) line
         if [[ "$i" == \#loopStart:* ]]; then
-            echolog1; echolog1 find loop start: $i
             #a=`echo $i | xargs`  # remove leading space and tailing space
             a=${i#\#loopStart:}; a=${a%% *}
-            loper="$loper.\$$a"; loopDepth=$((loopDepth+1))
-            #loper="$loper.for"
-            findLoopStart=yes
+            # '#loopStart:VAR' is the explicit way to declare a fan-out loop variable
+            # (for while/until/C-style loops, or any case auto-detection can't read).
+            # Validate it the same way as an auto-detected 'for' variable so a
+            # malformed marker warns instead of pushing a garbage flag suffix.
+            if [[ "$a" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                echolog1; echolog1 find loop start: $i
+                loper="$loper.\$$a"; loopDepth=$((loopDepth+1))
+                findLoopStart=yes
+            else
+                echolog1 "Warn: '#loopStart:' with an invalid or empty loop variable (ignored): $i  (expected '#loopStart:NAME')"
+            fi
         elif [ "${fw%;}" = done ]; then
             # Close a loop only when 'done' is the FIRST WORD of the line. A 'done'
             # mid-line (e.g. a one-line 'for ...; done') is handled on the 'for'
