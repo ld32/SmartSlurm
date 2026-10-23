@@ -24,11 +24,12 @@ Two companion tools help you watch and debug runs:
 ## Table of Contents
 
 - [Features](#features)
-- [Installation](#installation)
+- [Setup](#setup)
+  - [The `smartslurm` command](#the-smartslurm-command)
 - [ssbatch: smart sbatch](#ssbatch-smart-sbatch)
   - [Usage](#usage)
   - [Quick example](#quick-example)
-  - [Utilities: unExport](#utilities-unexport)
+  - [Turning SmartSlurm off](#turning-smartslurm-off)
   - [How ssbatch works](#how-ssbatch-works)
     - [jobRecord.txt](#jobrecordtxt)
     - [config.txt](#configtxt)
@@ -71,6 +72,7 @@ Two companion tools help you watch and debug runs:
 - **Auto-resubmits** jobs that die out-of-memory (OOM) or out-of-time (OOT), with doubled resources.
 - **Optional checkpointing**: snapshot a long job before it hits its limit, then resume from the snapshot.
 - **Informative emails**: Slurm emails are just a subject line; SmartSlurm attaches the job script, the exact submit command, and the stdout/stderr logs.
+- **Conda-style activation**: a one-time `bash smartSlurmSetup.sh` adds a `smartslurm` command to your shell (it edits `~/.bashrc` for you — no manual `export`); `smartslurm activate` turns SmartSlurm on (aliasing `sbatch` → smart `ssbatch`, with a `{smartSlurm} ` prompt indicator) and `smartslurm deactivate` cleanly reverses it.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
 - **(runAsPipeline) Explicit `#@ … #@end` blocks**: write a step's body verbatim to a per-job script (`awk`, quotes, heredocs, multi-line all survive), instead of flattening it into a single `--wrap` string.
 - **(runAsPipeline) `--lint`**: validate a pipeline's block structure without submitting anything.
@@ -79,15 +81,63 @@ Two companion tools help you watch and debug runs:
 
 ---
 
-## Installation
+## Setup
+
+Setup is two commands — clone, then run the setup script. Nothing is compiled or
+copied into system directories, and **you never add an `export` or edit a file
+yourself** (avoiding that manual `PATH` export is the whole point): the script
+edits your `~/.bashrc` for you.
 
 ```bash
 # 1. Download SmartSlurm
 git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
+cd $HOME/SmartSlurm
 
-# 2. Put it on your PATH (add this line to ~/.bashrc to make it permanent)
-export PATH=$HOME/SmartSlurm/bin:$PATH
+# 2. Run the setup script once — it adds the `smartslurm` command to your ~/.bashrc
+bash smartSlurmSetup.sh
+
+# 3. Open a new shell (or: source ~/.bashrc), then turn SmartSlurm on
+smartslurm activate
 ```
+
+`smartSlurmSetup.sh` is the whole install step. It appends a small, clearly
+marked block to your `~/.bashrc` — you do **not** write this by hand:
+
+```bash
+# >>> smartSlurm initialize >>>
+export SMARTSLURM_HOME="/home/you/SmartSlurm"
+[ -f "$SMARTSLURM_HOME/bin/smartslurm.sh" ] && . "$SMARTSLURM_HOME/bin/smartslurm.sh"
+# <<< smartSlurm initialize <<<
+```
+
+The script writes that block (and `smartslurm uninstall` removes it again). The
+block only teaches your shell the `smartslurm` command; it does **not** put
+SmartSlurm on your `PATH` until you run `smartslurm activate`. Re-running
+`bash smartSlurmSetup.sh` is safe — it updates the block in place (backing up the
+rc first) instead of adding a second copy. All the logic lives in
+`bin/smartslurm.sh`, so a later `git pull` upgrades behavior without rewriting
+your rc file.
+
+### The `smartslurm` command
+
+| Command | What it does |
+|---------|--------------|
+| `smartslurm activate` | Puts SmartSlurm on your `PATH` and **aliases `sbatch` → smart `ssbatch`**, so existing scripts get automatic resource estimation for free. It prints a notice that the alias is in effect (previously this was silent) and prefixes your prompt with `{smartSlurm} ` so you can always see when SmartSlurm is active. |
+| `smartslurm deactivate` | Removes **only** SmartSlurm's own `PATH` entries and prompt prefix, restoring the system `sbatch`. Anything you added *after* activating — a `conda activate`, a `module load`, your own exports — is left untouched. |
+| `smartslurm status` | Reports whether SmartSlurm is active and whether `sbatch` currently resolves to the smart alias or the system binary. |
+| `smartslurm uninstall` | Removes the initialize block from your rc file (with a backup). New shells will no longer know the command. |
+
+> [!NOTE]
+> The prompt prefix uses curly braces — `{smartSlurm} ` — deliberately distinct
+> from conda's `(env) `. The two coexist cleanly: activating or deactivating one
+> never disturbs the other's prompt or `PATH`, in any order.
+
+> [!TIP]
+> Want SmartSlurm's tools without aliasing `sbatch` (for example, only inside one
+> pipeline)? Skip `activate` and either call `ssbatch` / `runAsPipeline` by full
+> path, or add just `$HOME/SmartSlurm/bin` to your `PATH` yourself — that exposes
+> `ssbatch` while leaving the system `sbatch` in place. `smartslurm activate` is
+> the convenient, fully reversible default.
 
 **Optional** — only needed for the workflow-chart (`w`/`g`) option in `checkRun`:
 
@@ -145,9 +195,11 @@ ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dr
 ## Quick example
 
 ```bash
-# One-time setup
+# One-time setup (see "Setup" above), then activate
 git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
-export PATH=$HOME/SmartSlurm/bin:$PATH
+bash $HOME/SmartSlurm/smartSlurmSetup.sh
+source ~/.bashrc          # load the new `smartslurm` command (or open a new shell)
+smartslurm activate
 
 # Make some test inputs
 mkdir -p SmartSlurmTest && cd SmartSlurmTest
@@ -191,13 +243,23 @@ cancelAllJobs
 > [!NOTE]
 > Re-submitting a job with the **same program and input** that already succeeded will prompt you to confirm the rerun, so you don't silently repeat completed work.
 
-## Utilities: unExport
+## Turning SmartSlurm off
 
-`unExport` removes SmartSlurm from your `PATH` in the current shell, restoring the system `sbatch`:
+Use `smartslurm deactivate` to restore the system `sbatch` in the current shell.
+It removes only SmartSlurm's own `PATH` entries and prompt prefix, so anything
+you added after activating is preserved:
 
 ```bash
-source unExport; unExport
+smartslurm deactivate
 ```
+
+> [!NOTE]
+> **`unExport` is deprecated.** The old `source unExport; unExport` still works
+> as a thin shim that warns and delegates to `smartslurm deactivate`, but it will
+> be removed in a future release — switch to `smartslurm deactivate`. (The legacy
+> `unExport` stripped whatever directory held the current `sbatch`, which could
+> remove the *system* `sbatch` from your `PATH` when SmartSlurm was not actually
+> aliasing it; `smartslurm deactivate` does not have that failure mode.)
 
 ## How ssbatch works
 
@@ -752,7 +814,13 @@ checkRun
 It opens on a **status grid** — samples down the side, steps across the top, one glyph per cell:
 
 ```text
+Found 24 jobs
+
 Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
+
+════════════════════════════════════════════════════════════
+Showing run: /n/scratch/users/.../myProject
+════════════════════════════════════════════════════════════
 
    row  sample      normali tokeniz  split  countch  merge  detaile  brief
                        1       2       3       4       5       6       7
@@ -760,6 +828,8 @@ Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
    b    bravo      │   +   │   +   │   +   │   @   │   +   │   ·   │   +   │
    ...
 ```
+
+A band at the top names the run currently on screen (its full path). If other SmartSlurm runs exist in this directory, it also shows `--> N other run(s) available — press o to switch`.
 
 | Glyph | Meaning |
 |:-----:|---------|
@@ -772,7 +842,7 @@ Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
 | `@` | multi-job cell (a fan-out step; resolving its address lists all the jobs) |
 | `·` | not applicable (this sample never ran this step — e.g. the untaken `if/else` branch) |
 
-**Addressing a cell.** A job address is a **row letter + step number** — `b2` is row b, step 2; `e3` is experiment-level step 3. Both orders parse (`b2` or `2b`). At the prompt:
+**Addressing a cell.** A job address is a **row letter + step number** — `b2` is row b, step 2; experiment-level steps are shown with a capital `E` (e.g. `E3`). Both orders parse (`b2` or `2b`, `E3` or `3E`). At the prompt:
 
 | Type | Action |
 |------|--------|
@@ -782,34 +852,25 @@ Status:  ✓ 12 done   ✗ 0 error   ▸ 0 running   · 12 pending
 | `r b2` | view the job's raw files (`.out` / `.err` / `.sh` …) |
 | `o` | browse other SmartSlurm log folders in this directory |
 | `l` | list view (the classic per-job browser; all its capabilities are preserved) |
-| `g` | workflow chart (DAG image; needs graphviz — see [Installation](#installation)) |
+| `g` | workflow chart (DAG image; needs graphviz — see [Setup](#setup)) |
 | `p` | show/hide pending jobs |
 | `Enter` | refresh (re-query `squeue`, redraw) |
 | `q` / `qq` | back up a level / quit |
 
-**Row labels scale (large runs).** Row labels are bijective base-26 — `a`…`z`, then `aa`, `ab`, … `az`, `ba`, … — so a run with **more than 26 samples** stays fully labelled and every row remains addressable (`aa3`, `ab3`, …). Press `s` for a `row → full sample name` table when the on-grid labels are trimmed.
+> [!NOTE]
+> `checkRun` is **interactive only** — it takes no arguments (other than `-h`).
+> There is no `checkRun grid` / `checkRun why` / `checkRun --json`.
 
-**Linear (flat) view.** Some runs don't flatten into a clean sample × step grid — e.g. different steps operate on different sample sets, or the run is just a flat list of jobs. `checkRun` then shows a **linear view**: every job on its own numbered row with its status glyph, in **submission order** (step 1 jobs above step 2 above step 3, as you submitted them — *not* reordered by status). Here a job is addressed by its **number**, and the command hint switches to numbers automatically:
-
-| Type | Action |
-|------|--------|
-| `3` | view job 3's log |
-| `d 3` | diagnose job 3 |
-| `a 3` | ask the AI helper about job 3 |
-| `r 3` | view job 3's raw files |
-
-The number shown for a job always resolves to that same job (`checkRun log 3` / `checkRun why 3` work non-interactively too).
-
-**Non-interactive verbs.** The same grid and diagnosis are available without entering the UI:
+**For scripting**, call the engines `checkRun` drives from its UI directly:
 
 ```bash
-checkRun grid              # print the status grid and exit
-checkRun why b2            # diagnose the job at address b2 and exit
-checkRun log b2            # print the path to that job's .out
-checkRun --json            # a diagnose.sh JSON record for every job (for scripts)
+diagnose.sh <flag> --log smartSlurmLog --json   # one job's machine-readable record
+checkRunGrid --render  --log smartSlurmLog       # print the status grid and exit
+checkRunGrid --resolve b2 --log smartSlurmLog    # address -> job flag(s), one per line
+checkRunGrid b2 why    --log smartSlurmLog        # diagnose the job(s) at address b2
 ```
 
-`checkRunGrid` is the underlying render/resolve engine; `checkRun` calls it.
+`checkRunGrid` is the render/resolve engine and [`diagnose.sh`](#diagnosesh-explain-one-job) the per-job analyzer; `checkRun` drives both from its keyboard UI.
 
 **Typical debugging flow:** open `checkRun`, find a cell showing `X` (or `x`/`?`), type `d <addr>` to get the cause and suggested action, then `<addr>` to read the log.
 
@@ -824,7 +885,24 @@ diagnose.sh 1.0.normalize.alpha
 diagnose.sh 1.0.normalize.alpha --json     # machine-readable record
 ```
 
-The human report gives a one-line state/action header (e.g. `[OK]`, `[RETRYABLE]`, `[DOOMED]`, `[INSPECT]`), a plain-language summary, the evidence line it keyed on (with file:line), and the log path. The `--json` record carries fields `state, category, action, retryable, evidence, summary, log` — consume it by field name.
+The human report's first line is `<flag>  [TAG]  state=<STATE>  action=<ACTION>`, where `TAG` is `OK`, `RETRYABLE`, `DOOMED`, or the action name (`INSPECT`, `CHECK`, `CHECK_UPSTREAM`, `CHECK_CLUSTER`, `CHECK_INPUT`, …). Below it come a plain-language summary, the evidence line it keyed on (`evidence (<log>:<lineno>): …`, when one was found), and the full-log path (for failed jobs).
+
+The `--json` record carries these fields — consume it by name:
+
+| Field | Meaning |
+|-------|---------|
+| `flag` | the job flag diagnosed |
+| `failed` | `true`/`false` — authoritative pass/fail verdict |
+| `state` | `COMPLETED`, `OOM`, `OOT`, `OOMOOT`, `NODE_FAIL`, `CANCELLED`, `FAILED`, `COMPLETED_NOSUCCESS`, `ORPHANED`, `UNCONFIRMED` |
+| `category` | cause class, e.g. `resource:oom`, `environment:missing-command`, `tool:crash`, `orphaned:upstream-failed`, `infrastructure:uncertain` |
+| `action` | advice: `NONE`, `RETRYABLE`, `RETRYABLE_EXHAUSTED`, `DOOMED`, `INSPECT`, `CHECK`, `CHECK_UPSTREAM`, `CHECK_CLUSTER`, `CHECK_INPUT` |
+| `retryable` | `true`/`false` |
+| `requeued` | `true`/`false` — runAsPipeline already auto-bumped resources and resubmitted |
+| `evidence` | the exact log line the cause keyed on (may be empty) |
+| `evidence_line` | its line number in the `.out` (or `null`) |
+| `region` | where the scan looked: `tool-region` or `whole-log(legacy)` |
+| `log` | path to the job's `.out` |
+| `summary` | the one-line plain-language explanation |
 
 ## Rerunning a pipeline
 
@@ -921,7 +999,8 @@ Because `ssbatch` accepts standard sbatch syntax, you can point Snakemake, Nextf
 git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
 
 mkdir -p SmartSlurmTest && cd SmartSlurmTest
-export PATH=$HOME/SmartSlurm/bin:$PATH
+source $HOME/SmartSlurm/bin/smartslurm.sh   # load the smartslurm command in this shell
+smartslurm activate                          # ssbatch on PATH (run 'bash smartSlurmSetup.sh' once to make it permanent — see Setup)
 
 cp $HOME/SmartSlurm/bin/Snakefile .
 cp $HOME/SmartSlurm/config/config.yaml .
@@ -948,7 +1027,8 @@ mkdir -p SmartSlurmTest && cd SmartSlurmTest
 module load conda/miniforge3/24.11.3-0
 mamba create -n nextflowEnv -c bioconda -y nextflow
 
-export PATH=$HOME/SmartSlurm/bin:$HOME/SmartSlurm/sbatchBin:$PATH
+source $HOME/SmartSlurm/bin/smartslurm.sh   # load the smartslurm command in this shell
+smartslurm activate                          # also aliases sbatch -> ssbatch, which Nextflow calls directly
 conda activate nextflowEnv
 
 cp $HOME/SmartSlurm/bin/nextflow.nf .
@@ -961,7 +1041,7 @@ nextflow run nextflow.nf -profile slurm
 checkRun
 
 # When finished, restore the system sbatch:
-export PATH="${PATH/:$HOME\/SmartSlurm\/sbatchBin/}"
+smartslurm deactivate
 ```
 
 ## Cromwell
@@ -992,11 +1072,9 @@ How it works:
 
 # sbatchAndTop
 
-Submit a job with `ssbatch` and immediately run `scontrol top` on it:
+Submit a job with `ssbatch` and immediately run `scontrol top` on it (with SmartSlurm active — see [Setup](#setup)):
 
 ```bash
-export PATH=$HOME/SmartSlurm/bin:$PATH
-
 sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2"
 # -p is optional — ssbatch picks the partition from the run-time.
 
