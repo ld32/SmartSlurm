@@ -199,8 +199,22 @@ ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|b
 
 # todo: move this part to main job, so that when release job, this job record can be used for the statics 
                                 #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
+record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`"
 echo dataToPlot,$record
+
+# --- per-run efficiency row -------------------------------------------------
+# One tab-separated row per job, written UNCONDITIONALLY (unlike the jobRecord
+# append, which is gated), to a per-run file that checkRun reads to show
+# time/mem efficiency. allocMem=$totalM usedMem=$srunM allocTime=$totalT
+# usedTime=$min. The sample key is the first input's basename (falling back to
+# the program name), matching how runAsPipeline groups the A+ per-sample rows.
+effFile="$smartSlurmLogDir/efficiency.tsv"
+[ -f "$effFile" ] || printf 'epoch\tflag\tsample\tprogram\tref\tstatus\tallocMem\tusedMem\tallocTime\tusedTime\tinputs\n' > "$effFile"
+effSample="${inputs#,}"; effSample="${effSample%%,*}"; effSample="${effSample%% *}"; effSample=`basename "$effSample" 2>/dev/null`
+{ [ -z "$effSample" ] || [ "$effSample" = none ]; } && effSample="$2"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "`date +%s`" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
+    "$totalM" "$srunM" "$totalT" "$min" "$inputs" >> "$effFile"
 
 # delete rows other than 1 week and not COMPLETED
 #awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
