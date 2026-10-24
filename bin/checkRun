@@ -243,14 +243,41 @@ sample_table() {
       ' | less
 }
 
-# efficiency_view FOLDER -- htop-style per-sample resource-efficiency bars
-# (time = sum across steps, mem = peak step), rendered by checkRunGrid from the
-# per-run efficiency.tsv. Paged through less -R so the ANSI bar colors show.
+# efficiency_view FOLDER -- interactive resource-efficiency submenu, rendered by
+# checkRunGrid from the per-run efficiency.tsv. Overview (per-sample summary, time
+# = sum of steps, mem = peak step) is the home; from it a step NUMBER drills into
+# that step across all samples, a sample LETTER drills into that sample's steps,
+# t/m toggle the time/mem rows, and q returns (to overview from a sub-view, or out
+# of the submenu from overview). Redraws per keystroke like the grid loop.
 efficiency_view() {
-    local folder="$1" out
+    local folder="$1" view="overview" sel="" showT=1 showM=1 out tok show msg=""
     out="$("$_bindir/checkRunGrid" --efficiency --log "$folder" 2>/dev/null)"
     if [ -z "$out" ]; then MSG="${YELLOW}No efficiency data for this run yet.${NC}"; return; fi
-    printf '%s\n' "$out" | less -R
+    while true; do
+        show=""; [ "$showT" = 1 ] && show="time"; [ "$showM" = 1 ] && show="${show:+$show,}mem"
+        [ -z "$show" ] && { show="time,mem"; showT=1; showM=1; }
+        out="$("$_bindir/checkRunGrid" --efficiency --eff-view "$view" --eff-select "$sel" \
+                 --eff-show "$show" --color --log "$folder" 2>/dev/null)"
+        _clear
+        printf '%s\n\n' "$out"
+        [ -n "$msg" ] && { echo -e "$msg"; msg=""; }
+        if [ "$view" = overview ]; then
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<letter>${NC} sample view   ${BOLD}t${NC} toggle time   ${BOLD}m${NC} toggle mem   ${BOLD}q${NC} back to checkRun"
+        else
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<letter>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time   ${BOLD}m${NC} mem   ${BOLD}q${NC} back"
+        fi
+        read -p "> " tok </dev/tty || break
+        case "$tok" in
+            q)        if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
+            ""|o)     view=overview; sel="" ;;
+            t)        showT=$((1-showT)) ;;
+            m)        showM=$((1-showM)) ;;
+            [0-9]*)   view=step;   sel="$tok" ;;
+            [A-Za-z]) view=sample; sel="$tok" ;;
+            *)        msg="${YELLOW}Unknown command: $tok${NC}" ;;
+        esac
+    done
+    return 0
 }
 
 # ---------------------------------------------------------------------------
