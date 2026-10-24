@@ -420,8 +420,9 @@ if [ ! -f $succFile ]; then
                         "OOMOOT") s="OOMOOT.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" ;;
                     esac
                     
-                    echo -e "" | mail -s "$s" $USER
-                    [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
+                    # Auto-requeue is silent now: it is in-progress recovery, not a
+                    # break or a completion. Outcomes are reported by the per-sample
+                    # status email, the per-run efficiency email, and checkRun.
 
                     touch $out.$newJobID
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
@@ -524,9 +525,7 @@ if [ ! -f $succFile ]; then
                         echo Re-queued successfully
                         [ -f $failFile ] && rm $failFile
 
-                        s="FailBadNode.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME"
-                        echo -e "" | mail -s "$s" $USER
-                        [[ $USER != ld32 ]] && echo -e "" | mail -s "$s" ld32
+                        # Auto-requeue (bad node) is silent now; see note above.
 
                         touch $out.$newJobID
 
@@ -593,7 +592,11 @@ fi
 
 #if [[ x == y ]]; then 
 
-# all job plots
+# all job plots -- gated OFF by default. Set ssMakePlots=yes to restore the
+# gnuplot barcharts and per-job mem/cpu pngs. Efficiency now lives in
+# efficiency.tsv + `checkRun` (the `e` key / `checkRunGrid --efficiency`), so by
+# default no per-job pngs are generated and nothing crowds smartSlurmLog.
+if [ "${ssMakePlots:-}" = yes ]; then
 tm=$SLURM_JOBID #  `mktemp XXXXXXXX --dry-run`
 
 #rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
@@ -675,7 +678,9 @@ gnuplot -e "set key outside; set key reverse; set key invert; set datafile separ
 
 # echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOBID.memCPU.txt
 
-rate=0.0013 # $0.0013 per G per hour 
+fi   # end ssMakePlots (per-job/barchart pngs gated off by default)
+
+rate=0.0013 # $0.0013 per G per hour
 maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
 jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
 savedDollar=$(echo "$rate * $maxSaved / 1024 * $jMin / 60" | bc -l)
@@ -737,64 +742,91 @@ fi
 
 
 
-if [[ $USER != ld32 ]]; then
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ld32
-    else
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png ld32
-    fi
-fi
-
+[ -z "$userEmail" ] || USER=$userEmail
 [ -z "$userEmail" ] || USER=$userEmail
 
-if [ -z "$snakemakeSuccFlag" ]; then    
-    #set -x 
+# Optional DAG render -- ON DEMAND only. checkRun's `g` key renders the workflow
+# graph live, so by default we no longer auto-render a png here. Set
+# ssMakePlots=yes to restore the old behavior.
+if [ "${ssMakePlots:-}" = yes ] && [ -z "$snakemakeSuccFlag" ] && [ -n "$condaEnvPath" ]; then
+    module load conda/miniforge3/24.11.3-0 2>/dev/null
+    conda activate "$condaEnvPath" 2>/dev/null
+    workflowPlot.py "$smartSlurmLogDir" && dot -Tsvg "$smartSlurmLogDir/jobs.dot" -o "$smartSlurmLogDir/dag.svg" && convert "$smartSlurmLogDir/dag.svg" "$smartSlurmLogDir/dag.png"
+fi
 
-    if [ ! -z "$condaEnvPath" ]; then
-        module load conda/miniforge3/24.11.3-0
-        conda activate $condaEnvPath
-        workflowPlot.py $smartSlurmLogDir &&  dot -Tsvg $smartSlurmLogDir/jobs.dot -o $smartSlurmLogDir/dag.svg && convert $smartSlurmLogDir/dag.svg $smartSlurmLogDir/dag.png
-    fi
-fi    
+# ---------------------------------------------------------------------------
+# Consolidated, text-only notifications (no png attachments). The old code sent
+# one email per job with up to 7 pngs (and a copy to a hard-coded dev address);
+# this replaces that with two separate, de-duplicated goals:
+#   status      -> one per-SAMPLE alert: WARN on break, CONFIRM on completion
+#   efficiency  -> one per-RUN email carrying the per-sample efficiency table,
+#                  pointing at `checkRun` (press e) for the per-step breakdown
+# Each fires once, guarded by a marker file, so volume is ~one per sample plus
+# one per run instead of one per job. Honors --email noEmail (everything off)
+# and noSuccEmail (failures only). The sample key is the first input's basename
+# (fallback: program name), matching efficiency.tsv and allJobs.txt column 6.
+# ---------------------------------------------------------------------------
+_ss_sendmail() {   # <subject> <body>
+    [ "$lessEmail" = noEmail ] && { echo "noEmail: suppressed [$1]"; return 0; }
+    echo -e "$2" | mail -s "$1" "$USER" 2>/dev/null && echo "email sent: $1" || echo "email not sent: $1"
+}
 
-#set +x 
+alljobs="$smartSlurmLogDir/allJobs.txt"
 
-if [[ "$lessEmail" == "noEmail" ]]; then 
-    echo noEmail
-elif [[ "$lessEmail" == "noSuccEmail" ]] && [[ "$s" == *Succ* ]]; then
-    echo lessEmail: not sending email because job successful
- 
-elif [ -f $smartSlurmLogDir/dag.png ]; then
-    #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
-            { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
-            { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
-    elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
-        { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
-    else 
-        echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
-        { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
+if [ ! -f "$succFile" ]; then
+    # ---- sample BREAK: one warning per sample (first failure wins) ----
+    brkMark="$smartSlurmLogDir/.emailed.break.$effSample"
+    if [ ! -f "$brkMark" ]; then
+        : > "$brkMark"
+        _ss_sendmail "SmartSlurm FAIL: sample $effSample ($jobStatus)" \
+            "Sample '$effSample' FAILED at step $flag ($jobStatus).\nRe-run the same command to continue -- SmartSlurm will resize and resubmit.\n\n$toSend"
+    else
+        echo "break already emailed for sample $effSample"
     fi
-else 
-    #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
-            { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
-            { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
-    elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
-        { echo Email not sent3.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent31. || echo Email still not sent31; }
-    else 
-        echo -e "$toSend" | mail -s "$s" $USER && echo email sent4 || \
-        { echo Email not sent4.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent by second try41. || echo Email still not sent41; }
+else
+    # ---- sample COMPLETE: fire from the terminal (highest-step) job of the
+    #      sample, so one confirmation per sample. Sample + step are read from
+    #      allJobs.txt (col 3 = flag -> step; col 6 = inputs -> sample) the same
+    #      way effSample is derived, so both sides agree.
+    if [ "$lessEmail" != noSuccEmail ] && [ -f "$alljobs" ]; then
+        myStep="${flag%%.*}"
+        maxStep=`awk -v s="$effSample" '
+            function samp(inp,   x,p,n){ sub(/^,/,"",inp); sub(/ .*/,"",inp); split(inp,x,","); n=split(x[1],p,"/"); return p[n] }
+            NR>1 && NF>=6 { st=$3; sub(/\..*/,"",st); smp=samp($6); if(smp==""||smp=="none") smp=$4; if(smp==s && st+0>m) m=st+0 }
+            END { print m+0 }' "$alljobs"`
+        cmpMark="$smartSlurmLogDir/.emailed.done.$effSample"
+        if [ "${myStep:-0}" -ge "${maxStep:-0}" ] && [ ! -f "$cmpMark" ]; then
+            : > "$cmpMark"
+            _ss_sendmail "SmartSlurm done: sample $effSample completed" \
+                "Sample '$effSample' completed successfully (through step $myStep).\n\nSee 'checkRun' (press e) for resource efficiency."
+        fi
     fi
-fi 
+
+    # ---- per-RUN efficiency email: fire once, when EVERY job has succeeded ----
+    # (A run with any failed sample does not get a "complete" email; its break
+    # warning covers it. Only a fully-successful run reports efficiency.)
+    if [ "$lessEmail" != noSuccEmail ] && [ "$lessEmail" != noEmail ] && [ -f "$alljobs" ]; then
+        total=`awk 'NR>1 && NF>=3' "$alljobs" | wc -l`
+        succN=0
+        while read -r fl; do
+            [ -z "$fl" ] && continue
+            [ -e "$smartSlurmLogDir/$fl.success" ] && succN=$((succN+1))
+        done < <(awk 'NR>1 && NF>=3{print $3}' "$alljobs")
+        # Fire only from a DOWNSTREAM/terminal step -- one that depends on an
+        # earlier step (the flag's 2nd field, the dependency, is non-zero). A
+        # source producer (dep field 0) is excluded, so it cannot prematurely
+        # trigger the run email when allJobs.txt is still being populated (as in
+        # the synchronous harness, where submit == run). On real Slurm allJobs is
+        # complete up front, so succN>=total already pins the true last job; this
+        # guard just makes the harness agree.
+        myDep=`echo "$flag" | cut -d. -f2`
+        runMark="$smartSlurmLogDir/.emailed.effrun"
+        if [ "${total:-0}" -ge 1 ] && [ "${succN:-0}" -ge "${total:-0}" ] && [ "${myDep:-0}" != 0 ] && [ ! -f "$runMark" ]; then
+            : > "$runMark"
+            effTable=`"$(dirname "$0")/checkRunGrid" --efficiency --no-color --log "$smartSlurmLogDir" 2>/dev/null`
+            _ss_sendmail "SmartSlurm run complete: resource efficiency" \
+                "All jobs in this run finished successfully.\n\n$effTable\n\nSee 'checkRun' (press e) for the per-step breakdown."
+        fi
+    fi
+fi
 sleep 5
