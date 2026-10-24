@@ -243,6 +243,16 @@ sample_table() {
       ' | less
 }
 
+# efficiency_view FOLDER -- htop-style per-sample resource-efficiency bars
+# (time = sum across steps, mem = peak step), rendered by checkRunGrid from the
+# per-run efficiency.tsv. Paged through less -R so the ANSI bar colors show.
+efficiency_view() {
+    local folder="$1" out
+    out="$("$_bindir/checkRunGrid" --efficiency --log "$folder" 2>/dev/null)"
+    if [ -z "$out" ]; then MSG="${YELLOW}No efficiency data for this run yet.${NC}"; return; fi
+    printf '%s\n' "$out" | less -R
+}
+
 # ---------------------------------------------------------------------------
 # list_view FOLDER -- the legacy status list with every capability preserved:
 # per-row M2 summary, AI (Na), workflow (w), pending toggle (p), raw browsing.
@@ -379,11 +389,11 @@ home_loop() {
                 [ -x "$_AI_CALL" ] && pln "   ${BOLD}a 3${NC}           ask AI about the job"
                 pln "   ${BOLD}r 3${NC}           view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
-                pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+                pln "${BOLD}l${NC} list view · ${BOLD}e${NC} efficiency · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
         else
             if [ -n "$compact" ]; then
-                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}e${NC} efficiency  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
             else
                 pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
                 pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
@@ -391,6 +401,7 @@ home_loop() {
                 [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
                 pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
+                pln "   ${BOLD}e${NC}             resource efficiency bars (time/mem used vs allocated, per sample)"
                 pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
                 pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
@@ -415,6 +426,7 @@ home_loop() {
                   continue ;;
             l)    list_view "$logFolder"; continue ;;
             s)    sample_table "$logFolder"; continue ;;
+            e)    efficiency_view "$logFolder"; continue ;;
             g)    workflow_dag "$logFolder"; continue ;;
             p)    if [ -z "$showPending" ]; then showPending=yes; MSG="${GREY}Pending jobs now shown in the list view.${NC}"
                   else showPending=""; MSG="${GREY}Pending jobs now hidden in the list view.${NC}"; fi
