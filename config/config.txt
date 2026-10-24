@@ -26,6 +26,10 @@ export defaultTime=120  # in min
 export defaultExtraTime=10     # in min. extra minutes than the estimated time
 export defaultExtraMem=500      # in M. extra memory than the estinated memory
 
+# checkRun efficiency view: rows at or below this efficiency % get a RED bar
+# (a waste alert -- that much of the allocation went unused).
+export effLowPct=25
+
 export defaultSlurmAcc=""
 
 export numberOfFailedJobsLastHourToRecalculateStats=5
