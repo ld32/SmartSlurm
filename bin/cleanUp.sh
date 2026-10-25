@@ -205,16 +205,22 @@ echo dataToPlot,$record
 # --- per-run efficiency row -------------------------------------------------
 # One tab-separated row per job, written UNCONDITIONALLY (unlike the jobRecord
 # append, which is gated), to a per-run file that checkRun reads to show
-# time/mem efficiency. allocMem=$totalM usedMem=$srunM allocTime=$totalT
-# usedTime=$min. The sample key is the first input's basename (falling back to
-# the program name), matching how runAsPipeline groups the A+ per-sample rows.
+# time/mem efficiency. Units live in the header names so the file reads on its
+# own: allocMemMB/usedMemMB (=$totalM/$srunM, megabytes) and
+# allocTimeMin/usedTimeMin (=$totalT/$min, minutes). A human-readable ISO `date`
+# trails the machine epoch (kept for sorting). The sample key is the first
+# input's basename (falling back to the program name), matching how
+# runAsPipeline groups the A+ per-sample rows. checkRunGrid reads by column
+# position and skips this header row, so the header names are free to carry
+# units and the trailing date column leaves every used index unchanged.
 effFile="$smartSlurmLogDir/efficiency.tsv"
-[ -f "$effFile" ] || printf 'epoch\tflag\tsample\tprogram\tref\tstatus\tallocMem\tusedMem\tallocTime\tusedTime\tinputs\n' > "$effFile"
+[ -f "$effFile" ] || printf 'epoch\tflag\tsample\tprogram\tref\tstatus\tallocMemMB\tusedMemMB\tallocTimeMin\tusedTimeMin\tinputs\tdate\n' > "$effFile"
 effSample="${inputs#,}"; effSample="${effSample%%,*}"; effSample="${effSample%% *}"; effSample=`basename "$effSample" 2>/dev/null`
 { [ -z "$effSample" ] || [ "$effSample" = none ]; } && effSample="$2"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "`date +%s`" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
-    "$totalM" "$srunM" "$totalT" "$min" "$inputs" >> "$effFile"
+effEpoch=`date +%s`; effDate=`date '+%Y-%m-%dT%H:%M:%S'`
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$effEpoch" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
+    "$totalM" "$srunM" "$totalT" "$min" "$inputs" "$effDate" >> "$effFile"
 
 # delete rows other than 1 week and not COMPLETED
 #awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
