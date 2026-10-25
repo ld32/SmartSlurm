@@ -82,7 +82,7 @@ if [ -n "$EFF_MODE" ]; then
     function clampi(p){ if(p<0)p=0; if(p>100)p=100; return p }
     function pct(u,a){ return (a>0)? 100*u/a : 0 }
     function tunit(v){ return (v<60)? sprintf("%dm",v) : sprintf("%.1fh",v/60) }
-    function munit(v){ return (v<1024)? sprintf("%dM",v) : sprintf("%.1fG",v/1024) }
+    function munit(v){ return (v<1024)? sprintf("%dM",v) : (v<1048576)? sprintf("%.1fG",v/1024) : sprintf("%.1fT",v/1048576) }
     # dimension color (ct/cm) normally; a row at/below the low-efficiency
     # threshold turns RED as a waste alert (red is used by neither dimension, so
     # it reads as "look here", and the (time)/(mem) label still says which).
