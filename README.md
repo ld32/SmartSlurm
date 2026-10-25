@@ -52,6 +52,7 @@ Two companion tools help you watch and debug runs:
   - [Example pipelines](#example-pipelines)
   - [checkRun: monitor and debug](#checkrun-monitor-and-debug)
   - [diagnose.sh: explain one job](#diagnosesh-explain-one-job)
+  - [Resource efficiency](#resource-efficiency)
   - [Rerunning a pipeline](#rerunning-a-pipeline)
   - [cancelAllJobs](#cancelalljobs)
   - [runAsPipeline FAQ](#runaspipeline-faq)
@@ -73,6 +74,7 @@ Two companion tools help you watch and debug runs:
 - **Optional checkpointing**: snapshot a long job before it hits its limit, then resume from the snapshot.
 - **Informative emails**: Slurm emails are just a subject line; SmartSlurm attaches the job script, the exact submit command, and the stdout/stderr logs.
 - **Conda-style activation**: a one-time `bash smartSlurmSetup.sh` adds a `smartslurm` command to your shell (it edits `~/.bashrc` for you — no manual `export`); `smartslurm activate` turns SmartSlurm on (aliasing `sbatch` → smart `ssbatch`, with a `{smartSlurm} ` prompt indicator) and `smartslurm deactivate` cleanly reverses it.
+- **Resource efficiency report**: a per-run `efficiency.tsv` and an `htop`-style view in `checkRun` (press `e`) showing time/memory used vs allocated, per sample and per step.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
 - **(runAsPipeline) Explicit `#@ … #@end` blocks**: write a step's body verbatim to a per-job script (`awk`, quotes, heredocs, multi-line all survive), instead of flattening it into a single `--wrap` string.
 - **(runAsPipeline) `--lint`**: validate a pipeline's block structure without submitting anything.
@@ -860,6 +862,7 @@ A band at the top names the run currently on screen (its full path). If other Sm
 | `o` | browse other SmartSlurm log folders in this directory |
 | `l` | list view (the classic per-job browser; all its capabilities are preserved) |
 | `g` | workflow chart (DAG image; needs graphviz — see [Setup](#setup)) |
+| `e` | **resource efficiency** — per-sample time/mem used vs allocated, with drill-down (see [Resource efficiency](#resource-efficiency)) |
 | `p` | show/hide pending jobs |
 | `Enter` | refresh (re-query `squeue`, redraw) |
 | `q` / `qq` | back up a level / quit |
@@ -910,6 +913,68 @@ The `--json` record carries these fields — consume it by name:
 | `region` | where the scan looked: `tool-region` or `whole-log(legacy)` |
 | `log` | path to the job's `.out` |
 | `summary` | the one-line plain-language explanation |
+
+## Resource efficiency
+
+Every job writes one row to a per-run **`smartSlurmLog/efficiency.tsv`** (flag, sample, step, status, and the memory/time it was **allocated vs actually used**). Press **`e`** in `checkRun` to explore it as `htop`-style bars — so you can see where you over- or under-reserved and tighten future runs.
+
+Bars are **percent-based** (fixed width, so absolute scale never distorts the picture); the `eff | used | alloc` columns follow each bar. **Time bars are cyan, memory bars green** (plain under `--no-color` or when piped). For a sample, **time is summed across its steps** (step-time is additive) and **memory is the peak step** (steps run sequentially, so a sample never holds the sum at once).
+
+`e` opens the **overview**: an `Overall` total, then one row per sample, then the sample/step menus.
+
+```text
+Resource efficiency -- overview
+                                                         eff    used   alloc
+Overall        (time)                                    69%   32.9h   48.0h
+               (mem)                                     82%   78.3G   96.0G
+
+liver (A)      (time) [||||||||||||||||||||||||......]   79%   12.6h   16.0h
+               (mem)  [|||||||||||||||||||||||||||||.]   95%   30.5G   32.0G
+brain (B)      (time) [|||||||||||||||...............]   50%    8.0h   16.0h
+               (mem)  [||||||||||||||||||............]   61%   19.5G   32.0G
+heart (C)      (time) [|||||||||||||||||||||||.......]   77%   12.3h   16.0h
+               (mem)  [|||||||||||||||||||||||||||...]   89%   28.3G   32.0G
+
+Samples:  liver (A),  brain (B),  heart (C)
+Steps:    cutadapt (1),  bowtie (2),  count (3)
+```
+
+From there you drill down, and each view opens instantly (re-rendered from the same `efficiency.tsv`):
+
+| Key | View |
+|-----|------|
+| a **sample letter** (`A`) | that sample's **per-step** breakdown (total row + one row per step) |
+| a **step number** (`2`) | that step **across all samples** (total row + one row per sample) |
+| `t` / `m` | toggle the time / memory rows |
+| `o` | back to the overview |
+| `q` | leave the efficiency view (from the overview, back to `checkRun`) |
+
+```text
+# after typing 2  (bowtie across all samples)
+Step view: showing bowtie (2)
+                                                         eff    used   alloc
+bowtie         (time)                                    73%   22.0h   30.0h
+               (mem)                                     82%   78.3G   96.0G
+
+liver (A)      (time) [|||||||||||||||||||||||||||...]   90%    9.0h   10.0h
+               (mem)  [|||||||||||||||||||||||||||||.]   95%   30.5G   32.0G
+brain (B)      (time) [|||||||||||||||...............]   50%    5.0h   10.0h
+               (mem)  [||||||||||||||||||............]   61%   19.5G   32.0G
+heart (C)      (time) [||||||||||||||||||||||||......]   80%    8.0h   10.0h
+               (mem)  [|||||||||||||||||||||||||||...]   89%   28.3G   32.0G
+```
+
+> [!NOTE]
+> In aggregate rows (`Overall`, and the sample/step totals) **time** is the true sum and **memory** is the **sum of the per-sample (or per-step) peaks** — a reservation-efficiency ratio, not a simultaneous peak.
+
+For scripting, the engine renders each view non-interactively:
+
+```bash
+checkRunGrid --efficiency                      --log smartSlurmLog   # overview
+checkRunGrid --efficiency --eff-view sample --eff-select A --log smartSlurmLog
+checkRunGrid --efficiency --eff-view step   --eff-select 2 --log smartSlurmLog
+checkRunGrid --efficiency --eff-show time   --log smartSlurmLog      # one dimension
+```
 
 ## Rerunning a pipeline
 
