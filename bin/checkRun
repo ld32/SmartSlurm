@@ -269,9 +269,11 @@ efficiency_view() {
         printf '%s\n\n' "$out"
         [ -n "$msg" ] && { echo -e "$msg"; msg=""; }
         if [ "$view" = overview ]; then
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<LETTER>${NC} sample view   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<A-Z>${NC} sample view   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
+            pln "${GREY}(sample letters are UPPERCASE; lowercase keys are commands)${NC}"
         else
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<LETTER>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<A-Z>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
+            pln "${GREY}(sample letters are UPPERCASE; lowercase keys are commands)${NC}"
         fi
         RESIZED=
         if ! read -p "> " tok </dev/tty; then

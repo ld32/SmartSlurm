@@ -286,7 +286,7 @@ if [ -n "$EFF_MODE" ]; then
       # Per-sample full names are shown on drill-in (type a letter); the overview
       # just lists the steps, so a many-sample run no longer dumps a wall of paths.
       line="Steps:    "; for(j=1;j<=nT;j++){ st=tOrder[j]; line=line tName[st] " (" st ")" (j<nT?",  ":"") }; print bold line off
-      print bold "Samples:  " nS " total -- type a letter (A.." let[sOrder[nS]] ") for a sample'\''s steps + full name" off
+      print bold "Samples:  " nS " total -- type its UPPERCASE letter (A.." let[sOrder[nS]] ") for a sample'\''s steps + full name" off
     }' "$effmap" "$eff"
   exit 0
 fi
