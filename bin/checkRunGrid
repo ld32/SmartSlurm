@@ -65,7 +65,12 @@ if [ "$USE_COLOR" = auto ]; then [ -t 1 ] && USE_COLOR=on || USE_COLOR=off; fi
 if [ "$USE_COLOR" = on ]; then
   C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GREY=$'\033[90m'
   C_ORANGE=$'\033[38;5;208m'; C_CYAN=$'\033[36m'; C_MAGENTA=$'\033[35m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
-else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_MAGENTA=; C_BOLD=; C_OFF=; fi
+  # BRIGHT variants (90-series) for the efficiency bars -- the standard 3x slots
+  # render muted in most themes. Bright red/magenta/cyan read well on dark AND
+  # light backgrounds (cyan is the weakest on white, but the dense | glyphs help).
+  C_CYAN_B=$'\033[96m'; C_MAGENTA_B=$'\033[95m'; C_RED_B=$'\033[91m'
+else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_MAGENTA=; C_BOLD=; C_OFF=
+  C_CYAN_B=; C_MAGENTA_B=; C_RED_B=; fi
 
 # _sample_labels : given the SAMPLES[] array, set TRUNC[] (parallel), plus SPFX
 # and SSFX (the stripped common prefix/suffix). General, assumption-free: strip
@@ -188,7 +193,7 @@ if [ -n "$EFF_MODE" ]; then
   for i in "${!SAMPLES[@]}"; do _ucletter "$i"
     printf '%s\t%s\t%s\n' "${SAMPLES[$i]}" "$REPLY" "${TRUNC[$i]}" >> "$effmap"; done
 
-  LC_ALL=C awk -F'\t' -v W=30 -v ct="$C_CYAN" -v cm="$C_MAGENTA" -v cr="$C_RED" -v off="$C_OFF" -v bold="$C_BOLD" \
+  LC_ALL=C awk -F'\t' -v W=30 -v ct="$C_CYAN_B" -v cm="$C_MAGENTA_B" -v cr="$C_RED_B" -v off="$C_OFF" -v bold="$C_BOLD" \
       -v view="$EFF_VIEW" -v sel="$EFF_SELECT" -v show="$EFF_SHOW" -v low="$EFF_LOW" -v mapf="$effmap" '
     function clampi(p){ if(p<0)p=0; if(p>100)p=100; return p }
     function pct(u,a){ return (a>0)? 100*u/a : 0 }
