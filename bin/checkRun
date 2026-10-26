@@ -54,6 +54,13 @@ _deflog="${smartSlurmLogDir:-smartSlurmLog}"
 _errf=$(mktemp 2>/dev/null || echo /tmp/checkRun.$$.err)
 trap 'rm -f "$_errf"' EXIT
 
+# Terminal resize: set a flag and let the interactive loops redraw at the new
+# width on the next pass (each render re-queries the column count live). Without
+# this trap a blocking `read` would not return until a key is pressed, so a
+# resized window would show a stale-width frame until then.
+RESIZED=
+trap 'RESIZED=1' WINCH
+
 # ===========================================================================
 # helpers
 # ===========================================================================
@@ -266,7 +273,11 @@ efficiency_view() {
         else
             pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<LETTER>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time   ${BOLD}m${NC} mem   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
         fi
-        read -p "> " tok </dev/tty || break
+        RESIZED=
+        if ! read -p "> " tok </dev/tty; then
+            [ -n "$RESIZED" ] && { RESIZED=; continue; }   # resize interrupted read -> just redraw
+            break
+        fi
         case "$tok" in
             qq)        exit ;;                                              # quit checkRun entirely (to the shell)
             q)         if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
@@ -439,7 +450,9 @@ home_loop() {
         pln "$MSG"; MSG=""            # always one (EOL-cleared) notice line -> no stale text
         printf '\033[J'              # erase anything left below from a taller prior frame
 
+        RESIZED=
         read -p "> " tok </dev/tty
+        [ -n "$RESIZED" ] && { RESIZED=; _need_render=y; continue ; }   # resize -> redraw only (no reload)
 
         # single-word commands first
         case "$tok" in

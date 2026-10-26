@@ -74,20 +74,39 @@ else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_BOLD=; C_OFF=; fi
 # distinct (so hierarchically-similar names still differ in the label). All the
 # heavy lifting is one awk pass, so it costs nothing per redraw. Shared by the
 # grid and the efficiency view, so both shorten long sample names identically.
-SAMPLE_W="${CHECKRUN_SAMPLE_W:-26}"
+# SAMPLE_W is the sample-label column width. CHECKRUN_SAMPLE_W sets the ceiling
+# (default 40); _fit_sample_w caps it to what the terminal fits, re-queried live
+# per render so the layout reflows on resize (checkRun redraws each keystroke, and
+# traps SIGWINCH to redraw immediately).
+SAMPLE_W_MAX="${CHECKRUN_SAMPLE_W:-40}"
+SAMPLE_W="$SAMPLE_W_MAX"
+# _fit_sample_w RESERVED : SAMPLE_W = clamp(terminal_cols - RESERVED, 10, ceiling).
+_fit_sample_w() {
+  local reserved="$1" cols avail
+  cols="${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}"
+  SAMPLE_W="$SAMPLE_W_MAX"; avail=$(( cols - reserved ))
+  [ "$avail" -lt "$SAMPLE_W" ] && SAMPLE_W="$avail"
+  [ "$SAMPLE_W" -lt 10 ] && SAMPLE_W=10
+}
 # Trailing sequencing tokens (Illumina lane/sample index, read, chunk, extension)
-# are unique per file yet uninformative, and being unique they dominate the
-# right-anchored window and push the descriptive name off the left. Strip them
-# before trimming so the label shows the meaningful part. Override with
-# CHECKRUN_TRIM_SUFFIX_RE; set it empty to disable. The default only matches the
-# Illumina _S<n>_L<n> block, so non-sequencing names are untouched. The full name
-# is unaffected elsewhere (the 's' table and --samples still show it in full).
+# are unique per file yet uninformative. Strip them before trimming so the label
+# shows the meaningful part. Override with CHECKRUN_TRIM_SUFFIX_RE; set it empty
+# to disable. The default only matches the Illumina _S<n>_L<n> block, so other
+# names are untouched. The full name is unaffected elsewhere (drill-in / --samples).
 SAMPLE_TRIM_RE="${CHECKRUN_TRIM_SUFFIX_RE-_S[0-9]+_L[0-9]+(_R[0-9]+)?(_[0-9]+)?([.]fastq)?([.]gz)?$}"
+# _sample_labels : fill TRUNC[] (parallel to SAMPLES[]) with short, readable
+# labels, shared by the grid and the efficiency view. Strip the trailing
+# sequencing block, then drop the common leading/trailing run SNAPPED TO TOKEN
+# BOUNDARIES ([-_. /]) so a token is never sliced and the first surviving token
+# left-aligns across rows. If a label still exceeds SAMPLE_W, keep whole HEAD
+# tokens and append … (left-anchored: sample IDs lead, so the identifying head is
+# what we keep and align). SPFX/SSFX carry the stripped shoulders.
 _sample_labels() {
   TRUNC=(); SPFX=""; SSFX=""
   [ "${#SAMPLES[@]}" -eq 0 ] && return
   local out
   out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" '
+    function isdelim(c){ return (c=="_"||c=="-"||c=="."||c=="/"||c==" ") }
     { s[NR]=$0; if(STRIP!="") sub(STRIP,"",s[NR]); n=NR }
     END{
       if(n==0) exit
@@ -101,30 +120,19 @@ _sample_labels() {
       while(redo){ redo=0
         for(i=1;i<=n;i++){ if(length(s[i])-lp-ls<1){ if(ls>0){ls--} else if(lp>0){lp--} else break; redo=1; break } }
       }
-      maxm=0
-      for(i=1;i<=n;i++){ m[i]=substr(s[i],lp+1,length(s[i])-lp-ls); if(length(m[i])>maxm) maxm=length(m[i]) }
-      off=0
-      if(maxm>W){
-        best=-1
-        # slide the window from the RIGHT edge inward and keep the right-most
-        # offset that leaves the labels distinct. Sample names put their most
-        # distinguishing token (id / lane / replicate) near the end, so a tail
-        # reads far better than a floating interior fragment; sliding left only
-        # happens when the tail itself is not distinct. Breaking on the first
-        # fully-distinct window (often the right edge) also trims the scan cost.
-        for(o=maxm-W;o>=0;o--){ delete seen; d=0
-          for(i=1;i<=n;i++){ w=substr(m[i],o+1,W); if(!(w in seen)){seen[w]=1;d++} }
-          if(d>best){ best=d; off=o; if(d==n) break }
-        }
-      }
-      printf "#INFO\t%s\t%s\n", lcp, lcs
+      # snap the drop to token boundaries: pull the prefix back to the last
+      # delimiter inside it, and keep the common suffix only from its first
+      # delimiter -- so whole tokens survive and the first kept token aligns.
+      while(lp>0 && !isdelim(substr(s[1],lp,1))) lp--
+      if(ls>0){ sfx=substr(s[1],length(s[1])-ls+1); p=1; while(p<=ls && !isdelim(substr(sfx,p,1))) p++; ls=(p<=ls)?ls-p+1:0 }
+      printf "#INFO\t%s\t%s\n", substr(s[1],1,lp), (ls>0?substr(s[1],length(s[1])-ls+1):"")
       for(i=1;i<=n;i++){
-        li=length(m[i]); eo=off
-        # a middle shorter than the global offset cannot fill the window there;
-        # anchor that row to its own tail so its label is never blank.
-        if(eo>li-W){ eo=li-W; if(eo<0) eo=0 }
-        lab=substr(m[i],eo+1,W)
-        printf "%s%s%s\n", (eo>0?"…":""), lab, ((eo+W)<li?"…":"")
+        m=substr(s[i],lp+1,length(s[i])-lp-ls); li=length(m)
+        if(li<=W){ printf "%s\n", m; continue }
+        # left-anchor: keep whole HEAD tokens up to W-1, then an ellipsis
+        cut=W-1; while(cut>0 && !isdelim(substr(m,cut+1,1))) cut--
+        if(cut<=0) cut=W-1                      # no boundary in range -> hard cut
+        printf "%s…\n", substr(m,1,cut)
       }
     }')"
   local first=1 line
@@ -154,6 +162,7 @@ if [ -n "$EFF_MODE" ]; then
   # sample -> (letter, short label) map is handed to the renderer as its first
   # input file; the full names still appear in each view's header on drill-in.
   mapfile -t SAMPLES < <(awk -F'\t' 'NR>1 && NF>=10 && $3!="" {print $3}' "$eff" | sort -u -V)
+  _fit_sample_w 68                                 # leave room for " (LETTER)" + bars + eff/used/alloc
   _sample_labels                                   # sets TRUNC[] parallel to SAMPLES[]
   effmap="$(mktemp)"; trap 'rm -f "$effmap"' EXIT
   _ucletter() { local n=$(( $1 + 1 )) r a='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; REPLY=''
@@ -576,10 +585,6 @@ render_grid() {
   IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
   IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
 
-  # trimmed, distinct sample labels (prefix/suffix stripped, windowed)
-  _sample_labels
-  local NAMEW=$((SAMPLE_W + 2))     # +2 for the leading/trailing … markers
-
   local COLW=7 pad="   "
   # collect the visible per-sample step columns
   local -a SNUM SNAME; local ps
@@ -588,6 +593,13 @@ render_grid() {
     SNUM+=("${ps%%:*}"); SNAME+=("${ps#*:}")
   done
   local n=${#SNUM[@]} i
+
+  # trimmed, distinct sample labels (token-trimmed, left-anchored). Fit the label
+  # width to what the terminal leaves after the row letter and the n step columns,
+  # so a wide run never overflows and the layout reflows on resize.
+  _fit_sample_w $(( 12 + n*(COLW+1) ))
+  _sample_labels
+  local NAMEW=$((SAMPLE_W + 2))     # +2 for the trailing … marker + breathing room
 
   # label area = pad + name(NAMEW) + ' ' + row-letter (right-aligned in 3) + 2
   # spaces of breathing room before the frame edge, so the letter doesn't sit
