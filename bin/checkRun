@@ -269,9 +269,9 @@ efficiency_view() {
         printf '%s\n\n' "$out"
         [ -n "$msg" ] && { echo -e "$msg"; msg=""; }
         if [ "$view" = overview ]; then
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<LETTER>${NC} sample view   ${BOLD}t${NC} toggle time   ${BOLD}m${NC} toggle mem   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<LETTER>${NC} sample view   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
         else
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<LETTER>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time   ${BOLD}m${NC} mem   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<LETTER>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
         fi
         RESIZED=
         if ! read -p "> " tok </dev/tty; then
@@ -282,8 +282,8 @@ efficiency_view() {
             qq)        exit ;;                                              # quit checkRun entirely (to the shell)
             q)         if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
             ""|o)      view=overview; sel="" ;;
-            t)         showT=$((1-showT)) ;;
-            m)         showM=$((1-showM)) ;;
+            t)         if [ "$showT" = 1 ] && [ "$showM" = 0 ]; then showT=1; showM=1; else showT=1; showM=0; fi ;;  # time only; press again = both
+            m)         if [ "$showM" = 1 ] && [ "$showT" = 0 ]; then showT=1; showM=1; else showT=0; showM=1; fi ;;  # mem only;  press again = both
             [0-9]*)    view=step;   sel="$tok" ;;
             [A-Z]*)    view=sample; sel="$tok" ;;    # base-26 sample letters: A..Z, AA..
             *)         msg="${YELLOW}Unknown command: $tok${NC}" ;;
