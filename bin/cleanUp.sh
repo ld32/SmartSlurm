@@ -424,7 +424,8 @@ if [ ! -f $succFile ]; then
                     # break or a completion. Outcomes are reported by the per-sample
                     # status email, the per-run efficiency email, and checkRun.
 
-                    touch $out.$newJobID
+                    # (no longer touch $out.$newJobID: 0-byte job-id marker, only
+                    #  read cosmetically by checkRun; requeue is recorded below.)
                     cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
 
                     # Lock mechanism for job ID adjustments
@@ -527,8 +528,8 @@ if [ ! -f $succFile ]; then
 
                         # Auto-requeue (bad node) is silent now; see note above.
 
-                        touch $out.$newJobID
-
+                        # (no longer touch $out.$newJobID: see note at the other
+                        #  requeue site -- 0-byte cosmetic job-id marker.)
                         cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
                         while true; do
                             if mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null; then

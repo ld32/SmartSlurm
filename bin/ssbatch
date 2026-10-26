@@ -808,7 +808,9 @@ if [[ "$dryrun" != "dryrun" ]]; then
 
         # no error and a number job ID
         if [ ! -z "$jobID" ] && [ "$jobID" -eq "$jobID" ]; then
-            touch $outFlag.$jobID
+            # (no longer touch $outFlag.$jobID: that 0-byte job-id marker was
+            #  only read cosmetically by checkRun; the job id is already in
+            #  allJobs.txt and the .out record)
             break
         elif [ ! -z "$jobErr" ]; then
             echoerr "Got error $jobErr"
@@ -817,7 +819,6 @@ if [[ "$dryrun" != "dryrun" ]]; then
             if [[ "jobErr" == *"Socket timed out"* ]]; then
                 sleep 2
                 jobID=`sacct --name $flag --format jobid | head -n 1`
-                touch $outFlag.$jobID
                 break
             else
                 echoerr "not sure what error it is: $jobErr"
