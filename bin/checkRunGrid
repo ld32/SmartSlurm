@@ -65,10 +65,11 @@ if [ "$USE_COLOR" = auto ]; then [ -t 1 ] && USE_COLOR=on || USE_COLOR=off; fi
 if [ "$USE_COLOR" = on ]; then
   C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GREY=$'\033[90m'
   C_ORANGE=$'\033[38;5;208m'; C_CYAN=$'\033[36m'; C_MAGENTA=$'\033[35m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
-  # BRIGHT variants (90-series) for the efficiency bars -- the standard 3x slots
-  # render muted in most themes. Bright red/magenta/cyan read well on dark AND
-  # light backgrounds (cyan is the weakest on white, but the dense | glyphs help).
-  C_CYAN_B=$'\033[96m'; C_MAGENTA_B=$'\033[95m'; C_RED_B=$'\033[91m'
+  # Vivid 256-color variants for the efficiency bars. The standard 3x slots render
+  # muted and the bright 9x slots are often theme-remapped to the same RGB, so use
+  # fixed 256-palette indices (immune to the 16-color theme) for consistent punch:
+  # time=cyan 45, mem=magenta 201, low-efficiency=red 196.
+  C_CYAN_B=$'\033[38;5;45m'; C_MAGENTA_B=$'\033[38;5;201m'; C_RED_B=$'\033[38;5;196m'
 else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_MAGENTA=; C_BOLD=; C_OFF=
   C_CYAN_B=; C_MAGENTA_B=; C_RED_B=; fi
 
