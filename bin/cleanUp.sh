@@ -591,95 +591,13 @@ elif [ ! -z "$overEstimate" ]; then
 
 fi
 
-#if [[ x == y ]]; then 
-
-# all job plots -- gated OFF by default. Set ssMakePlots=yes to restore the
-# gnuplot barcharts and per-job mem/cpu pngs. Efficiency now lives in
-# efficiency.tsv + `checkRun` (the `e` key / `checkRunGrid --efficiency`), so by
-# default no per-job pngs are generated and nothing crowds smartSlurmLog.
-if [ "${ssMakePlots:-}" = yes ]; then
-tm=$SLURM_JOBID #  `mktemp XXXXXXXX --dry-run`
-
-#rm $smartSlurmLogDir/barchartMem.png  $smartSlurmLogDir/barchartTime.png 2>/dev/null
-echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
-
-if [ -f .command.sh ] && [ -f .command.run ]; then 
-    ls -cr $smartSlurmLogDir/../../../*/*/*/*.out | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
-else 
-    ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $8 + $17 *2,   $6-$8-$17 *2, $4-$6, $4}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataMem.csv
-fi    
-
-# if less than 0, change to zeor
-awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/$tm.dataMem.csv > $smartSlurmLogDir/$tm.output.csv
-
-awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataMem.csv
-
-width=`wc -l $smartSlurmLogDir/$tm.dataMem.csv | cut -d' ' -f1`; width=$((width*16)); [ $width -le 800 ] && width=800; 
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/$tm.barchartMem.png'; set title 'Job vs. Memmory'; set ylabel 'Memory (MegaBytes)'; plot '$smartSlurmLogDir/$tm.dataMem.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved2' lc rgb 'yellow', '' using 6:xtic(1) title 'Saved1' lc rgb 'pink'"
-
-echo To see the plot:
-echo display $smartSlurmLogDir/$tm.barchartMem.png
-
-echo Category,Used,Wasted,default,Saved > $smartSlurmLogDir/$tm.dataTime.csv
-
-ls $smartSlurmLogDir/*.out | sort -n | xargs -d '\n' grep ^dataToPlot | awk -F, '{printf "%s-%s-%s,%s,%s,%s,%s\n", substr($15,1,index($15,".")-1), substr($2, length($2)-3), substr($10,1,3),  $9*$16,   ($7-$9)*$16, ($5-$7)*$16, $5*$16}' | sed s/-COM//g | sed s/-OO/-/g >> $smartSlurmLogDir/$tm.dataTime.csv
-
-awk -F',' -v OFS=',' '{ for (i=1; i<=NF; i++) if ($i < 0) $i = 0; print }' $smartSlurmLogDir/$tm.dataTime.csv > $smartSlurmLogDir/$tm.output.csv 
-
-awk -F, -v OFS=',' -v max=$(awk -F, 'BEGIN {max=0} {if (NR!=1 && $5>max) max=$5} END {print max}' $smartSlurmLogDir/$tm.output.csv) '{if(NR==1) print $0; else {diff=max-$5; print $0 "," diff "," max}}' $smartSlurmLogDir/$tm.output.csv > $smartSlurmLogDir/$tm.dataTime.csv
-
-#width=`wc -l $smartSlurmLogDir/$tm.dataTime.csv | cut -d' ' -f1`; width=$((width*16)); [ $width -le 800 ] && width=800; 
-# all job time
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ','; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/$tm.barchartTime.png'; set title 'Job vs. Time'; set ylabel 'Time (Mins)'; plot '$smartSlurmLogDir/$tm.dataTime.csv' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" #", '' using 6:xtic(1) title 'Saved' lc rgb 'pink'"
-
-echo To see the plot:
-echo display $smartSlurmLogDir/$tm.barchartTime.png
-
-#rm $smartSlurmLogDir/$tm.*.csv
-
-
-# todo: should make the plot wider instead of shink it: 
-# https://stackoverflow.com/questions/13869439/gnuplot-how-to-increase-the-width-of-my-graph
-
-# rowTotal=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`
-# if [ "$rowTotal" -gt 50 ]; then 
-#     maxMem=0; maxCpu=0; 
-#     rate=`echo "scale=2;$rowTotal/50"|bc`
-#     IFS=$'\n'; rowCount1=0; rowCount2=0
-#     echo > $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-#     for t in `cat $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt`; do
-#         mem=`echo $t | cut -d' ' -f2`
-#         cpu=`echo $t | cut -d' ' -f5`
-#         [ "$mem" -gt $maxMem ] && maxMem=$mem && mem1=`echo $t | cut -d' ' -f3,4`
-#         [ "$cpu" -gt $maxCpu ] && maxCpu=$cpu
-#         rowCount1=$((rowCount1 + 1))
-#         rowMax=`echo "scale=2;$rowCount2*$rate"|bc`
-#         rowMax=${rowMax%.*}; [ -z "$rowMax" ] && rowMax=1; 
-#         if [ "$rowMax" -le "$rowCount1" ]; then 
-#             rowCount2=$((rowCount2 + 1))
-#             echo $rowCount2 $maxMem $mem1 $maxCpu >> $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-#             maxMem=0; maxCpu=0;
-#         fi 
-#     done
-# else 
-#     cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$SLURM_JOBID.memCPU1.txt
-# fi 
-
-# todo: need adjust reserved memory if the job was ajusted by upstream job!!!!!!!
-# time vs. memory for current job
-width=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f1`; width=$((width*16)); [ $width -le 800 ] && width=800
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.mem.png'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time (min)'; set ylabel 'Mem (M)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'"
-
-# time vs. CPU usage for current job
-width=`wc -l $smartSlurmLogDir/$tm.dataMem.csv | cut -d' ' -f1`; width=$((width*16)); [ $width -le 800 ] && width=800
-gnuplot -e "set key outside; set key reverse; set key invert; set datafile separator ' '; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png'; set title 'Time vs. CPU Usage for job $SLURM_JOBID'; set xlabel 'Time (min)'; set ylabel 'CPU Usage (%)'; plot '$smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt' using 5:xtic(1) title 'Used' lc rgb 'green'"
-
-#fi
-
-
-# echo "$counter $total_memory_usage $(($reservedMem - $total_memory_usage)) $saved ${total_cpu_usage%.*}" >> job_$SLURM_JOBID.memCPU.txt
-
-fi   # end ssMakePlots (per-job/barchart pngs gated off by default)
+# NOTE: the per-job/barchart gnuplot pngs, their .dataMem/.dataTime/.output CSVs,
+# and the on-demand DAG png render used to live here (gated behind ssMakePlots).
+# They are gone: efficiency now lives in efficiency.tsv + checkRun (press e /
+# checkRunGrid --efficiency), and checkRun's g key renders the workflow graph
+# live, so nothing in the pipeline needs to write those files. The per-run dollar
+# savings figure, which was derived from the now-removed plot CSV, is dropped with
+# it; the per-job savings below (from memCPU.txt) is unchanged.
 
 rate=0.0013 # $0.0013 per G per hour
 maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
@@ -690,18 +608,6 @@ maxUsed=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n |
 #jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
 savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc -l)
 
-#echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
-# The per-run savings aggregate is read from the plot CSV, which is only built
-# when ssMakePlots=yes. With plots off (the default) that file does not exist, so
-# compute these only when it is present -- otherwise savedMem is empty and bc/awk
-# would error and blank the "SmartSlurm Saved ... for this run" line. The per-run
-# efficiency email already summarizes used-vs-allocated for the whole run.
-if [ -f "$smartSlurmLogDir/$tm.dataMem.csv" ]; then
-    savedMem=`awk -F',' '{sum += $4} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
-    savedMem1=`awk -F',' '{sum += $6} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
-    savedDollar3=$(echo "$rate * $savedMem / 1024 * $jMin / 60" | bc -l)
-    savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
-fi
 
 
 minimumsize=9000
@@ -725,8 +631,6 @@ fi
 toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
 [ -z "$snakemakeSuccFlag" ] && toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
 
-[ -n "$savedDollar3" ] && toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
-[ -n "$savedDollar4" ] && [ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`
@@ -753,14 +657,6 @@ fi
 [ -z "$userEmail" ] || USER=$userEmail
 [ -z "$userEmail" ] || USER=$userEmail
 
-# Optional DAG render -- ON DEMAND only. checkRun's `g` key renders the workflow
-# graph live, so by default we no longer auto-render a png here. Set
-# ssMakePlots=yes to restore the old behavior.
-if [ "${ssMakePlots:-}" = yes ] && [ -z "$snakemakeSuccFlag" ] && [ -n "$condaEnvPath" ]; then
-    module load conda/miniforge3/24.11.3-0 2>/dev/null
-    conda activate "$condaEnvPath" 2>/dev/null
-    workflowPlot.py "$smartSlurmLogDir" && dot -Tsvg "$smartSlurmLogDir/jobs.dot" -o "$smartSlurmLogDir/dag.svg" && convert "$smartSlurmLogDir/dag.svg" "$smartSlurmLogDir/dag.png"
-fi
 
 # ---------------------------------------------------------------------------
 # Consolidated, text-only notifications (no png attachments). The old code sent
