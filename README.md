@@ -920,7 +920,7 @@ Every job writes one row to a per-run **`smartSlurmLog/efficiency.tsv`** (flag, 
 
 Bars are **percent-based** (fixed width, so absolute scale never distorts the picture); the `eff | used | alloc` columns follow each bar. **Time bars are cyan, memory bars magenta** (distinct and deliberately not green, so the time/mem colors never read as a red/green pass–fail scale; plain under `--no-color` or when piped). A row whose efficiency is at or below `effLowPct` (default **25%**, set in [`config.txt`](#configtxt)) turns its bar **red** — a waste alert for allocations that went mostly unused, worth trimming. For a sample, **time is summed across its steps** (step-time is additive) and **memory is the peak step** (steps run sequentially, so a sample never holds the sum at once).
 
-`e` opens the **overview**: an `Overall` total (also shown as bars), then one row per sample, then the sample/step menus.
+`e` opens the **overview**: an `Overall` total (also shown as bars), then one row per sample, then — if the pipeline has any **experiment-level steps** (jobs that span all samples, e.g. a merge or a MultiQC summary, so they belong to no single sample) — an `Experiment-level (across all samples)` section with one row each, then the sample/step menus. Steps are listed in ascending numeric order; sample drill-in letters are **UPPERCASE** (lowercase keys are commands).
 
 ```text
 Resource efficiency -- overview

@@ -249,13 +249,15 @@ if [ -n "$EFF_MODE" ]; then
       if(!(st in seenT)){ seenT[st]=1; tOrder[++nT]=st; tName[st]=nm }
       tAT[st]+=at; tUT[st]+=ut; tAM[st]+=am; tUM[st]+=um                    # step total (all jobs)
       oAT+=at; oUT+=ut
-      if(s==""){ expAM+=am; expUM+=um; next }                              # experiment-level: no sample row
+      if(s==""){ expAM+=am; expUM+=um; expStep[st]=1; next }               # experiment-level: no sample row
       if(!(s in let)){ let[s]="?"; lab[s]=s; sOrder[++nS]=s }   # fallback (map miss)
       k=s SUBSEP st; cAT[k]+=at; cUT[k]+=ut; if(am>cAM[k]){cAM[k]=am; cUM[k]=um}
       sAT[s]+=at; sUT[s]+=ut; if(am>sAM[s]){sAM[s]=am; sUM[s]=um}          # sample: time sum, mem peak
     }
     END{
-      if(nS==0){ print "No efficiency data yet."; exit }
+      # steps in ascending NUMERIC order (so 10 sorts after 2, not after 1)
+      for(a=1;a<=nT;a++) for(b=a+1;b<=nT;b++) if(tOrder[b]+0 < tOrder[a]+0){ tt=tOrder[a]; tOrder[a]=tOrder[b]; tOrder[b]=tt }
+      if(nS==0 && nT==0){ print "No efficiency data yet."; exit }
       if(view=="sample"){
         tgt=byLet[toupper(sel)]; if(tgt=="" && (sel in let)) tgt=sel
         if(tgt==""){ print "No such sample: " sel; exit }
@@ -271,22 +273,28 @@ if [ -n "$EFF_MODE" ]; then
         LW=14; w(tName[ss]); for(i=1;i<=nS;i++){ s=sOrder[i]; if((s SUBSEP ss) in cAT) w(slab(s)) }
         print bold "Step view: showing " tName[ss] " (" ss ")" off; print hline()
         row(tName[ss], tUT[ss],tAT[ss], tUM[ss],tAM[ss]); print ""
+        if(ss in expStep) print bold "(experiment-level step: spans all samples -- no per-sample breakdown)" off
         for(i=1;i<=nS;i++){ s=sOrder[i]; k=s SUBSEP ss; if(!(k in cAT))continue
           row(slab(s), cUT[k],cAT[k], cUM[k],cAM[k]) }
         exit
       }
-      # overview: Overall (mem = sum of per-sample peaks + experiment-level peaks)
-      # + per-sample rows + step list
+      # overview: Overall + per-sample rows + an experiment-level section for the
+      # cross-sample steps (so jobs not tied to a sample are still visible), then the
+      # step / sample legends. Overall mem = per-sample peaks + experiment-level peaks.
       oAM=expAM; oUM=expUM; for(i=1;i<=nS;i++){ oAM+=sAM[sOrder[i]]; oUM+=sUM[sOrder[i]] }
+      nExp=0; for(j=1;j<=nT;j++){ st=tOrder[j]; if(st in expStep) expList[++nExp]=st }
       LW=14; for(i=1;i<=nS;i++){ w(slab(sOrder[i])) }
+      for(j=1;j<=nExp;j++){ st=expList[j]; w(tName[st] " (" st ")") }
       print bold "Resource efficiency -- overview" off; print hline()
       row("Overall", oUT,oAT, oUM,oAM); print ""
       for(i=1;i<=nS;i++){ s=sOrder[i]; row(slab(s), sUT[s],sAT[s], sUM[s],sAM[s]) }
+      if(nExp>0){ print ""; print bold "Experiment-level (across all samples):" off
+        for(j=1;j<=nExp;j++){ st=expList[j]; row(tName[st] " (" st ")", tUT[st],tAT[st], tUM[st],tAM[st]) } }
       print ""
       # Per-sample full names are shown on drill-in (type a letter); the overview
       # just lists the steps, so a many-sample run no longer dumps a wall of paths.
       line="Steps:    "; for(j=1;j<=nT;j++){ st=tOrder[j]; line=line tName[st] " (" st ")" (j<nT?",  ":"") }; print bold line off
-      print bold "Samples:  " nS " total -- type its UPPERCASE letter (A.." let[sOrder[nS]] ") for a sample'\''s steps + full name" off
+      if(nS>0) print bold "Samples:  " nS " total -- type its UPPERCASE letter (A.." let[sOrder[nS]] ") for a sample'\''s steps + full name" off
     }' "$effmap" "$eff"
   exit 0
 fi
