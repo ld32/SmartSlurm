@@ -89,13 +89,17 @@ if [ -n "$EFF_MODE" ]; then
     function barred(p, col,   f,e,b,j){ p=clampi(p); if(p<=low+0) col=cr; f=int(p/100*W+0.5); e=W-f; b=""
       for(j=0;j<f;j++)b=b"|"; for(j=0;j<e;j++)b=b"."; return col "[" b "]" off }
     # one label with its time and/or mem rows; every row (incl. totals) gets a
-    # bar. Label prints on the first shown dim only.
+    # bar. Label prints on the first shown dim only. The label column width LW is
+    # computed per view (max label length, floored at 14) so long step/sample
+    # names (e.g. "umiCutAdaptSeqtk (2)") no longer shove the bar out of line.
     function row(label, tU,tA, mU,mA){
       if (showT) {
-        printf "%-14s %-6s %s %4d%% %7s %7s\n", label, "(time)", barred(pct(tU,tA),ct), int(pct(tU,tA)+0.5), tunit(tU), tunit(tA); label="" }
+        printf "%-*s %-6s %s %4d%% %7s %7s\n", LW, label, "(time)", barred(pct(tU,tA),ct), int(pct(tU,tA)+0.5), tunit(tU), tunit(tA); label="" }
       if (showM) {
-        printf "%-14s %-6s %s %4d%% %7s %7s\n", label, "(mem)",  barred(pct(mU,mA),cm), int(pct(mU,mA)+0.5), munit(mU), munit(mA) }
+        printf "%-*s %-6s %s %4d%% %7s %7s\n", LW, label, "(mem)",  barred(pct(mU,mA),cm), int(pct(mU,mA)+0.5), munit(mU), munit(mA) }
     }
+    function hline(){ return sprintf("%-*s %-6s %-32s %5s %7s %7s", LW,"","","","eff","used","alloc") }
+    function w(s){ if(length(s)>LW) LW=length(s) }   # widen LW to fit label s
     BEGIN{ showT=(show ~ /time/); showM=(show ~ /mem/); if(!showT && !showM){showT=1;showM=1} }
     NR==1 { next }
     NF<10 { next }
@@ -111,11 +115,11 @@ if [ -n "$EFF_MODE" ]; then
     }
     END{
       if(nS==0){ print "No efficiency data yet."; exit }
-      hdr=sprintf("%-14s %-6s %-32s %5s %7s %7s","","","","eff","used","alloc")
       if(view=="sample"){
         tgt=""; for(i=1;i<=nS;i++){ s=sOrder[i]; if(sLet[s]==toupper(sel)||s==sel) tgt=s }
         if(tgt==""){ print "No such sample: " sel; exit }
-        print bold "Sample view: showing " tgt off; print hdr
+        LW=14; w(tgt); for(j=1;j<=nT;j++){ st=tOrder[j]; if((tgt SUBSEP st) in cAT) w(tName[st] " ("st")") }
+        print bold "Sample view: showing " tgt off; print hline()
         row(tgt, sUT[tgt],sAT[tgt], sUM[tgt],sAM[tgt]); print ""
         for(j=1;j<=nT;j++){ st=tOrder[j]; k=tgt SUBSEP st; if(!(k in cAT))continue
           row(tName[st] " ("st")", cUT[k],cAT[k], cUM[k],cAM[k]) }
@@ -123,7 +127,8 @@ if [ -n "$EFF_MODE" ]; then
       }
       if(view=="step"){
         ss=sel+0; if(!(ss in seenT)){ print "No such step: " sel; exit }
-        print bold "Step view: showing " tName[ss] " (" ss ")" off; print hdr
+        LW=14; w(tName[ss]); for(i=1;i<=nS;i++){ s=sOrder[i]; if((s SUBSEP ss) in cAT) w(s " ("sLet[s]")") }
+        print bold "Step view: showing " tName[ss] " (" ss ")" off; print hline()
         row(tName[ss], tUT[ss],tAT[ss], tUM[ss],tAM[ss]); print ""
         for(i=1;i<=nS;i++){ s=sOrder[i]; k=s SUBSEP ss; if(!(k in cAT))continue
           row(s " ("sLet[s]")", cUT[k],cAT[k], cUM[k],cAM[k]) }
@@ -131,7 +136,8 @@ if [ -n "$EFF_MODE" ]; then
       }
       # overview: Overall (mem = sum of per-sample peaks) + per-sample rows, then lists
       oAM=0; oUM=0; for(i=1;i<=nS;i++){ oAM+=sAM[sOrder[i]]; oUM+=sUM[sOrder[i]] }
-      print bold "Resource efficiency -- overview" off; print hdr
+      LW=14; for(i=1;i<=nS;i++){ s=sOrder[i]; w(s " (" sLet[s] ")") }
+      print bold "Resource efficiency -- overview" off; print hline()
       row("Overall", oUT,oAT, oUM,oAM); print ""
       for(i=1;i<=nS;i++){ s=sOrder[i]; row(s " ("sLet[s]")", sUT[s],sAT[s], sUM[s],sAM[s]) }
       print ""
