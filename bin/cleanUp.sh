@@ -690,10 +690,17 @@ maxUsed=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n |
 savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc -l)
 
 #echo Category,Used,Wasted,Saved2,default,Saved1 > $smartSlurmLogDir/$tm.dataMem.csv
-savedMem=`awk -F',' '{sum += $4} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
-savedMem1=`awk -F',' '{sum += $6} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
-savedDollar3=$(echo "$rate * $savedMem / 1024 * $jMin / 60" | bc -l)
-savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
+# The per-run savings aggregate is read from the plot CSV, which is only built
+# when ssMakePlots=yes. With plots off (the default) that file does not exist, so
+# compute these only when it is present -- otherwise savedMem is empty and bc/awk
+# would error and blank the "SmartSlurm Saved ... for this run" line. The per-run
+# efficiency email already summarizes used-vs-allocated for the whole run.
+if [ -f "$smartSlurmLogDir/$tm.dataMem.csv" ]; then
+    savedMem=`awk -F',' '{sum += $4} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
+    savedMem1=`awk -F',' '{sum += $6} END {print sum}' $smartSlurmLogDir/$tm.dataMem.csv`
+    savedDollar3=$(echo "$rate * $savedMem / 1024 * $jMin / 60" | bc -l)
+    savedDollar4=$(echo "$rate * $savedMem1 / 1024 * $jMin / 60" | bc -l)
+fi
 
 
 minimumsize=9000
@@ -717,8 +724,8 @@ fi
 toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
 [ -z "$snakemakeSuccFlag" ] && toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
 
-toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
-[ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
+[ -n "$savedDollar3" ] && toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
+[ -n "$savedDollar4" ] && [ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`
