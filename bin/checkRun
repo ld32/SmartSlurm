@@ -275,8 +275,8 @@ efficiency_view() {
         fi
         RESIZED=
         if ! read -p "> " tok </dev/tty; then
-            [ -n "$RESIZED" ] && { RESIZED=; continue; }   # resize interrupted read -> just redraw
-            break
+            [ -n "$RESIZED" ] && [ -z "$tok" ] && { RESIZED=; continue; }   # pure resize -> redraw
+            [ -z "$tok" ] && break                                          # real EOF
         fi
         case "$tok" in
             qq)        exit ;;                                              # quit checkRun entirely (to the shell)
@@ -452,7 +452,9 @@ home_loop() {
 
         RESIZED=
         read -p "> " tok </dev/tty
-        [ -n "$RESIZED" ] && { RESIZED=; _need_render=y; continue ; }   # resize -> redraw only (no reload)
+        # Only a PURE resize (no text typed) redraws; a typed command is never
+        # discarded even if a WINCH arrived during the read.
+        [ -n "$RESIZED" ] && [ -z "$tok" ] && { RESIZED=; _need_render=y; continue ; }
 
         # single-word commands first
         case "$tok" in

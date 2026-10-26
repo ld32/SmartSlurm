@@ -80,6 +80,12 @@ else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_BOLD=; C_OFF=; fi
 # traps SIGWINCH to redraw immediately).
 SAMPLE_W_MAX="${CHECKRUN_SAMPLE_W:-40}"
 SAMPLE_W="$SAMPLE_W_MAX"
+# Which end to keep when a label is still too long after dropping common shoulders.
+# Default "right": keep the TAIL, because sample identifiers conventionally trail
+# (the shared project / flowcell / run tokens lead and carry little per-sample
+# information). Set CHECKRUN_LABEL_ANCHOR=left for schemes where the head is the
+# distinguishing part.
+SAMPLE_ANCHOR="${CHECKRUN_LABEL_ANCHOR:-right}"
 # _fit_sample_w RESERVED : SAMPLE_W = clamp(terminal_cols - RESERVED, 10, ceiling).
 _fit_sample_w() {
   local reserved="$1" cols avail
@@ -105,7 +111,7 @@ _sample_labels() {
   TRUNC=(); SPFX=""; SSFX=""
   [ "${#SAMPLES[@]}" -eq 0 ] && return
   local out
-  out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" '
+  out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" -v ANCH="$SAMPLE_ANCHOR" '
     function isdelim(c){ return (c=="_"||c=="-"||c=="."||c=="/"||c==" ") }
     { s[NR]=$0; if(STRIP!="") sub(STRIP,"",s[NR]); n=NR }
     END{
@@ -129,10 +135,20 @@ _sample_labels() {
       for(i=1;i<=n;i++){
         m=substr(s[i],lp+1,length(s[i])-lp-ls); li=length(m)
         if(li<=W){ printf "%s\n", m; continue }
-        # left-anchor: keep whole HEAD tokens up to W-1, then an ellipsis
-        cut=W-1; while(cut>0 && !isdelim(substr(m,cut+1,1))) cut--
-        if(cut<=0) cut=W-1                      # no boundary in range -> hard cut
-        printf "%s…\n", substr(m,1,cut)
+        if(ANCH=="left"){
+          # keep whole HEAD tokens up to W-1, then an ellipsis
+          cut=W-1; while(cut>0 && !isdelim(substr(m,cut+1,1))) cut--
+          if(cut<=0) cut=W-1                    # no boundary in range -> hard cut
+          printf "%s…\n", substr(m,1,cut)
+        } else {
+          # right-anchor (default): leading ellipsis + whole TAIL tokens within W-1.
+          # Start at W-1 from the end, then advance to the next token boundary so the
+          # kept text begins at a whole token (the discriminating tail stays intact).
+          st=li-(W-1)+1; if(st<1)st=1; s0=st
+          while(st<=li && !isdelim(substr(m,st-1,1))) st++
+          if(st>li) st=s0                       # no boundary in range -> hard cut
+          printf "…%s\n", substr(m,st)
+        }
       }
     }')"
   local first=1 line
