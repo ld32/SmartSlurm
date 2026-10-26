@@ -202,7 +202,7 @@ if [ -n "$EFF_MODE" ]; then
   for i in "${!SAMPLES[@]}"; do _ucletter "$i"
     printf '%s\t%s\t%s\n' "${SAMPLES[$i]}" "$REPLY" "${TRUNC[$i]}" >> "$effmap"; done
 
-  LC_ALL=C awk -F'\t' -v W=30 -v ct="$C_CYAN_B" -v cm="$C_MAGENTA_B" -v cr="$C_RED_B" -v off="$C_OFF" -v bold="$C_BOLD" \
+  LC_ALL=C awk -F'\t' -v W=30 -v ct="$C_CYAN_B" -v cm="$C_MAGENTA_B" -v cr="$C_RED_B" -v gr="$C_GREY" -v off="$C_OFF" -v bold="$C_BOLD" \
       -v view="$EFF_VIEW" -v sel="$EFF_SELECT" -v show="$EFF_SHOW" -v low="$EFF_LOW" -v mapf="$effmap" '
     function clampi(p){ if(p<0)p=0; if(p>100)p=100; return p }
     function pct(u,a){ return (a>0)? 100*u/a : 0 }
@@ -213,6 +213,12 @@ if [ -n "$EFF_MODE" ]; then
     # it reads as "look here", and the (time)/(mem) label still says which).
     function barred(p, col,   f,e,b,j){ p=clampi(p); if(p<=low+0) col=cr; f=int(p/100*W+0.5); e=W-f; b=""
       for(j=0;j<f;j++)b=b"|"; for(j=0;j<e;j++)b=b"."; return col "[" b "]" off }
+    # a job with no recorded allocation (alloc<=0, e.g. a summary step that never
+    # went through resource estimation) has no meaningful efficiency: show a grey
+    # empty bar + "n/a" rather than a misleading red 0%. The used value still shows.
+    function nabar(   b,j){ b=""; for(j=0;j<W;j++)b=b"."; return gr "[" b "]" off }
+    function bar2(u,a,col){ return (a>0)? barred(pct(u,a),col) : nabar() }
+    function pctstr(u,a){ return (a>0)? sprintf("%4d%%", int(pct(u,a)+0.5)) : "  n/a" }
     # one label with its time and/or mem rows; every row (incl. totals) gets a
     # bar. Label prints on the first shown dim only. LW (label column width) is
     # computed per view from the SHORT labels, so bars stay aligned.
@@ -224,9 +230,9 @@ if [ -n "$EFF_MODE" ]; then
     function padlab(s,  n){ n=LW-dw(s); if(n<0)n=0; return s sprintf("%*s", n, "") }
     function row(label, tU,tA, mU,mA){
       if (showT) {
-        printf "%s %-6s %s %4d%% %7s %7s\n", padlab(label), "(time)", barred(pct(tU,tA),ct), int(pct(tU,tA)+0.5), tunit(tU), tunit(tA); label="" }
+        printf "%s %-6s %s %5s %7s %7s\n", padlab(label), "(time)", bar2(tU,tA,ct), pctstr(tU,tA), tunit(tU), tunit(tA); label="" }
       if (showM) {
-        printf "%s %-6s %s %4d%% %7s %7s\n", padlab(label), "(mem)",  barred(pct(mU,mA),cm), int(pct(mU,mA)+0.5), munit(mU), munit(mA) }
+        printf "%s %-6s %s %5s %7s %7s\n", padlab(label), "(mem)",  bar2(mU,mA,cm), pctstr(mU,mA), munit(mU), munit(mA) }
     }
     function hline(){ return sprintf("%s %-6s %-32s %5s %7s %7s", padlab(""),"","","eff","used","alloc") }
     function w(s){ if(dw(s)>LW) LW=dw(s) }   # widen LW to fit label s (display cols)
