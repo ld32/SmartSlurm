@@ -185,7 +185,15 @@ if [ -n "$EFF_MODE" ]; then
   # stays clear of the lowercase command keys (t/m/o/q). The resulting
   # sample -> (letter, short label) map is handed to the renderer as its first
   # input file; the full names still appear in each view's header on drill-in.
-  mapfile -t SAMPLES < <(awk -F'\t' 'NR>1 && NF>=10 && $3!="" {print $3}' "$eff" | sort -u -V)
+  # Derive the SAMPLE from the flag exactly as the grid does (skip the numeric
+  # dependency fields, take the field after the step name); an empty result is an
+  # experiment-level step (spans all samples) and must NOT be listed as a sample.
+  # The $3 column is unreliable here -- cleanUp falls it back to the program name
+  # for experiment-level steps, which otherwise masquerade as samples.
+  mapfile -t SAMPLES < <(awk -F'\t' 'NR>1 && NF>=10 {
+      nf=split($2,f,"."); i=2; while(i<=nf && f[i]~/^[0-9]+$/)i++; i++;
+      s=(i<=nf)?f[i]:""; if(s!="") print s
+    }' "$eff" | sort -u -V)
   _fit_sample_w 68                                 # leave room for " (LETTER)" + bars + eff/used/alloc
   _sample_labels                                   # sets TRUNC[] parallel to SAMPLES[]
   effmap="$(mktemp)"; trap 'rm -f "$effmap"' EXIT
@@ -229,14 +237,22 @@ if [ -n "$EFF_MODE" ]; then
     FNR==1 { next }                                  # efficiency.tsv header
     NF<10 { next }
     {
-      s=$3; split($2,ff,"."); st=ff[1]+0; nm=$4
+      # derive step + sample from the flag ($2), same as the grid: skip the numeric
+      # dependency fields, name is the next field, sample the one after that. An
+      # empty sample == experiment-level step (spans all samples): it counts toward
+      # Overall and the step totals, but is NOT a sample row.
+      nf=split($2,ff,"."); st=ff[1]+0
+      ii=2; while(ii<=nf && ff[ii] ~ /^[0-9]+$/) ii++
+      nm=(ii<=nf)?ff[ii]:""; ii++
+      s=(ii<=nf)?ff[ii]:""
       am=$7+0; um=$8+0; at=$9+0; ut=$10+0
-      if(!(s in let)){ let[s]="?"; lab[s]=s; sOrder[++nS]=s }   # fallback (map miss)
       if(!(st in seenT)){ seenT[st]=1; tOrder[++nT]=st; tName[st]=nm }
+      tAT[st]+=at; tUT[st]+=ut; tAM[st]+=am; tUM[st]+=um                    # step total (all jobs)
+      oAT+=at; oUT+=ut
+      if(s==""){ expAM+=am; expUM+=um; next }                              # experiment-level: no sample row
+      if(!(s in let)){ let[s]="?"; lab[s]=s; sOrder[++nS]=s }   # fallback (map miss)
       k=s SUBSEP st; cAT[k]+=at; cUT[k]+=ut; if(am>cAM[k]){cAM[k]=am; cUM[k]=um}
       sAT[s]+=at; sUT[s]+=ut; if(am>sAM[s]){sAM[s]=am; sUM[s]=um}          # sample: time sum, mem peak
-      tAT[st]+=at; tUT[st]+=ut; tAM[st]+=am; tUM[st]+=um                    # step total across samples
-      oAT+=at; oUT+=ut
     }
     END{
       if(nS==0){ print "No efficiency data yet."; exit }
@@ -259,8 +275,9 @@ if [ -n "$EFF_MODE" ]; then
           row(slab(s), cUT[k],cAT[k], cUM[k],cAM[k]) }
         exit
       }
-      # overview: Overall (mem = sum of per-sample peaks) + per-sample rows + step list
-      oAM=0; oUM=0; for(i=1;i<=nS;i++){ oAM+=sAM[sOrder[i]]; oUM+=sUM[sOrder[i]] }
+      # overview: Overall (mem = sum of per-sample peaks + experiment-level peaks)
+      # + per-sample rows + step list
+      oAM=expAM; oUM=expUM; for(i=1;i<=nS;i++){ oAM+=sAM[sOrder[i]]; oUM+=sUM[sOrder[i]] }
       LW=14; for(i=1;i<=nS;i++){ w(slab(sOrder[i])) }
       print bold "Resource efficiency -- overview" off; print hline()
       row("Overall", oUT,oAT, oUM,oAM); print ""
