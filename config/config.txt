@@ -18,6 +18,7 @@ export smartSlurmInputDir=inputSmartSlurm
 export smartSlurmOutputDir=$PWD/outputSmartSlurm
 
 export firstBatchCount=5
+export targetFirstPassPct=93   # aim: ~this %% of jobs complete on first submission (estimate upper-bound percentile)
 
 export defaultMem=4096  # in M
 export defaultTime=120  # in min
@@ -147,3 +148,36 @@ adjustPartition() {
     partition=$partition1 
 }
 export -f adjustPartition
+
+# ---------------------------------------------------------------------------
+# Escalation after a failure -- the SINGLE source of truth shared by cleanUp.sh's
+# auto-requeue and estimateResource.sh's failure floor, so a manual rerun escalates
+# a proven-insufficient allocation exactly the way auto-rerun would (never below it).
+# Size-banded factors, with an extra x4 when there have already been several recent
+# fails. nextMemAfterFail optionally adds a fixed margin (e.g. 2*maxExtra).
+nextMemAfterFail() {   # <currentMem_M> [recentFails] [extraAdd_M] -> escalated mem (int M)
+    cm=$1; rf=${2:-0}; add=${3:-0}
+    if   [ "$cm" -lt 100 ];   then cm=100;  f=8
+    elif [ "$cm" -lt 200 ];   then cm=200;  f=5
+    elif [ "$cm" -lt 512 ];   then cm=512;  f=4
+    elif [ "$cm" -lt 1024 ];  then cm=1024; f=3
+    elif [ "$cm" -lt 10240 ]; then f=2
+    elif [ "$cm" -lt 51200 ]; then f=1.5
+    else f=1.2; fi
+    [ "$rf" -gt 3 ] && f=$(echo "$f * 4" | bc)
+    echo "($cm*$f*1.2+$add)/1" | bc
+}
+export -f nextMemAfterFail
+
+nextTimeAfterFail() {  # <currentTime_min> [recentFails] -> escalated time (int min)
+    ct=$1; rf=${2:-0}
+    if   [ "$ct" -lt 20 ];  then ct=20;  f=2
+    elif [ "$ct" -lt 30 ];  then ct=30;  f=4
+    elif [ "$ct" -lt 60 ];  then ct=60;  f=3
+    elif [ "$ct" -lt 120 ]; then ct=120; f=2
+    elif [ "$ct" -lt 480 ]; then ct=480; f=1.5
+    else f=1.2; fi
+    [ "$rf" -gt 3 ] && f=$(echo "$f * 4" | bc)
+    echo "($ct*$f*1.2)/1" | bc
+}
+export -f nextTimeAfterFail

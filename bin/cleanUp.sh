@@ -271,14 +271,14 @@ if [ ! -f $succFile ]; then
             backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
             if [ ! -f $backup ]; then 
                 mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-                echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref." 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a || $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and removing failed + failure-disproven records for $software $ref (validated history kept)." 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 'NR==FNR{ if($12==a && $13==b && $9!="COMPLETED"){ if($9 ~ /OOM/){ if(!mN++ || $2<fsM)fsM=$2; if($5>fmM)fmM=$5 } if($9 ~ /OOT/){ if(!tN++ || $2<fsT)fsT=$2; if($6>ftM)ftM=$6 } } next } { if(!($12==a && $13==b)){ print; next } if($9!="COMPLETED") next; s=0; if(mN && $2>=fsM && $7<=fmM) s=1; if(tN && $2>=fsT && $8<=ftM) s=1; if(!s) print }' $backup $backup > $smartSlurmJobRecordDir/jobRecord.txt 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
                 rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
@@ -300,69 +300,22 @@ if [ ! -f $succFile ]; then
             cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
 
             mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
-            
-            # Calculate new memory
-            if [ $totalM -lt 100 ]; then
-                totalM=100
-                newMemFactor=8
-            elif [ $totalM -lt 200 ]; then
-                totalM=200
-                newMemFactor=5
-            elif [ $totalM -lt 512 ]; then
-                totalM=512
-                newMemFactor=4
-            elif [ $totalM -lt 1024 ]; then
-                totalM=1024
-                newMemFactor=3
-            elif [ $totalM -lt 10240 ]; then
-                newMemFactor=2
-            elif [ $totalM -lt 51200 ]; then
-                newMemFactor=1.5
-            else
-                newMemFactor=1.2
-            fi
 
-            if [ $recentFails -gt 3 ]; then
-                newMemFactor=$( echo "$newMemFactor * 4" | bc )
-                echo recentFails is $recentFails, set newMemFactor to $newMemFactor
-            fi
-            mem=`echo "($totalM*$newMemFactor*1.2+$maxExtra*2)/1" | bc`
+            # Calculate new memory via the shared escalation helper (config.txt) so a
+            # later manual rerun's failure floor escalates identically. (+2*maxExtra
+            # margin preserved.)
+            mem=`nextMemAfterFail $totalM $recentFails $((maxExtra*2))`
             echo "Calculated new memory: $mem M"
         else
             # For OOT only, keep existing memory
             mem=$totalM
         fi
 
-        # Handle time adjustment for OOT or OOMOOT  
+        # Handle time adjustment for OOT or OOMOOT
         if [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
             echo "Processing time adjustment for $jobStatus"
-            
-            # Calculate new time
-            if [ $min -lt 20 ]; then
-                min=20
-                newTimeFactor=2
-            elif [ $min -lt 30 ]; then
-                min=30
-                newTimeFactor=4
-            elif [ $min -lt 60 ]; then
-                min=60
-                newTimeFactor=3
-            elif [ $min -lt 120 ]; then
-                min=120
-                newTimeFactor=2
-            elif [ $min -lt 480 ]; then
-                min=480
-                newTimeFactor=1.5
-            else
-                newTimeFactor=1.2
-            fi
-
-            if [ $recentFails -gt 3 ]; then
-                newTimeFactor=$( echo "$newTimeFactor * 4" | bc )
-                echo recentFails is $recentFails, set newTimeFactor to $newTimeFactor
-            fi
-
-            min=`echo "($min*$newTimeFactor*1.2)/1" | bc`
+            # Calculate new time via the shared escalation helper (config.txt).
+            min=`nextTimeAfterFail $min $recentFails`
             echo "Calculated new time: $min minutes"
         fi
 
@@ -605,14 +558,14 @@ elif [ ! -z "$overEstimate" ]; then
             backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
             if [ ! -f $backup ]; then 
                 mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a || $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and removing failed + failure-disproven records for $software $ref, validated history kept. 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 'NR==FNR{ if($12==a && $13==b && $9!="COMPLETED"){ if($9 ~ /OOM/){ if(!mN++ || $2<fsM)fsM=$2; if($5>fmM)fmM=$5 } if($9 ~ /OOT/){ if(!tN++ || $2<fsT)fsT=$2; if($6>ftM)ftM=$6 } } next } { if(!($12==a && $13==b)){ print; next } if($9!="COMPLETED") next; s=0; if(mN && $2>=fsM && $7<=fmM) s=1; if(tN && $2>=fsT && $8<=ftM) s=1; if(!s) print }' $backup $backup > $smartSlurmJobRecordDir/jobRecord.txt 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
                 rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
