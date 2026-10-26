@@ -607,7 +607,7 @@ cat cc.$s.*.txt > merged.$s.txt             # depends on step 4 -> waits for all
 #@end
 ```
 
-**`while` loops need a hint.** A `while` header doesn't name its loop variable in a position the parser can read, so declare it with `#loopStart:VAR` on the line above:
+**Loops without a plain `for VAR` — give a hint.** A `while`/`until` header (or a C-style `for ((...))`) doesn't name its loop variable where the parser can read it, so declare it explicitly with `#loopStart:VAR` on the line above. This works for any loop construct:
 
 ```bash
 #loopStart:f1
@@ -616,6 +616,13 @@ while read -r f1 f2 f3 f4; do
     process.sh "$f1"
 done < samples.txt
 ```
+
+**How loop detection behaves (so it doesn't surprise you):**
+
+- `for` and `done` are recognized only as the **first word** of a line, so an ordinary command whose name merely starts with those letters (`format…`, `foremost…`, `done_report…`) is never mistaken for a loop.
+- A self-contained one-line `for … ; done` (one that wraps no `#@` step) is left alone.
+- `#loopStart:VAR` must name a valid shell identifier; a malformed marker is ignored with a warning rather than producing a broken flag.
+- If loops don't balance — a `for`/`#loopStart:` with no matching `done` — conversion **stops with a clear error** instead of silently corrupting job-flag names. Run `runAsPipeline --lint` to catch it without submitting.
 
 ## Submission output and verbosity (`-v` / `-q`)
 
