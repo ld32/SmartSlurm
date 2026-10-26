@@ -262,20 +262,20 @@ efficiency_view() {
         printf '%s\n\n' "$out"
         [ -n "$msg" ] && { echo -e "$msg"; msg=""; }
         if [ "$view" = overview ]; then
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<letter>${NC} sample view   ${BOLD}t${NC} toggle time   ${BOLD}m${NC} toggle mem   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<LETTER>${NC} sample view   ${BOLD}t${NC} toggle time   ${BOLD}m${NC} toggle mem   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
         else
-            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<letter>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time   ${BOLD}m${NC} mem   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<LETTER>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time   ${BOLD}m${NC} mem   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
         fi
         read -p "> " tok </dev/tty || break
         case "$tok" in
-            qq)       exit ;;                                              # quit checkRun entirely (to the shell)
-            q)        if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
-            ""|o)     view=overview; sel="" ;;
-            t)        showT=$((1-showT)) ;;
-            m)        showM=$((1-showM)) ;;
-            [0-9]*)   view=step;   sel="$tok" ;;
-            [A-Za-z]) view=sample; sel="$tok" ;;
-            *)        msg="${YELLOW}Unknown command: $tok${NC}" ;;
+            qq)        exit ;;                                              # quit checkRun entirely (to the shell)
+            q)         if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
+            ""|o)      view=overview; sel="" ;;
+            t)         showT=$((1-showT)) ;;
+            m)         showM=$((1-showM)) ;;
+            [0-9]*)    view=step;   sel="$tok" ;;
+            [A-Z]*)    view=sample; sel="$tok" ;;    # base-26 sample letters: A..Z, AA..
+            *)         msg="${YELLOW}Unknown command: $tok${NC}" ;;
         esac
     done
     return 0
