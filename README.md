@@ -72,7 +72,7 @@ Two companion tools help you watch and debug runs:
 - **Auto-selects the partition** that matches the requested run-time.
 - **Auto-resubmits** jobs that die out-of-memory (OOM) or out-of-time (OOT), with doubled resources.
 - **Optional checkpointing**: snapshot a long job before it hits its limit, then resume from the snapshot.
-- **Informative emails**: Slurm emails are just a subject line; SmartSlurm attaches the job script, the exact submit command, and the stdout/stderr logs.
+- **Consolidated emails**: instead of one email per job, SmartSlurm sends one per-sample alert (failed / completed) and one per-run efficiency summary — text-only, no inbox flood.
 - **Conda-style activation**: a one-time `bash smartSlurmSetup.sh` adds a `smartslurm` command to your shell (it edits `~/.bashrc` for you — no manual `export`); `smartslurm activate` turns SmartSlurm on (aliasing `sbatch` → smart `ssbatch`, with a `{smartSlurm} ` prompt indicator) and `smartslurm deactivate` cleanly reverses it.
 - **Resource efficiency report**: a per-run `efficiency.tsv` and an `htop`-style view in `checkRun` (press `e`) showing time/memory used vs allocated, per sample and per step.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
@@ -354,7 +354,12 @@ Optional. When enabled (the `checkpoint` mode in `runAsPipeline`, or a `.Checkpo
 
 ### Informative emails
 
-Slurm's own email is only a subject line. `cleanUp.sh` instead emails you the **job script**, the **exact submit command used**, and the **stdout/stderr logs** — enough to diagnose a failure without logging in. Use `noSuccEmail` (failures only) or `noEmail` (none) to reduce volume.
+Slurm's own email is only a subject line. SmartSlurm instead sends **consolidated, text-only** notifications, so a many-sample pipeline no longer floods your inbox (and no longer litters `smartSlurmLog` with per-job plot pngs):
+
+- **Per sample** — one **warning** the first time a step in that sample fails (telling you to re-run the same command), and one **confirmation** when the sample's last step completes.
+- **Per run** — a single **efficiency summary** when the whole run finishes successfully, carrying the per-sample [efficiency](#resource-efficiency) table and pointing you to `checkRun` (press `e`) for the per-step breakdown.
+
+Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots are off by default; set `ssMakePlots=yes` to regenerate them.
 
 ## ssbatch FAQ
 
