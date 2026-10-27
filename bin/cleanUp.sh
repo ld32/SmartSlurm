@@ -234,10 +234,15 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
 
 # delete rows other than 1 week and not COMPLETED
 #awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+if [ "$(jrSchemaVersion "$smartSlurmJobRecordDir/jobRecord.txt")" = 2 ]; then
+    # v2: keep the header + rows that are recent or COMPLETED (name-addressed).
+    awk -F, -v t="$(date -d '7 days ago' +%s)" 'NR==1{for(i=1;i<=NF;i++)c[$i]=i; print; next} ($(c["epoch"])+0 > t) || ($(c["status"])=="COMPLETED")' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"
+else
+    awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+fi
 
 
-records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
+records=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b { print $(col["inputSize"]), $(col["memUsed"]) }' | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
 if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(echo $records | wc -l)" -lt 500 || "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ]] && ! echo $records | grep "$inputSize $srunM"; then

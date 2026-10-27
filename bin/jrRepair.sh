@@ -54,31 +54,19 @@ convertOne() {
     out="$f.jrRepair.new.$$"
     skip="$f.jrRepair.skipped.$ts"
 
-    # Build the v2 file (header + converted rows); divert non-21-field rows.
-    awk -F, -v OFS=, -v hdr="$JR_HEADER_V2" -v skipf="$skip" '
-      function sampleOf(flag,   n,a,i){
-        n=split(flag,a,"."); if(n<2) return "";
-        i=2; while(i<=n && a[i] ~ /^[0-9]+$/) i++;   # field1=step(numeric); skip numeric deps
-        i++;                                          # past the name field
-        return (i<=n)?a[i]:"";
-      }
-      BEGIN{ print hdr }
-      NR==1 { next }                                  # drop old (stale) header
-      NF!=21 { print > skipf; skipped++; next }       # not a clean v1 row -> divert, keep
-      {
-        # v1 positions -> v2 column order
-        print "legacy", $12, $13, sampleOf($14), $1, $2, $7, $5, $8, $6, \
-              $15, $9, $10, "", $21, $20, $14;
-        conv++;
-      }
-      END{ printf "%d %d\n", conv+0, skipped+0 > "/dev/stderr" }
-    ' "$f" > "$out" 2> "$f.jrRepair.counts.$$"
+    # Divert any non-21-field data row so nothing is silently lost (jrEmitV2 drops
+    # these; we capture them here for the migration record).
+    awk -F, 'NR>1 && NF!=21' "$f" > "$skip"
+    skip_n=$(wc -l < "$skip"); skip_n=${skip_n//[^0-9]/}
+    [ "${skip_n:-0}" -gt 0 ] || rm -f "$skip"
 
-    read -r conv skip_n < "$f.jrRepair.counts.$$"; rm -f "$f.jrRepair.counts.$$"
-    total=$((conv + skip_n))
+    # Convert via the shared shim (single source of the v1->v2 mapping).
+    jrEmitV2 "$f" > "$out"
+    conv=$(( $(wc -l < "$out") - 1 ))   # minus the header line
+    total=$((conv + ${skip_n:-0}))
 
     if [ -n "$dryrun" ]; then
-        echo "  $f: v1 -> v2 (dry-run): $conv rows convert, $skip_n would divert, (of $total)"
+        echo "  $f: v1 -> v2 (dry-run): $conv rows convert, ${skip_n:-0} would divert, (of $total)"
         rm -f "$out" "$skip"          # dry-run writes nothing
         return 0
     fi

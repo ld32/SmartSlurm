@@ -6,6 +6,10 @@ usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time 
 
 #set -x
 
+# v2 jobRecords: schema SSOT (jrEmitV2 compat shim reads v1 or v2; JR_AWK_COLMAP
+# gives name->index). Readers below parse v2 by name via the shim.
+. "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
+
 output="Running: $0"
 for param in "$@"; do
     if [[ "$param" == *\ * ]]; then
@@ -41,7 +45,7 @@ if [ $inputs == none ]; then
     if test `find $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSlurmJobRecordDir/stats/
 
-        grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7, $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput
+        jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["step"])==a && $(col["ref"])==b { print $(col["memUsed"]), $(col["timeUsed"]) }' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput
 
         # make plot and calculate statistics
         gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
@@ -112,9 +116,9 @@ else
             #filter by program and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref=${ref//\//-}
-            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.mem
+            jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["step"])==a && $(col["ref"])==b && $(col["inputSize"])!=0 { print $(col["inputSize"]), $(col["memUsed"]) }' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.mem
 
-            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.time
+            jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["step"])==a && $(col["ref"])==b && $(col["inputSize"])!=0 { print $(col["inputSize"]), $(col["timeUsed"]) }' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.time
 
             echoerr "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$program.$ref.mem):"
             echoerr `cat $smartSlurmJobRecordDir/stats/$program.$ref.mem`
@@ -190,9 +194,9 @@ fi
 command -v nextMemAfterFail >/dev/null 2>&1 || { _sjrd="$smartSlurmJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_sjrd" ] && smartSlurmJobRecordDir="$_sjrd"; }
 jr=$smartSlurmJobRecordDir/jobRecord.txt
 if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
-    recentFails=`awk -F, -v a="$program" -v b="$ref" -v t="$(date -d '1 hour ago' +%s)" '$9!="COMPLETED" && $21>t && $12==a && $13==b' "$jr" 2>/dev/null | wc -l`
-    maxFailMem=`awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" '$12==a && $13==b && $2 ~ /^[0-9]+$/ && $2<=sz && $9 ~ /OOM/ {if($5>m)m=$5} END{print m+0}' "$jr"`
-    maxFailTime=`awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" '$12==a && $13==b && $2 ~ /^[0-9]+$/ && $2<=sz && $9 ~ /OOT/ {if($6>t)t=$6} END{print t+0}' "$jr"`
+    recentFails=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"])==b' | wc -l`
+    maxFailMem=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
+    maxFailTime=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v b="$ref" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
     if [ "${maxFailMem:-0}" -gt 0 ]; then
         memFloor=`nextMemAfterFail "$maxFailMem" "$recentFails"`
         if [ "${memFloor:-0}" -gt "${mem:-0}" ]; then
