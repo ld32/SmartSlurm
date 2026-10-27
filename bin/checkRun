@@ -54,6 +54,13 @@ _deflog="${smartSlurmLogDir:-smartSlurmLog}"
 _errf=$(mktemp 2>/dev/null || echo /tmp/checkRun.$$.err)
 trap 'rm -f "$_errf"' EXIT
 
+# Terminal resize: set a flag and let the interactive loops redraw at the new
+# width on the next pass (each render re-queries the column count live). Without
+# this trap a blocking `read` would not return until a key is pressed, so a
+# resized window would show a stale-width frame until then.
+RESIZED=
+trap 'RESIZED=1' WINCH
+
 # ===========================================================================
 # helpers
 # ===========================================================================
@@ -243,6 +250,50 @@ sample_table() {
       ' | less
 }
 
+# efficiency_view FOLDER -- interactive resource-efficiency submenu, rendered by
+# checkRunGrid from the per-run efficiency.tsv. Overview (per-sample summary, time
+# = sum of steps, mem = peak step) is the home; from it a step NUMBER drills into
+# that step across all samples, a sample LETTER drills into that sample's steps,
+# t/m toggle the time/mem rows, and q returns (to overview from a sub-view, or out
+# of the submenu from overview). Redraws per keystroke like the grid loop.
+efficiency_view() {
+    local folder="$1" view="overview" sel="" showT=1 showM=1 out tok show msg=""
+    out="$("$_bindir/checkRunGrid" --efficiency --log "$folder" 2>/dev/null)"
+    if [ -z "$out" ]; then MSG="${YELLOW}No efficiency data for this run yet.${NC}"; return; fi
+    while true; do
+        show=""; [ "$showT" = 1 ] && show="time"; [ "$showM" = 1 ] && show="${show:+$show,}mem"
+        [ -z "$show" ] && { show="time,mem"; showT=1; showM=1; }
+        out="$("$_bindir/checkRunGrid" --efficiency --eff-view "$view" --eff-select "$sel" \
+                 --eff-show "$show" --color --log "$folder" 2>/dev/null)"
+        _clear
+        printf '%s\n\n' "$out"
+        [ -n "$msg" ] && { echo -e "$msg"; msg=""; }
+        if [ "$view" = overview ]; then
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step view   ${BOLD}<A-Z>${NC} sample view   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back to checkRun   ${BOLD}qq${NC} quit"
+            pln "${GREY}(sample letters are UPPERCASE; lowercase keys are commands)${NC}"
+        else
+            pln "${BOLD}Commands:${NC}  ${BOLD}<#>${NC} step   ${BOLD}<A-Z>${NC} sample   ${BOLD}o${NC} overview   ${BOLD}t${NC} time only   ${BOLD}m${NC} mem only   ${BOLD}q${NC} back   ${BOLD}qq${NC} quit"
+            pln "${GREY}(sample letters are UPPERCASE; lowercase keys are commands)${NC}"
+        fi
+        RESIZED=
+        if ! read -p "> " tok </dev/tty; then
+            [ -n "$RESIZED" ] && [ -z "$tok" ] && { RESIZED=; continue; }   # pure resize -> redraw
+            [ -z "$tok" ] && break                                          # real EOF
+        fi
+        case "$tok" in
+            qq)        exit ;;                                              # quit checkRun entirely (to the shell)
+            q)         if [ "$view" = overview ]; then break; else view=overview; sel=""; fi ;;
+            ""|o)      view=overview; sel="" ;;
+            t)         if [ "$showT" = 1 ] && [ "$showM" = 0 ]; then showT=1; showM=1; else showT=1; showM=0; fi ;;  # time only; press again = both
+            m)         if [ "$showM" = 1 ] && [ "$showT" = 0 ]; then showT=1; showM=1; else showT=0; showM=1; fi ;;  # mem only;  press again = both
+            [0-9]*)    view=step;   sel="$tok" ;;
+            [A-Z]*)    view=sample; sel="$tok" ;;    # base-26 sample letters: A..Z, AA..
+            *)         msg="${YELLOW}Unknown command: $tok${NC}" ;;
+        esac
+    done
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # list_view FOLDER -- the legacy status list with every capability preserved:
 # per-row M2 summary, AI (Na), workflow (w), pending toggle (p), raw browsing.
@@ -379,11 +430,11 @@ home_loop() {
                 [ -x "$_AI_CALL" ] && pln "   ${BOLD}a 3${NC}           ask AI about the job"
                 pln "   ${BOLD}r 3${NC}           view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
-                pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
+                pln "${BOLD}l${NC} list view · ${BOLD}e${NC} efficiency · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
         else
             if [ -n "$compact" ]; then
-                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}e${NC} efficiency  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
             else
                 pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
                 pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
@@ -391,6 +442,7 @@ home_loop() {
                 [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
                 pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
+                pln "   ${BOLD}e${NC}             resource efficiency bars (time/mem used vs allocated, per sample)"
                 pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
                 pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
@@ -400,7 +452,11 @@ home_loop() {
         pln "$MSG"; MSG=""            # always one (EOL-cleared) notice line -> no stale text
         printf '\033[J'              # erase anything left below from a taller prior frame
 
+        RESIZED=
         read -p "> " tok </dev/tty
+        # Only a PURE resize (no text typed) redraws; a typed command is never
+        # discarded even if a WINCH arrived during the read.
+        [ -n "$RESIZED" ] && [ -z "$tok" ] && { RESIZED=; _need_render=y; continue ; }
 
         # single-word commands first
         case "$tok" in
@@ -415,6 +471,7 @@ home_loop() {
                   continue ;;
             l)    list_view "$logFolder"; continue ;;
             s)    sample_table "$logFolder"; continue ;;
+            e)    efficiency_view "$logFolder"; continue ;;
             g)    workflow_dag "$logFolder"; continue ;;
             p)    if [ -z "$showPending" ]; then showPending=yes; MSG="${GREY}Pending jobs now shown in the list view.${NC}"
                   else showPending=""; MSG="${GREY}Pending jobs now hidden in the list view.${NC}"; fi

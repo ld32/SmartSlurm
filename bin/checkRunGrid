@@ -27,7 +27,9 @@
 set -uo pipefail
 
 LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"
-FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""
+FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""; EFF_MODE=""
+EFF_VIEW="overview"; EFF_SELECT=""; EFF_SHOW="time,mem"
+EFF_LOW="${effLowPct:-25}"   # rows at/below this efficiency % get a red bar (waste alert)
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) LOGDIR="$2"; shift 2;;
@@ -45,19 +47,263 @@ while [ $# -gt 0 ]; do
     #            name the mode instead of relying on "no arg = render".
     --render) RENDER=1; shift;;
     --samples) SAMPLES_MODE=1; shift;;
+    # --efficiency : htop-style per-sample resource-efficiency bars, read from the
+    #                per-run efficiency.tsv (time = sum across steps, mem = peak step).
+    --efficiency) EFF_MODE=1; shift;;
+    --eff-view)   EFF_VIEW="$2"; shift 2;;   # overview | sample | step
+    --eff-select) EFF_SELECT="$2"; shift 2;; # sample letter/name, or step number
+    --eff-show)   EFF_SHOW="$2"; shift 2;;   # time,mem | time | mem
     -h|--help) sed -n '2,20p' "$0"; exit 0;;
     *) ADDR="$1"; shift;;
   esac
 done
 
-[ -f "$LOGDIR/allJobs.txt" ] || { echo "no allJobs.txt in $LOGDIR" >&2; exit 1; }
+[ -n "$EFF_MODE" ] || [ -f "$LOGDIR/allJobs.txt" ] || { echo "no allJobs.txt in $LOGDIR" >&2; exit 1; }
 
 # color setup
 if [ "$USE_COLOR" = auto ]; then [ -t 1 ] && USE_COLOR=on || USE_COLOR=off; fi
 if [ "$USE_COLOR" = on ]; then
   C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GREY=$'\033[90m'
-  C_ORANGE=$'\033[38;5;208m'; C_CYAN=$'\033[36m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
-else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_BOLD=; C_OFF=; fi
+  C_ORANGE=$'\033[38;5;208m'; C_CYAN=$'\033[36m'; C_MAGENTA=$'\033[35m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+  # Vivid 256-color variants for the efficiency bars. The standard 3x slots render
+  # muted and the bright 9x slots are often theme-remapped to the same RGB, so use
+  # fixed 256-palette indices (immune to the 16-color theme) for consistent punch:
+  # time=cyan 45, mem=magenta 201, low-efficiency=red 196.
+  C_CYAN_B=$'\033[38;5;45m'; C_MAGENTA_B=$'\033[38;5;201m'; C_RED_B=$'\033[38;5;196m'
+else C_GREEN=; C_RED=; C_YEL=; C_GREY=; C_ORANGE=; C_CYAN=; C_MAGENTA=; C_BOLD=; C_OFF=
+  C_CYAN_B=; C_MAGENTA_B=; C_RED_B=; fi
+
+# _sample_labels : given the SAMPLES[] array, set TRUNC[] (parallel), plus SPFX
+# and SSFX (the stripped common prefix/suffix). General, assumption-free: strip
+# the longest common prefix AND suffix, then if the remaining "middle" is wider
+# than the target width, slide a window to the offset where the samples are most
+# distinct (so hierarchically-similar names still differ in the label). All the
+# heavy lifting is one awk pass, so it costs nothing per redraw. Shared by the
+# grid and the efficiency view, so both shorten long sample names identically.
+# SAMPLE_W is the sample-label column width. CHECKRUN_SAMPLE_W sets the ceiling
+# (default 40); _fit_sample_w caps it to what the terminal fits, re-queried live
+# per render so the layout reflows on resize (checkRun redraws each keystroke, and
+# traps SIGWINCH to redraw immediately).
+SAMPLE_W_MAX="${CHECKRUN_SAMPLE_W:-40}"
+SAMPLE_W="$SAMPLE_W_MAX"
+# Which end to keep when a label is still too long after dropping common shoulders.
+# Default "right": keep the TAIL, because sample identifiers conventionally trail
+# (the shared project / flowcell / run tokens lead and carry little per-sample
+# information). Set CHECKRUN_LABEL_ANCHOR=left for schemes where the head is the
+# distinguishing part.
+SAMPLE_ANCHOR="${CHECKRUN_LABEL_ANCHOR:-right}"
+# _fit_sample_w RESERVED : SAMPLE_W = clamp(terminal_cols - RESERVED, 10, ceiling).
+_fit_sample_w() {
+  local reserved="$1" cols avail
+  cols="${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}"
+  SAMPLE_W="$SAMPLE_W_MAX"; avail=$(( cols - reserved ))
+  [ "$avail" -lt "$SAMPLE_W" ] && SAMPLE_W="$avail"
+  [ "$SAMPLE_W" -lt 10 ] && SAMPLE_W=10
+}
+# Trailing sequencing tokens (Illumina lane/sample index, read, chunk, extension)
+# are unique per file yet uninformative. Strip them before trimming so the label
+# shows the meaningful part. Override with CHECKRUN_TRIM_SUFFIX_RE; set it empty
+# to disable. The default only matches the Illumina _S<n>_L<n> block, so other
+# names are untouched. The full name is unaffected elsewhere (drill-in / --samples).
+SAMPLE_TRIM_RE="${CHECKRUN_TRIM_SUFFIX_RE-_S[0-9]+_L[0-9]+(_R[0-9]+)?(_[0-9]+)?([.]fastq)?([.]gz)?$}"
+# _sample_labels : fill TRUNC[] (parallel to SAMPLES[]) with short, readable
+# labels, shared by the grid and the efficiency view. Strip the trailing
+# sequencing block, then drop the common leading/trailing run SNAPPED TO TOKEN
+# BOUNDARIES ([-_. /]) so a token is never sliced and the first surviving token
+# left-aligns across rows. If a label still exceeds SAMPLE_W, keep whole HEAD
+# tokens and append … (left-anchored: sample IDs lead, so the identifying head is
+# what we keep and align). SPFX/SSFX carry the stripped shoulders.
+_sample_labels() {
+  TRUNC=(); SPFX=""; SSFX=""
+  [ "${#SAMPLES[@]}" -eq 0 ] && return
+  local out
+  out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" -v ANCH="$SAMPLE_ANCHOR" '
+    function isdelim(c){ return (c=="_"||c=="-"||c=="."||c=="/"||c==" ") }
+    { s[NR]=$0; if(STRIP!="") sub(STRIP,"",s[NR]); n=NR }
+    END{
+      if(n==0) exit
+      lcp=s[1]
+      for(i=2;i<=n;i++){ while(length(lcp)>0 && substr(s[i],1,length(lcp))!=lcp) lcp=substr(lcp,1,length(lcp)-1) }
+      lcs=s[1]
+      for(i=2;i<=n;i++){ while(length(lcs)>0 && substr(s[i],length(s[i])-length(lcs)+1)!=lcs) lcs=substr(lcs,2) }
+      lp=length(lcp); ls=length(lcs)
+      # never let prefix+suffix swallow a whole sample
+      redo=1
+      while(redo){ redo=0
+        for(i=1;i<=n;i++){ if(length(s[i])-lp-ls<1){ if(ls>0){ls--} else if(lp>0){lp--} else break; redo=1; break } }
+      }
+      # snap the drop to token boundaries: pull the prefix back to the last
+      # delimiter inside it, and keep the common suffix only from its first
+      # delimiter -- so whole tokens survive and the first kept token aligns.
+      while(lp>0 && !isdelim(substr(s[1],lp,1))) lp--
+      if(ls>0){ sfx=substr(s[1],length(s[1])-ls+1); p=1; while(p<=ls && !isdelim(substr(sfx,p,1))) p++; ls=(p<=ls)?ls-p+1:0 }
+      printf "#INFO\t%s\t%s\n", substr(s[1],1,lp), (ls>0?substr(s[1],length(s[1])-ls+1):"")
+      for(i=1;i<=n;i++){
+        m=substr(s[i],lp+1,length(s[i])-lp-ls); li=length(m)
+        if(li<=W){ printf "%s\n", m; continue }
+        if(ANCH=="left"){
+          # keep whole HEAD tokens up to W-1, then an ellipsis
+          cut=W-1; while(cut>0 && !isdelim(substr(m,cut+1,1))) cut--
+          if(cut<=0) cut=W-1                    # no boundary in range -> hard cut
+          printf "%s…\n", substr(m,1,cut)
+        } else {
+          # right-anchor (default): leading ellipsis + whole TAIL tokens within W-1.
+          # Start at W-1 from the end, then advance to the next token boundary so the
+          # kept text begins at a whole token (the discriminating tail stays intact).
+          st=li-(W-1)+1; if(st<1)st=1; s0=st
+          while(st<=li && !isdelim(substr(m,st-1,1))) st++
+          if(st>li) st=s0                       # no boundary in range -> hard cut
+          printf "…%s\n", substr(m,st)
+        }
+      }
+    }')"
+  local first=1 line
+  while IFS= read -r line; do
+    if [ "$first" = 1 ]; then first=0
+      SPFX="$(printf '%s' "$line" | cut -f2)"; SSFX="$(printf '%s' "$line" | cut -f3)"
+    else TRUNC+=("$line"); fi
+  done <<<"$out"
+}
+
+# --efficiency : per-run resource-efficiency report from efficiency.tsv, with three
+# drill-down views (overview | sample | step) selected via --eff-view/--eff-select,
+# and --eff-show time,mem to toggle dimensions. Bars are PERCENT-based (fixed
+# width, so absolute scale never distorts them); the eff/used/alloc columns come
+# AFTER the bar, aligned. Time = SUM across steps (additive); mem = PEAK step for a
+# sample (steps run sequentially). Aggregate rows (Overall, sample/step totals)
+# have no bar. Time bars are cyan, mem bars magenta (deliberately NOT green, so
+# the time/mem distinction never reads as a red/green pass-fail scale next to the
+# red low-efficiency override); plain under --no-color/non-TTY.
+if [ -n "$EFF_MODE" ]; then
+  eff="$LOGDIR/efficiency.tsv"
+  [ -f "$eff" ] || { echo "No efficiency.tsv in $LOGDIR (nothing to report yet)."; exit 0; }
+  # Long sample names (full fastq paths/basenames) made the overview unreadable.
+  # Shorten them the SAME way the grid does: feed the distinct samples through
+  # _sample_labels (common prefix/suffix + Illumina sequencing-token strip +
+  # windowed ellipsis) and give each a base-26 UPPERCASE row letter (A..Z, AA..),
+  # which never runs past 'Z' into punctuation the way the old chr(64+n) did, and
+  # stays clear of the lowercase command keys (t/m/o/q). The resulting
+  # sample -> (letter, short label) map is handed to the renderer as its first
+  # input file; the full names still appear in each view's header on drill-in.
+  # Derive the SAMPLE from the flag exactly as the grid does (skip the numeric
+  # dependency fields, take the field after the step name); an empty result is an
+  # experiment-level step (spans all samples) and must NOT be listed as a sample.
+  # The $3 column is unreliable here -- cleanUp falls it back to the program name
+  # for experiment-level steps, which otherwise masquerade as samples.
+  mapfile -t SAMPLES < <(awk -F'\t' 'NR>1 && NF>=10 {
+      nf=split($2,f,"."); i=2; while(i<=nf && f[i]~/^[0-9]+$/)i++; i++;
+      s=(i<=nf)?f[i]:""; if(s!="") print s
+    }' "$eff" | sort -u -V)
+  _fit_sample_w 68                                 # leave room for " (LETTER)" + bars + eff/used/alloc
+  _sample_labels                                   # sets TRUNC[] parallel to SAMPLES[]
+  effmap="$(mktemp)"; trap 'rm -f "$effmap"' EXIT
+  _ucletter() { local n=$(( $1 + 1 )) r a='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; REPLY=''
+    while [ "$n" -gt 0 ]; do r=$(( (n-1) % 26 )); n=$(( (n-1) / 26 )); REPLY="${a:$r:1}$REPLY"; done; }
+  for i in "${!SAMPLES[@]}"; do _ucletter "$i"
+    printf '%s\t%s\t%s\n' "${SAMPLES[$i]}" "$REPLY" "${TRUNC[$i]}" >> "$effmap"; done
+
+  LC_ALL=C awk -F'\t' -v W=30 -v ct="$C_CYAN_B" -v cm="$C_MAGENTA_B" -v cr="$C_RED_B" -v gr="$C_GREY" -v off="$C_OFF" -v bold="$C_BOLD" \
+      -v view="$EFF_VIEW" -v sel="$EFF_SELECT" -v show="$EFF_SHOW" -v low="$EFF_LOW" -v mapf="$effmap" '
+    function clampi(p){ if(p<0)p=0; if(p>100)p=100; return p }
+    function pct(u,a){ return (a>0)? 100*u/a : 0 }
+    function tunit(v){ return (v<60)? sprintf("%dm",v) : sprintf("%.1fh",v/60) }
+    function munit(v){ return (v<1024)? sprintf("%dM",v) : (v<1048576)? sprintf("%.1fG",v/1024) : sprintf("%.1fT",v/1048576) }
+    # dimension color (ct/cm) normally; a row at/below the low-efficiency
+    # threshold turns RED as a waste alert (red is used by neither dimension, so
+    # it reads as "look here", and the (time)/(mem) label still says which).
+    function barred(p, col,   f,e,b,j){ p=clampi(p); if(p<=low+0) col=cr; f=int(p/100*W+0.5); e=W-f; b=""
+      for(j=0;j<f;j++)b=b"|"; for(j=0;j<e;j++)b=b"."; return col "[" b "]" off }
+    # a job with no recorded allocation (alloc<=0, e.g. a summary step that never
+    # went through resource estimation) has no meaningful efficiency: show a grey
+    # empty bar + "n/a" rather than a misleading red 0%. The used value still shows.
+    function nabar(   b,j){ b=""; for(j=0;j<W;j++)b=b"."; return gr "[" b "]" off }
+    function bar2(u,a,col){ return (a>0)? barred(pct(u,a),col) : nabar() }
+    function pctstr(u,a){ return (a>0)? sprintf("%4d%%", int(pct(u,a)+0.5)) : "  n/a" }
+    # one label with its time and/or mem rows; every row (incl. totals) gets a
+    # bar. Label prints on the first shown dim only. LW (label column width) is
+    # computed per view from the SHORT labels, so bars stay aligned.
+    # display width (not byte length): the only non-ASCII char a label can hold is
+    # the … ellipsis (3 bytes, 1 column). Under LC_ALL=C length() counts bytes, so
+    # subtract 2 per …. padlab() then pads to LW in DISPLAY columns, so rows with
+    # and without … stay aligned (plain %-*s would over-pad the … rows).
+    function dw(s,  t,c){ t=s; c=gsub(/…/,"",t); return length(t)+c }
+    function padlab(s,  n){ n=LW-dw(s); if(n<0)n=0; return s sprintf("%*s", n, "") }
+    function row(label, tU,tA, mU,mA){
+      if (showT) {
+        printf "%s %-6s %s %5s %7s %7s\n", padlab(label), "(time)", bar2(tU,tA,ct), pctstr(tU,tA), tunit(tU), tunit(tA); label="" }
+      if (showM) {
+        printf "%s %-6s %s %5s %7s %7s\n", padlab(label), "(mem)",  bar2(mU,mA,cm), pctstr(mU,mA), munit(mU), munit(mA) }
+    }
+    function hline(){ return sprintf("%s %-6s %-32s %5s %7s %7s", padlab(""),"","","eff","used","alloc") }
+    function w(s){ if(dw(s)>LW) LW=dw(s) }   # widen LW to fit label s (display cols)
+    function slab(s){ return lab[s] " (" let[s] ")" }  # short label + letter
+    BEGIN{ showT=(show ~ /time/); showM=(show ~ /mem/); if(!showT && !showM){showT=1;showM=1} }
+    # first file: the sample map  fullsample \t LETTER \t shortlabel
+    FILENAME==mapf { let[$1]=$2; lab[$1]=$3; sOrder[++nS]=$1; byLet[toupper($2)]=$1; next }
+    FNR==1 { next }                                  # efficiency.tsv header
+    NF<10 { next }
+    {
+      # derive step + sample from the flag ($2), same as the grid: skip the numeric
+      # dependency fields, name is the next field, sample the one after that. An
+      # empty sample == experiment-level step (spans all samples): it counts toward
+      # Overall and the step totals, but is NOT a sample row.
+      nf=split($2,ff,"."); st=ff[1]+0
+      ii=2; while(ii<=nf && ff[ii] ~ /^[0-9]+$/) ii++
+      nm=(ii<=nf)?ff[ii]:""; ii++
+      s=(ii<=nf)?ff[ii]:""
+      am=$7+0; um=$8+0; at=$9+0; ut=$10+0
+      if(!(st in seenT)){ seenT[st]=1; tOrder[++nT]=st; tName[st]=nm }
+      tAT[st]+=at; tUT[st]+=ut; tAM[st]+=am; tUM[st]+=um                    # step total (all jobs)
+      oAT+=at; oUT+=ut
+      if(s==""){ expAM+=am; expUM+=um; expStep[st]=1; next }               # experiment-level: no sample row
+      if(!(s in let)){ let[s]="?"; lab[s]=s; sOrder[++nS]=s }   # fallback (map miss)
+      k=s SUBSEP st; cAT[k]+=at; cUT[k]+=ut; if(am>cAM[k]){cAM[k]=am; cUM[k]=um}
+      sAT[s]+=at; sUT[s]+=ut; if(am>sAM[s]){sAM[s]=am; sUM[s]=um}          # sample: time sum, mem peak
+    }
+    END{
+      # steps in ascending NUMERIC order (so 10 sorts after 2, not after 1)
+      for(a=1;a<=nT;a++) for(b=a+1;b<=nT;b++) if(tOrder[b]+0 < tOrder[a]+0){ tt=tOrder[a]; tOrder[a]=tOrder[b]; tOrder[b]=tt }
+      if(nS==0 && nT==0){ print "No efficiency data yet."; exit }
+      if(view=="sample"){
+        tgt=byLet[toupper(sel)]; if(tgt=="" && (sel in let)) tgt=sel
+        if(tgt==""){ print "No such sample: " sel; exit }
+        LW=14; w(slab(tgt)); for(j=1;j<=nT;j++){ st=tOrder[j]; if((tgt SUBSEP st) in cAT) w(tName[st] " ("st")") }
+        print bold "Sample view: showing " tgt " (" let[tgt] ")" off; print hline()
+        row(slab(tgt), sUT[tgt],sAT[tgt], sUM[tgt],sAM[tgt]); print ""
+        for(j=1;j<=nT;j++){ st=tOrder[j]; k=tgt SUBSEP st; if(!(k in cAT))continue
+          row(tName[st] " ("st")", cUT[k],cAT[k], cUM[k],cAM[k]) }
+        exit
+      }
+      if(view=="step"){
+        ss=sel+0; if(!(ss in seenT)){ print "No such step: " sel; exit }
+        LW=14; w(tName[ss]); for(i=1;i<=nS;i++){ s=sOrder[i]; if((s SUBSEP ss) in cAT) w(slab(s)) }
+        print bold "Step view: showing " tName[ss] " (" ss ")" off; print hline()
+        row(tName[ss], tUT[ss],tAT[ss], tUM[ss],tAM[ss]); print ""
+        if(ss in expStep) print bold "(experiment-level step: spans all samples -- no per-sample breakdown)" off
+        for(i=1;i<=nS;i++){ s=sOrder[i]; k=s SUBSEP ss; if(!(k in cAT))continue
+          row(slab(s), cUT[k],cAT[k], cUM[k],cAM[k]) }
+        exit
+      }
+      # overview: Overall + per-sample rows + an experiment-level section for the
+      # cross-sample steps (so jobs not tied to a sample are still visible), then the
+      # step / sample legends. Overall mem = per-sample peaks + experiment-level peaks.
+      oAM=expAM; oUM=expUM; for(i=1;i<=nS;i++){ oAM+=sAM[sOrder[i]]; oUM+=sUM[sOrder[i]] }
+      nExp=0; for(j=1;j<=nT;j++){ st=tOrder[j]; if(st in expStep) expList[++nExp]=st }
+      LW=14; for(i=1;i<=nS;i++){ w(slab(sOrder[i])) }
+      for(j=1;j<=nExp;j++){ st=expList[j]; w(tName[st] " (" st ")") }
+      print bold "Resource efficiency -- overview" off; print hline()
+      row("Overall", oUT,oAT, oUM,oAM); print ""
+      for(i=1;i<=nS;i++){ s=sOrder[i]; row(slab(s), sUT[s],sAT[s], sUM[s],sAM[s]) }
+      if(nExp>0){ print ""; print bold "Experiment-level (across all samples):" off
+        for(j=1;j<=nExp;j++){ st=expList[j]; row(tName[st] " (" st ")", tUT[st],tAT[st], tUM[st],tAM[st]) } }
+      print ""
+      # Per-sample full names are shown on drill-in (type a letter); the overview
+      # just lists the steps, so a many-sample run no longer dumps a wall of paths.
+      line="Steps:    "; for(j=1;j<=nT;j++){ st=tOrder[j]; line=line tName[st] " (" st ")" (j<nT?",  ":"") }; print bold line off
+      if(nS>0) print bold "Samples:  " nS " total -- type its UPPERCASE letter (A.." let[sOrder[nS]] ") for a sample'\''s steps + full name" off
+    }' "$effmap" "$eff"
+  exit 0
+fi
 
 # ---- derive per-job fields in awk, then status in bash (clean globbing) ----
 # awk emits: flag|step|name|sample|fan|dep
@@ -351,73 +597,6 @@ read -r n_done n_err n_run n_pend n_unk n_orph <<<"$summary"
 total=$(echo "$jobrows" | grep -c .)
 runname="$(basename "$(cd "$LOGDIR/.." && pwd)")"
 
-# _sample_labels : given the SAMPLES[] array, set TRUNC[] (parallel), plus SPFX
-# and SSFX (the stripped common prefix/suffix). General, assumption-free: strip
-# the longest common prefix AND suffix, then if the remaining "middle" is wider
-# than the target width, slide a window to the offset where the samples are most
-# distinct (so hierarchically-similar names still differ in the label). All the
-# heavy lifting is one awk pass, so it costs nothing per redraw.
-SAMPLE_W="${CHECKRUN_SAMPLE_W:-26}"
-# Trailing sequencing tokens (Illumina lane/sample index, read, chunk, extension)
-# are unique per file yet uninformative, and being unique they dominate the
-# right-anchored window and push the descriptive name off the left. Strip them
-# before trimming so the label shows the meaningful part. Override with
-# CHECKRUN_TRIM_SUFFIX_RE; set it empty to disable. The default only matches the
-# Illumina _S<n>_L<n> block, so non-sequencing names are untouched. The full name
-# is unaffected elsewhere (the 's' table and --samples still show it in full).
-SAMPLE_TRIM_RE="${CHECKRUN_TRIM_SUFFIX_RE-_S[0-9]+_L[0-9]+(_R[0-9]+)?(_[0-9]+)?([.]fastq)?([.]gz)?$}"
-_sample_labels() {
-  TRUNC=(); SPFX=""; SSFX=""
-  [ "${#SAMPLES[@]}" -eq 0 ] && return
-  local out
-  out="$(printf '%s\n' "${SAMPLES[@]}" | awk -v W="$SAMPLE_W" -v STRIP="$SAMPLE_TRIM_RE" '
-    { s[NR]=$0; if(STRIP!="") sub(STRIP,"",s[NR]); n=NR }
-    END{
-      if(n==0) exit
-      lcp=s[1]
-      for(i=2;i<=n;i++){ while(length(lcp)>0 && substr(s[i],1,length(lcp))!=lcp) lcp=substr(lcp,1,length(lcp)-1) }
-      lcs=s[1]
-      for(i=2;i<=n;i++){ while(length(lcs)>0 && substr(s[i],length(s[i])-length(lcs)+1)!=lcs) lcs=substr(lcs,2) }
-      lp=length(lcp); ls=length(lcs)
-      # never let prefix+suffix swallow a whole sample
-      redo=1
-      while(redo){ redo=0
-        for(i=1;i<=n;i++){ if(length(s[i])-lp-ls<1){ if(ls>0){ls--} else if(lp>0){lp--} else break; redo=1; break } }
-      }
-      maxm=0
-      for(i=1;i<=n;i++){ m[i]=substr(s[i],lp+1,length(s[i])-lp-ls); if(length(m[i])>maxm) maxm=length(m[i]) }
-      off=0
-      if(maxm>W){
-        best=-1
-        # slide the window from the RIGHT edge inward and keep the right-most
-        # offset that leaves the labels distinct. Sample names put their most
-        # distinguishing token (id / lane / replicate) near the end, so a tail
-        # reads far better than a floating interior fragment; sliding left only
-        # happens when the tail itself is not distinct. Breaking on the first
-        # fully-distinct window (often the right edge) also trims the scan cost.
-        for(o=maxm-W;o>=0;o--){ delete seen; d=0
-          for(i=1;i<=n;i++){ w=substr(m[i],o+1,W); if(!(w in seen)){seen[w]=1;d++} }
-          if(d>best){ best=d; off=o; if(d==n) break }
-        }
-      }
-      printf "#INFO\t%s\t%s\n", lcp, lcs
-      for(i=1;i<=n;i++){
-        li=length(m[i]); eo=off
-        # a middle shorter than the global offset cannot fill the window there;
-        # anchor that row to its own tail so its label is never blank.
-        if(eo>li-W){ eo=li-W; if(eo<0) eo=0 }
-        lab=substr(m[i],eo+1,W)
-        printf "%s%s%s\n", (eo>0?"…":""), lab, ((eo+W)<li?"…":"")
-      }
-    }')"
-  local first=1 line
-  while IFS= read -r line; do
-    if [ "$first" = 1 ]; then first=0
-      SPFX="$(printf '%s' "$line" | cut -f2)"; SSFX="$(printf '%s' "$line" | cut -f3)"
-    else TRUNC+=("$line"); fi
-  done <<<"$out"
-}
-
 print_header() {
   printf '%sFound %d jobs%s\n\n' "$C_BOLD" "$total" "$C_OFF"
   printf 'Status:  %s %d done   %s %d error   %s %d running   %s %d pending' \
@@ -461,10 +640,6 @@ render_grid() {
   IFS=',' read -ra PSTEPS  <<<"$STEPS_CSV"
   IFS=',' read -ra ESTEPS  <<<"$EXP_CSV"
 
-  # trimmed, distinct sample labels (prefix/suffix stripped, windowed)
-  _sample_labels
-  local NAMEW=$((SAMPLE_W + 2))     # +2 for the leading/trailing … markers
-
   local COLW=7 pad="   "
   # collect the visible per-sample step columns
   local -a SNUM SNAME; local ps
@@ -473,6 +648,13 @@ render_grid() {
     SNUM+=("${ps%%:*}"); SNAME+=("${ps#*:}")
   done
   local n=${#SNUM[@]} i
+
+  # trimmed, distinct sample labels (token-trimmed, left-anchored). Fit the label
+  # width to what the terminal leaves after the row letter and the n step columns,
+  # so a wide run never overflows and the layout reflows on resize.
+  _fit_sample_w $(( 12 + n*(COLW+1) ))
+  _sample_labels
+  local NAMEW=$((SAMPLE_W + 2))     # +2 for the trailing … marker + breathing room
 
   # label area = pad + name(NAMEW) + ' ' + row-letter (right-aligned in 3) + 2
   # spaces of breathing room before the frame edge, so the letter doesn't sit
