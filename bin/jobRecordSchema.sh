@@ -102,6 +102,36 @@ jrSampleFromFlag() {
     if [ "$i" -le "$n" ]; then eval "printf '%s' \"\${$i}\""; else printf ''; fi
 }
 
+# --- optional ref size-class pooling ---------------------------------------
+# Some refs are close enough in size that a tool's resource use is comparable;
+# pooling their history gives better fits. JR_REF_CLASS maps "ref=class" pairs
+# (space-separated). Default pools the common mammalian genomes (mouse + human,
+# all ~3 Gbp). Override by setting JR_REF_CLASS in the environment/config, or ""
+# to disable (each ref is its own group). "none" (ref-less tools) never pools.
+JR_REF_CLASS="${JR_REF_CLASS-mm9=mammal mm10=mammal mm39=mammal hg19=mammal hg38=mammal GRCm38=mammal GRCm39=mammal GRCh37=mammal GRCh38=mammal}"
+
+# jrRefClass <ref> -> the group name for <ref> (the mapped class, or <ref> itself).
+jrRefClass() {
+    local r=$1 pair
+    [ "$r" = none ] && { printf 'none'; return; }
+    for pair in $JR_REF_CLASS; do
+        case "$pair" in "$r"=*) printf '%s' "${pair#*=}"; return ;; esac
+    done
+    printf '%s' "$r"
+}
+
+# jrRefMatchRe <ref> -> an ERE matching every ref in the same group (so an extract
+# can pull the whole class). Unmapped ref -> exact match on itself.
+jrRefMatchRe() {
+    local r=$1 cls pair members=""
+    cls=$(jrRefClass "$r")
+    [ "$cls" = "$r" ] && { printf '^%s$' "$r"; return; }
+    for pair in $JR_REF_CLASS; do
+        case "$pair" in *="$cls") members="$members|${pair%=*}" ;; esac
+    done
+    printf '^(%s)$' "${members#|}"
+}
+
 # jrcol <name> <headerLine> -> prints the 1-based column index of <name> in a
 # comma-separated header line, or empty if absent. For bash-side callers.
 jrcol() {
