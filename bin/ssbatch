@@ -87,7 +87,8 @@ fi
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
-[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt
+. "$(dirname "$0")/jobRecordSchema.sh"
+jrEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -134,6 +135,7 @@ for (( i=0; i<$(($#)); i++ )); do
         --comment=*     )   comment="${array[$i]}";; # && comment=${comment/--comment=/};; # && for c in "${arr[@]}"; do eval $c; done;;
   		"-P" 			)   program="${array[$i+1]}" && array[$i+1]="";;
   		--program=* 	)   program="${array[$i]}" && program="${program/--program=/}";;
+  		--pipeline=* 	)   pipeline="${array[$i]}" && pipeline="${pipeline/--pipeline=/}";;  # v2: pipeline id for jobRecords
   		"-R" 			)   ref="${array[$i+1]}" && array[$i+1]="";;
   		--Ref=* 		)   ref="${array[$i]}" && ref="${ref/--Ref=/}";;
   		"-F" 			)   flag="${array[$i+1]}" && array[$i+1]="";;
@@ -384,6 +386,7 @@ outFlag=$smartSlurmLogDir/$flag.out
 errFlag=$smartSlurmLogDir/$flag.err
 
 [ -z "$ref" ] && ref=none
+[ -z "$pipeline" ] && pipeline=unknown
 [ -z "$inputs" ] && inputs=none
 
 [ "${ssV:-normal}" = verbose ] && echoerr "Working on inputs: ${inputs#,} for step: $step $name" || echoerr1 "Working on inputs: ${inputs#,} for step: $step $name"
@@ -635,7 +638,7 @@ realSbatch=`which -a sbatch | grep -v SmartSlurm | head -n 1`
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -649,7 +652,7 @@ else
 
     # has --wrap
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
+        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
 
         # testing without trap
         #echo -e "#!/bin/bash\ndate\n" > $job
@@ -719,7 +722,7 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
-        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" $excludeFailedNodes; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
+        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job

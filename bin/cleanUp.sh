@@ -52,6 +52,13 @@ extraMemC=${13}
 extraTime=${14}
 userEmail=${15}
 excludeFailedNodes=${16}
+pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatch -L)
+
+# v2 jobRecord: schema helpers + provenance. The record= column ORDER below must
+# match JR_COLUMNS_V2 in jobRecordSchema.sh (name-addressed on read).
+. "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
+jrNode=${SLURMD_NODENAME:-$(hostname 2>/dev/null)}
+jrSample=$(jrSampleFromFlag "$flag")
 
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
@@ -197,9 +204,12 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
 fi
 ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
 
-# todo: move this part to main job, so that when release job, this job record can be used for the statics 
-                                #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`"
+# todo: move this part to main job, so that when release job, this job record can be used for the statics
+# v2 column order == JR_COLUMNS_V2: pipeline,step,ref,sample,jobID,inputSize,memUsed,
+#   memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
+record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,$jobStatus,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
+# (dataToPlot mirrors the record; its only readers are the default-off ssMakePlots
+#  plot parsers below, which feat/retire-unused-plots removes.)
 echo dataToPlot,$record
 
 # --- per-run efficiency row -------------------------------------------------
@@ -277,7 +287,7 @@ if [ ! -f $succFile ]; then
     # Handle OOM, OOT, and OOMOOT cases
     if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
+        record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,$jobStatus,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
 
         echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
 
@@ -565,7 +575,7 @@ if [ ! -f $succFile ]; then
 
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
-        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,OverEstimate,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
+        record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,OverEstimate,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
         echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
 
     

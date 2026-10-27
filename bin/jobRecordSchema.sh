@@ -48,6 +48,27 @@ jrSchemaVersion() {
 # jrEnsureHeader <file> -- create the file with the v2 header if it is absent.
 jrEnsureHeader() { [ -f "$1" ] || printf '%s\n' "$JR_HEADER_V2" > "$1"; }
 
+# jrSampleFromFlag <flag> -> the per-sample identifier, or "" (experiment-level).
+# Flag grammar (rAP): step.dep[.dep...].name[.sample[.fanout...]] where step and
+# the deps are numeric. So: skip field 1 (step) and any numeric deps, the next
+# field is the step name, and the one after that is the sample. (jrRepair.sh does
+# the same in awk for stream conversion; keep the two in sync.)
+jrSampleFromFlag() {
+    local flag=$1 i n s
+    local IFS=.
+    set -- $flag
+    n=$#
+    [ "$n" -ge 2 ] || { printf ''; return; }
+    i=2
+    while [ "$i" -le "$n" ]; do
+        eval "s=\${$i}"
+        case "$s" in (*[!0-9]*|'') break;; esac   # stop at first non-numeric (the name)
+        i=$((i+1))
+    done
+    i=$((i+1))                                     # past the name -> sample
+    if [ "$i" -le "$n" ]; then eval "printf '%s' \"\${$i}\""; else printf ''; fi
+}
+
 # jrcol <name> <headerLine> -> prints the 1-based column index of <name> in a
 # comma-separated header line, or empty if absent. For bash-side callers.
 jrcol() {
