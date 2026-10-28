@@ -269,7 +269,12 @@ smartslurm deactivate
 
 A CSV of resource records for every job, one row per job, with a header line. Its location is set by `smartSlurmJobRecordDir` in [`config.txt`](#configtxt) and defaults to `~/.smartSlurm/jobRecord.txt`. The schema is **named** — tools read columns by header name, not position — so the column order can evolve without breaking readers.
 
-Estimation **groups by `pipeline` + `step` + `ref`**, so the same program used by two different pipelines (e.g. default vs `--very-sensitive`, or two assays whose data differ in effort) builds two separate fits instead of one blended one. It fits **memUsed** and **timeUsed** against **inputSize**, and uses **status** to keep only validated history.
+Estimation **groups by `pipeline` + `step` + `ref`**, fitting **memUsed** and **timeUsed** against **inputSize** and using **status** to keep only validated (COMPLETED) history. The same program used by two different pipelines (e.g. default vs `--very-sensitive`, or two assays whose data differ in effort), or run against two references, builds separate fits instead of one blended one. Details that decide which rows share a fit:
+
+- **`step` is the step *name*, not the step number.** It is the `runAsPipeline` step name (passed as `ssbatch -P`), which defaults to the command's first word when a step is left unnamed. `runAsPipeline` requires unique step *numbers* within a pipeline, but that number lives in the `flag` column, not in the grouping key — so two steps that share a step name **and** a ref would pool into one fit. Give each step a distinct name (or ref) and they stay separate; two genuinely identical steps are rare, and if intentional they usually *should* be modeled apart anyway.
+- **Standalone jobs stay isolated.** An `ssbatch` run outside a pipeline carries `pipeline=unknown`, and with no `-R` carries `ref=none`; it forms its own group and never mixes into a pipeline's fit.
+- **Missing values become sentinels, never blanks:** absent pipeline → `unknown`, absent ref → `none` (and `none` is never size-pooled).
+- **Thin groups broaden only on the pipeline axis.** When a group has fewer than 3 points to fit, estimation falls back to pooling across pipelines for the *same step + ref* only — it relaxes `pipeline`, never `step` or `ref` (e.g. right after migration, where old rows are `pipeline=legacy`).
 
 ```text
 pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
