@@ -1,0 +1,24 @@
+#!/bin/bash
+# Recording mock of mail(1) for the Slurm-free harness. Sends nothing; instead
+# appends each invocation (recipient, subject, and body) to a per-workspace log
+# so tests can assert on the consolidated-email behavior. Also records whether
+# any attachment (-a) was passed, to prove the status/efficiency emails are
+# text-only (no pngs).
+log="${MOCK_SLURM_STATE:-/tmp}/mail.log"
+subj=""; to=""; att=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -s) subj="$2"; shift 2;;
+    -a) att=1; shift 2;;
+    --) shift;;
+    -*) shift;;
+    *)  to="$1"; shift;;
+  esac
+done
+body="$(cat 2>/dev/null)"
+{
+  printf '=== MAIL to=%s att=%s subj=%s\n' "$to" "$att" "$subj"
+  printf '%s\n' "$body"
+  printf '=== END\n'
+} >> "$log" 2>/dev/null
+exit 0

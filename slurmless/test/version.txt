@@ -1,0 +1,50 @@
+slurmless — SmartSlurm test harness: validated baseline
+=======================================================
+Last validated : 2026-10-28
+Project        : github.com/ld32/smartSlurm   (branch: master)
+Validated against : ld32/smartSlurm master @ 71e9d9c
+
+How drift is controlled
+-----------------------
+slurmless is a component of SmartSlurm (one copy, in-tree), so the harness and the
+tools it tests always share a commit and cannot drift apart. Just run the harness
+before pushing a tool change (./slurmless/bootstrap.sh, then the relevant blocks)
+— that is the regression net; no checksum pin is needed.
+
+When you run the harness against an EXTERNAL SmartSlurm checkout (SMARTSLURM_ROOT
+pointed at a different clone), the tools can be any version, so the checksums below
+record the tree this harness was last validated against. A mismatch is not
+necessarily a problem — SmartSlurm's bin/ is a moving target — it just means
+re-validate and update this file.
+
+Blocks that track in-flight work
+--------------------------------
+Validated against ld32/master @ 71e9d9c, exactly TWO blocks are red — each asserts
+behavior from an OPEN ld32 PR not yet in master, and goes green when that PR lands:
+  - email_consolidation  (1 of 14 checks) -> feat/retire-unused-plots + feat/email-cleanup
+                            (the "no plot pngs/CSVs" assertion; plots still built on master)
+  - extrapolate_lowdata  (4 of 4 checks)  -> calculateMemTime estimator thin-data fallback
+Everything else is green: the rAP core, activation, checkRun/grid, efficiency,
+diagnosis, and the other estimator blocks (extrapolate_linear/superlinear,
+resubmit_convergence, manual_resubmit_sequence, firstpass_fullpath).
+slurmless does NOT depend on feat/jobrecords-v2 (the harness never references it).
+
+Validated tool checksums (bin/, sha256 first 16) @ ld32/master 71e9d9c:
+  runAsPipeline        2968aba36a9aafea
+  ssbatch              02dafc4babd83622
+  cleanUp.sh           3e44c0fd94ad68ca
+  checkRun             df22f7449d96fd4c
+  checkRunGrid         1ab343ba53af21ad
+  diagnose.sh          da62de20346c0a40
+  calculateMemTime.sh  3bfcb8bc5a3c5f8e
+  estimateResource.sh  7b8da151c7d52bd2
+
+Drift check (run from a SmartSlurm checkout)
+--------------------------------------------
+  for f in runAsPipeline ssbatch cleanUp.sh checkRun checkRunGrid diagnose.sh \
+           calculateMemTime.sh estimateResource.sh; do
+    printf '%-20s %s\n' "$f" "$(sha256sum bin/$f | cut -c1-16)"
+  done
+
+If a tool changed, re-run the affected block(s) and update the fixtures/asserts
+to match the new intended behavior before relying on them as a regression net.

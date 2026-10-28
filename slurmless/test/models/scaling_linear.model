@@ -1,0 +1,14 @@
+# Linear: memory grows linearly with input size (KB). mem = 0.5*size + 200 (M)
+# time = 0.02*size + 10 (min). No noise -> exact parameter recovery expected.
+MODEL_PROGRAM=scaleLin
+MODEL_REF=none
+MEM_FORM=linear
+MEM_A=0.5
+MEM_B=200
+TIME_FORM=linear
+TIME_A=0.02
+TIME_B=10
+MAXRSS_FACTOR=0.9
+NOISE_MEM=0
+NOISE_TIME=0
+SEED=42
