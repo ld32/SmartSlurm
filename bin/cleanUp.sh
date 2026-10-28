@@ -238,7 +238,7 @@ ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|b
 # todo: move this part to main job, so that when release job, this job record can be used for the statics
 # v2 column order == JR_COLUMNS_V2: pipeline,step,ref,sample,jobID,inputSize,memUsed,
 #   memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
-record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,$jobStatus,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
+record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
 # (dataToPlot mirrors the record; its only readers are the default-off ssMakePlots
 #  plot parsers below, which feat/retire-unused-plots removes.)
 echo dataToPlot,$record
@@ -323,7 +323,7 @@ if [ ! -f $succFile ]; then
     # Handle OOM, OOT, and OOMOOT cases
     if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,$jobStatus,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
 
         echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
 
@@ -611,7 +611,7 @@ if [ ! -f $succFile ]; then
 
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
-        record="$pipeline,$2,$ref,$jrSample,$SLURM_JOBID,$inputSize,$srunM,$totalM,$min,$totalT,$core,OverEstimate,$USER,$jrNode,`date +%s`,`date +%Y-%m-%dT%H:%M:%S`,$flag"
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="OverEstimate" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
         echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
 
     

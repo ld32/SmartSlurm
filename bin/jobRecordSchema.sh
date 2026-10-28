@@ -57,6 +57,23 @@ jrSchemaVersion() {
 # jrEnsureHeader <file> -- create the file with the v2 header if it is absent.
 jrEnsureHeader() { [ -f "$1" ] || printf '%s\n' "$JR_HEADER_V2" > "$1"; }
 
+# jrRow name=value ... -> one CSV row with the fields placed in JR_COLUMNS_V2 order.
+# Unspecified columns are emitted empty. This is the single writer: callers name
+# fields, so the on-disk column order lives only in JR_COLUMNS_V2 and a row can
+# never silently drift from the header. Values must not contain commas/newlines
+# (CSV). Portable (no associative arrays): 17 columns x a few args is trivial.
+jrRow() {
+    local c kv val out=""
+    for c in $JR_COLUMNS_V2; do
+        val=""
+        for kv in "$@"; do
+            case "$kv" in "$c="*) val="${kv#*=}"; break ;; esac
+        done
+        out="$out,$val"
+    done
+    printf '%s\n' "${out#,}"
+}
+
 # jrEmitV2 <file> -- write the store to stdout in v2 form (header + rows),
 # converting a legacy v1 file on the fly. This is the compat shim for READ-ONLY
 # readers: they pipe through it and parse v2 by name, working on either version
