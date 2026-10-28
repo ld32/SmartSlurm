@@ -60,6 +60,15 @@ pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatc
 jrNode=${SLURMD_NODENAME:-$(hostname 2>/dev/null)}
 jrSample=$(jrSampleFromFlag "$flag")
 
+# statKey names the per-group fitted .stat/.mem/.time/.memTime files, exactly as
+# estimateResource.sh and calculateMemTime.sh write them: pipeline.step.refGroup
+# (refGroup pools same-size refs via jrRefClass). When this job over-reserves or
+# fails, those group files are stale and must be dropped so they regenerate from
+# the updated jobRecord -- so the invalidation globs below MUST use this key, not
+# the old software.ref. (extraMem.* stays keyed software.ref, matching its reader.)
+refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+statKey="$pipeline.$software.$refGroup"
+
 # jrFailPrune <step> <ref> <backupFile> : rewrite jobRecord.txt removing failed and
 # failure-disproven records for one step/ref (keeps validated COMPLETED history).
 # Version-branched: v1 backup uses the original positional two-pass unchanged; v2
@@ -224,7 +233,7 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
         echo $overText
 
         # delete the .stat files, so that next time will re-generate
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
 
         # get current extraMem
         currentExtraMem=0
@@ -276,28 +285,30 @@ fi
 records=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b { print $(col["inputSize"]), $(col["memUsed"]) }' | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
-if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(echo $records | wc -l)" -lt 500 || "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ]] && ! echo $records | grep "$inputSize $srunM"; then
+if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(printf '%s\n' "$records" | grep -c .)" -lt 500 || "$(printf '%s\n' "$records" | tail -n1 | cut -d' ' -f1)" -lt "$inputSize" ]] && ! printf '%s\n' "$records" | grep -qxF "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
         [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
     #else
     #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
     #fi
-    mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+    mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
 else
     echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
 fi
 
 
-# the last column is date. first get the mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
-# if more than 10, then delete the stat file ( will re-generate next time to estimate)
-if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
-    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
+# If >10 records for this step/ref landed since the fitted .stat was built, drop
+# the group .stat files so the next estimate regenerates them from fresh data.
+# v2: compare the numeric `epoch` column against the stat file's mtime, name-
+# addressed via jrEmitV2 (the old code read v1 positional fields $21/$12/$13 and
+# split the human date, which no longer exist -- it silently counted 0).
+if [ -f $smartSlurmJobRecordDir/stats/$statKey.mem.stat ]; then
+    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$statKey.mem.stat`
 
-    # todo: time format in jobRecord.txt is not consistent. some are in seconds, some are in date format. need to fix it.  
-    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($21, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+    newRecords=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v prog="$2" -v refx="$3" -v t="$tFile" "$JR_AWK_COLMAP"'($(col["epoch"])+0) > t && $(col["step"])==prog && $(col["ref"])==refx' | wc -l`
     if [ $newRecords -gt 10 ]; then
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSlurmJobRecordDir/stats/$statKey.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
     fi
 fi
 
@@ -341,7 +352,7 @@ if [ ! -f $succFile ]; then
                 jrFailPrune "$2" "$3" "$backup" 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                rm $smartSlurmJobRecordDir/stats/$statKey.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
             echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
@@ -504,10 +515,10 @@ if [ ! -f $succFile ]; then
 
         # Clean up statistics files
         if [ "$inputs" == "none" ]; then
-            mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
         else
-            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
-                mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            if [ -f $smartSlurmJobRecordDir/stats/$statKey.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$statKey.time.stat ]; then
+                mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
             fi
         fi
 
@@ -627,7 +638,7 @@ elif [ ! -z "$overEstimate" ]; then
                 jrFailPrune "$2" "$3" "$backup" 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                rm $smartSlurmJobRecordDir/stats/$statKey.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
             echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
@@ -750,11 +761,11 @@ fi
 
 
 minimumsize=9000
-actualsize=`wc -c $out || echo 0`
+actualsize=`wc -c < "$out" || echo 0`
 
 [ -f $succFile ] && s="${overEstimate}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
 
-if [ "${actualsize% *}" -ge "$minimumsize" ]; then
+if [ "$actualsize" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
    toSend="$overText\nLog path: $out"
    toSend="$toSend\nOutput is too big for email. Please find output from log mentioned above."
@@ -774,8 +785,8 @@ toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this j
 [ -n "$savedDollar4" ] && [ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
-    actualsize=`wc -c $err`
-    if [ "${actualsize% *}" -ge "$minimumsize" ]; then
+    actualsize=`wc -c < "$err"`
+    if [ "$actualsize" -ge "$minimumsize" ]; then
         toSend="$toSend\nError file is too big for email. Please find output in: $err"
         toSend="$toSend\n...\nLast 10 rows of error file:\n`tail -n 10 $err`"
     else
@@ -795,7 +806,6 @@ fi
 
 
 
-[ -z "$userEmail" ] || USER=$userEmail
 [ -z "$userEmail" ] || USER=$userEmail
 
 # Optional DAG render -- ON DEMAND only. checkRun's `g` key renders the workflow
