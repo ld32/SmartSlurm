@@ -36,16 +36,34 @@ refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
 refRe=$(jrRefMatchRe "$ref" 2>/dev/null); [ -n "$refRe" ] || refRe="^$ref\$"
 statKey="$pipeline.$program.$refGroup"
 
-# jrExtract <memUsed|timeUsed> <outfile> : build the inputSize->dim extract for this
-# (pipeline, step, refGroup). Fallback ladder: if the pipeline-scoped history has
-# fewer than 3 points (too thin to fit -- e.g. right after migration, where old
-# rows are pipeline=legacy), pool across pipelines for the same step + ref group.
-jrExtract() {
-    local d=$1 out=$2 jr="$smartSlurmJobRecordDir/jobRecord.txt"
-    jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v d="$d" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"])!=0 { print $(col["inputSize"]), $(col[d]) }' | sort -r -k1,1 -k2,2 | sort -u -k1,1 > "$out"
-    if [ "$(wc -l < "$out" 2>/dev/null || echo 0)" -lt 3 ]; then
-        jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v rre="$refRe" -v d="$d" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"])!=0 { print $(col["inputSize"]), $(col[d]) }' | sort -r -k1,1 -k2,2 | sort -u -k1,1 > "$out"
+# jrExtractBoth <memOutfile> <timeOutfile> : build BOTH the inputSize->mem and
+# inputSize->time extracts for this (pipeline, step, refGroup) in a SINGLE pass over
+# jobRecord.txt (one jrEmitV2 + one awk emitting both). Fallback ladder: if the
+# pipeline-scoped history has fewer than 3 points (too thin to fit -- e.g. right
+# after migration, where old rows are pipeline=legacy), re-emit pooling across
+# pipelines for the same step + ref group. Then dedupe each by input size.
+jrExtractBoth() {
+    local memOut=$1 timeOut=$2 jr="$smartSlurmJobRecordDir/jobRecord.txt"
+    local rawM rawT; rawM=$(mktemp); rawT=$(mktemp)
+    # $1 of the inner filter is the pipeline to match ("" = pool across pipelines).
+    _jrEmitPair() {
+        jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
+            -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
+            $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p) && \
+            $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"])!=0 {
+                print $(col["inputSize"]), $(col["memUsed"])  > mo
+                print $(col["inputSize"]), $(col["timeUsed"]) > to
+            }'
+    }
+    : > "$rawM"; : > "$rawT"
+    _jrEmitPair "$pipeline"
+    if [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
+        : > "$rawM"; : > "$rawT"
+        _jrEmitPair ""
     fi
+    sort -r -k1,1 -k2,2 "$rawM" | sort -u -k1,1 > "$memOut"
+    sort -r -k1,1 -k2,2 "$rawT" | sort -u -k1,1 > "$timeOut"
+    rm -f "$rawM" "$rawT"
 }
 
 mem=""; min=""
@@ -68,7 +86,7 @@ if [ $inputs == none ]; then
         jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }' | uniq > $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput
 
         # make plot and calculate statistics
-        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.memTime.stat.noInput
+        gnuplot -e 'set key outside; set key reverse; set key invert; set fit logfile "/dev/null"; set fit quiet; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; print "STDFIT=", FIT_STDFIT; stats "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\|STDFIT\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.memTime.stat.noInput
 
         rows=`{ wc -l $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
     fi
@@ -136,9 +154,8 @@ else
             #filter by program and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref=${ref//\//-}
-            jrExtract memUsed "$smartSlurmJobRecordDir/stats/$statKey.mem"
-
-            jrExtract timeUsed "$smartSlurmJobRecordDir/stats/$statKey.time"
+            # single pass builds both extracts (see jrExtractBoth)
+            jrExtractBoth "$smartSlurmJobRecordDir/stats/$statKey.mem" "$smartSlurmJobRecordDir/stats/$statKey.time"
 
             echoerr "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$statKey.mem):"
             echoerr `cat $smartSlurmJobRecordDir/stats/$statKey.mem`
@@ -151,7 +168,7 @@ else
                 resAjust="$resAjust#There are less than 3 records. No way to fit a curve.\n"
 
             else
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$statKey.mem.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set fit logfile "/dev/null"; set fit quiet; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; print "STDFIT=", FIT_STDFIT; stats "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" u 1 ' 2>&1 | grep 'Final\|STDFIT\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.mem.stat
 
                 #echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$statKey.mem.stat
                 echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$statKey.mem"'" using 1:2;' 2>&1| grep -i Correlation | awk '{print $NF * $NF}')" >> $smartSlurmJobRecordDir/stats/$statKey.mem.stat
@@ -160,7 +177,7 @@ else
 
                 sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$statKey.mem.stat
 
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$statKey.time.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set fit logfile "/dev/null"; set fit quiet; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; print "STDFIT=", FIT_STDFIT; stats "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" u 1 ' 2>&1 | grep 'Final\|STDFIT\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.time.stat
 
                 #echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$statKey.time.stat
                 echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" using 1:2;' 2>&1| grep -i Correlation | awk '{print $NF * $NF}')" >> $smartSlurmJobRecordDir/stats/$statKey.time.stat
