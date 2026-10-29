@@ -15,8 +15,12 @@ IFS=$'\n'
 #out=`squeue -u $USER -o "%.18i"`
 out=$(squeue -u "$USER" -h -o "%.18i")
 
-[ -z "$out" ] && exit 0; 
-out=" $out\n "
+[ -z "$out" ] && exit 0;
+# Bracket the id list so the membership test below (which matches " <id><newline>")
+# also matches the LAST id. The old `"\n"` wrote a LITERAL backslash-n, not a
+# newline, so the final squeue job never matched and was silently skipped. Use a
+# real leading space + real trailing newline.
+out=" $out"$'\n'
 
 declare -A nmap
 
