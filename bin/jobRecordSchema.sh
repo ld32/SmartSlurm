@@ -33,26 +33,43 @@ JR_COLUMNS_V1="jobID inputSize memDefault timeDefault memAllocated timeAllocated
 # Usage:  awk -F, "$JR_AWK_COLMAP"'{ print $(col["memUsed"]) }' jobRecord.txt
 JR_AWK_COLMAP='NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}'
 
-# jrSchemaVersion <file> -> prints 2, 1, or 0 (unknown/missing). Handles files
-# with a header AND legacy headerless v1 files (the old 7-day prune dropped the
-# stale header, so real v1 stores are often headerless): infer from the first
-# row's shape -- numeric first field + 20/21 columns = v1; non-numeric first field
-# + 17 columns = v2. (Two real v1 widths exist in the wild: 21 cols with an epoch
-# trailing the human date, and an older 20-col variant with the date but no epoch.)
+# jrSchemaVersion <file> -> prints 2, 1, or 0 (unknown/missing). Classifies by
+# scanning EVERY data row, not just the first line, so ORDERING and HEADERS never
+# fool it. This matters because a store can go hybrid in either direction: the old
+# writer appended v2 rows under a v1 file, and -- during a mixed-version cluster
+# rollout -- an old node can append v1 rows into a store a new node already
+# migrated to v2. A line-1-only check called the latter "pure v2", the migration
+# was skipped, and the v2 prune then read those v1 rows through the wrong columns
+# and deleted COMPLETED history. So:
+#   * ANY v1-shaped data row present (numeric jobID, 20 or 21 cols -- the two real
+#     widths: 21 w/ trailing epoch, 20 w/ date and no epoch) -> 1 (needs migration),
+#     even when v2 rows or a v2 header are also present (a mixed store IS v1-dirty).
+#   * otherwise, any v2-shaped data row OR a lone v2 header -> 2 (clean v2).
+#   * otherwise (only a v1 header, or nothing recognizable) -> 1 if a v1 header is
+#     present, else 0. Blank lines and junk rows do not vote.
 jrSchemaVersion() {
-    local f=$1 h f1 nf
+    local f=$1
     [ -s "$f" ] || { echo 0; return; }
-    IFS= read -r h < "$f"
-    case "$h" in
-        pipeline,*)   echo 2; return ;;
-        1jobID,*)     echo 1; return ;;
-    esac
-    nf=$(printf '%s\n' "$h" | awk -F, '{print NF; exit}')
-    f1=${h%%,*}
-    case "$f1" in
-        ''|*[!0-9]*)  [ "${nf:-0}" -eq 17 ] && echo 2 || echo 0 ;;        # non-numeric id -> v2-shaped
-        *)            { [ "${nf:-0}" -eq 21 ] || [ "${nf:-0}" -eq 20 ]; } && echo 1 || echo 0 ;;  # numeric jobID -> v1-shaped (20 or 21 col)
-    esac
+    # Canonical v2 (a no-op for migration) means the v2 header LEADS the file and
+    # no v1 row appears anywhere. Everything else recognizable is "needs
+    # normalization" (1): v1/mixed stores, AND a headerless or mis-ordered v2 file
+    # -- because the v2 prune treats line 1 as the header (NR==1), so a leading v2
+    # DATA row would be eaten. Migration (jrEmitV2) rewrites any of these to the
+    # canonical header-led form; a file with nothing recognizable is left alone (0).
+    awk -F, '
+        /^[[:space:]]*$/            { next }                       # blank line (no vote, no "first")
+        !seen { seen=1; firstIsV2H = ($1=="pipeline") }           # is the FIRST real line the v2 header?
+        $1=="pipeline"             { h2=1; next }                  # v2 header
+        $1=="1jobID"               { h1=1; next }                  # v1 header (18- or 21-col)
+        $1 ~ /^[0-9]+$/ && (NF==20 || NF==21) { v1=1; next }       # v1 data row
+        $1 !~ /^[0-9]+$/ && NF==17 { v2=1; next }                  # v2 data row
+                                   { }                             # junk: does not vote
+        END {
+            if (v1)                 { print 1; exit }   # any v1 row -> migrate (even if mixed)
+            if (firstIsV2H)         { print 2; exit }   # header-led, no v1 -> canonical v2 (junk tolerated)
+            if (v2 || h1 || h2)     { print 1; exit }   # headerless/mis-ordered v2, or a bare v1/v2 header -> normalize
+            print 0                                     # nothing recognizable -> leave alone
+        }' "$f"
 }
 
 # jrMigrateStore <file> -- one-time, automatic, SAFE migration of a legacy (v1) or
@@ -64,10 +81,16 @@ jrSchemaVersion() {
 jrMigrateStore() {
     local f=$1 lock bak tmp i
     [ -s "$f" ] || return 0
-    [ "$(jrSchemaVersion "$f")" = 2 ] && return 0
+    # Only a v1/mixed store (version 1) is migrated. A clean v2 store (2) is a
+    # no-op; an UNRECOGNIZED file (0 -- all junk, some other format) is left
+    # untouched rather than silently replaced with an empty header (the backup
+    # would hold the data, but auto-destroying an unknown file is the kind of
+    # surprise this whole change exists to prevent). jrRepair is the explicit,
+    # user-run tool for inspecting/salvaging an unrecognized store.
+    [ "$(jrSchemaVersion "$f")" = 1 ] || return 0
     lock="$f.migrate.lock"
     if mkdir "$lock" 2>/dev/null; then
-        if [ "$(jrSchemaVersion "$f")" != 2 ]; then          # re-check under the lock
+        if [ "$(jrSchemaVersion "$f")" = 1 ]; then          # re-check under the lock
             bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
             cp -p "$f" "$bak" 2>/dev/null
             tmp="$f.v2.$$"
