@@ -43,11 +43,6 @@ while [[ $# -gt 0 ]]; do
             PIPELINE_SPEC="$2"
             shift 2
             ;;
-        --pipeline)
-            require_option_value "$1" "$2"
-            PIPELINE_NAME="$2"
-            shift 2
-            ;;
         --sbatch-options)
             require_option_value "$1" "$2"
             SBATCH_OPTIONS="$2"
@@ -101,19 +96,6 @@ done
 
 PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 [ -f "$PIPELINE_SCRIPT" ] || { echolog bash script file does not exist: .${PIPELINE_SCRIPT}... Exiting...; usage; }
-
-# v2 jobRecords: tag every step with a pipeline id so that the same program in
-# two different pipelines does not pool into one resource fit. Default to the
-# script basename; --pipeline overrides. Warn on a generic name since several
-# pipelines may share one jobRecord store.
-if [ -z "${PIPELINE_NAME:-}" ]; then
-    PIPELINE_NAME=$(basename "$PIPELINE_SCRIPT"); PIPELINE_NAME=${PIPELINE_NAME%.sh}
-    case "$PIPELINE_NAME" in
-        pipeline|run|script|main|workflow|test)
-            echolog "Warning: generic pipeline name '$PIPELINE_NAME' (from script); pass --pipeline NAME so pipelines sharing a jobRecord store stay distinct." ;;
-    esac
-fi
-PIPELINE_NAME=$(printf '%s' "$PIPELINE_NAME" | tr -c 'A-Za-z0-9_.-' '_')   # CSV/flag-safe
 
 export bashScriptPath=`dirname "$PIPELINE_SCRIPT"`
 
@@ -659,18 +641,18 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             printf '%s\n' "$mlBody" >> $run
             echo "SMARTSLURM_CMD_EOF" >> $run
             if [[ "$RUN_MODE" == dryrun ]]; then
-                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh dryrun)" >> $run
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh dryrun)" >> $run
             else
-                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh) " >> $run
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh) " >> $run
             fi
         else
             # ---- legacy blank-line block: flattened --wrap (unchanged) ----
             [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run && cmd="rsyncToTmp ${ref//./ $}; $cmd"
 
             if [[ "$RUN_MODE" == dryrun ]]; then 
-                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" dryrun)" >> $run
+                echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\" dryrun)" >> $run
             else 
-               echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
+               echo "${space}id=\$(ssbatch $excludeFailedNode -P $name -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } --wrap \"$cmd\") " >> $run
             fi 
         fi
         echo "${space}green=\"\\033[0;32m\$id\\033[0m\n\"" >> $run

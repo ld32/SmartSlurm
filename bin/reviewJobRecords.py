@@ -2,11 +2,6 @@
 
 # Terminal-based SLURM job record reviewer — no X11, browser, or extra packages.
 # Usage: reviewJobRecords.py [jobRecord.txt]
-#
-# jobRecords v2: columns are addressed by NAME (csv.DictReader), and records are
-# grouped by (pipeline, step, ref) -- the same key the estimator fits on -- so two
-# pipelines that share a program/step stay separate. A legacy v1 file is refused
-# with a pointer to jrRepair.sh (this tool is offline; a hard prompt is fine).
 
 import csv
 import time
@@ -58,47 +53,29 @@ tmpFile = os.path.join(tmp_dir, "jobRecord_tmp.txt")
 shutil.copy(job_file, tmpFile)
 print(f"Working copy: {tmpFile}")
 
-# ── Data I/O (v2, name-addressed) ───────────────────────────────────────────────
+# ── Data I/O ───────────────────────────────────────────────────────────────────
 
 def read_job_records(ignore_patterns=None):
-    """Return (fieldnames, rows) where rows are dicts keyed by column name.
-    Refuses a legacy v1 file (header must start with 'pipeline')."""
     if ignore_patterns is None:
         ignore_patterns = ["missingInputFile"]
-    with open(tmpFile, newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames or reader.fieldnames[0] != "pipeline":
-            sys.exit(
-                "This jobRecord is not in the v2 schema (its header does not start "
-                "with 'pipeline').\nRun  jrRepair.sh  once to convert it, then re-run "
-                "this tool."
-            )
+    with open(tmpFile, "r") as f:
+        reader = csv.reader(f)
+        headers = next(reader)
         rows = []
         for row in reader:
-            isz = (row.get("inputSize") or "")
-            if any(p.lower() in isz.lower() for p in ignore_patterns):
+            if len(row) > 1 and any(
+                p.lower() in row[1].lower() for p in ignore_patterns
+            ):
                 continue
             rows.append(row)
-    return reader.fieldnames, rows
-
-
-def group_key(row):
-    """The fit key: (pipeline, step, ref)."""
-    return (row.get("pipeline", ""), row.get("step", ""), row.get("ref", ""))
-
-
-def group_label(key):
-    return "  /  ".join(k if k != "" else "-" for k in key)
-
-
-def unique_groups(rows):
-    return sorted({group_key(r) for r in rows})
+    unique_programs = sorted({row[11] for row in rows if len(row) > 11})
+    return headers, rows, unique_programs
 
 
 def write_tmp(headers, rows):
     with open(tmpFile, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
+        writer = csv.writer(f)
+        writer.writerow(headers)
         writer.writerows(rows)
 
 
@@ -114,12 +91,9 @@ def save_to_file(headers, rows):
     print(f"Saved  : {job_file}")
 
 
-def delete_stats_files(pipeline, step):
-    """Drop the cached fit stats for this pipeline+step (all ref groups) so the
-    estimator refits from the trimmed history. Stats are keyed pipeline.step.refGroup.*
-    (extraMem is step-keyed and pooled across pipelines)."""
+def delete_stats_files(program_name):
     stats_dir = os.path.join(smartSlurmJobRecordDir, "stats")
-    for pat in [f"{pipeline}.{step}.*", f"extraMem.{step}.*"]:
+    for pat in [f"{program_name}.*", f"extraMem.{program_name}.*"]:
         for fp in glob.glob(os.path.join(stats_dir, pat)):
             try:
                 os.remove(fp)
@@ -197,8 +171,8 @@ def ascii_scatter(x_vals, y_vals, title="", xlabel="", ylabel="", width=88, heig
 
 # ── Display ────────────────────────────────────────────────────────────────────
 
-def show_plot_and_table(all_rows, label, deleted=None):
-    """all_rows is the original full snapshot for this group (never trimmed).
+def show_plot_and_table(all_rows, program_name, deleted=None):
+    """all_rows is the original full snapshot for this program (never trimmed).
     deleted is the set of indices that have been removed — they are hidden from
     the plot and table but their indices are preserved for all remaining points.
     """
@@ -206,40 +180,40 @@ def show_plot_and_table(all_rows, label, deleted=None):
         deleted = set()
 
     if not all_rows:
-        print(f"\n  (no records for '{label}')\n")
+        print(f"\n  (no records for '{program_name}')\n")
         return
 
     x_vals, y_vals, bad = [], [], []
     for i, row in enumerate(all_rows):
         try:
-            x_vals.append(float(row["inputSize"]) / (1024 * 1024))  # bytes → GiB
-            y_vals.append(float(row["memUsed"]) / 1024)             # MiB  → GiB
-        except (ValueError, KeyError, TypeError):
+            x_vals.append(float(row[1]) / (1024 * 1024))  # bytes → GiB
+            y_vals.append(float(row[6]) / 1024)           # MiB  → GiB
+        except (ValueError, IndexError):
             bad.append(i)
             x_vals.append(0.0)
             y_vals.append(0.0)
 
     remaining = len(all_rows) - len(deleted)
     if remaining == 0:
-        print(f"\n  (all records for '{label}' have been deleted)\n")
+        print(f"\n  (all records for '{program_name}' have been deleted)\n")
         return
 
     ascii_scatter(
         x_vals, y_vals,
-        title=f"Input Size (G) vs Memory (G) — {label}",
+        title=f"Input Size (G) vs Memory (G) — {program_name}",
         xlabel="Input Size (G)",
         ylabel="Memory Usage (G)",
         deleted=deleted,
     )
 
-    print(f"\n  Group: {label}   ({remaining} remaining of {len(all_rows)} total)")
-    print(f"  {'Idx':>4}  {'Job ID':>12}  {'Input (G)':>12}  {'Mem (G)':>10}  {'Status':>10}")
-    print("  " + "-" * 58)
+    print(f"\n  Program: {program_name}   ({remaining} remaining of {len(all_rows)} total)")
+    print(f"  {'Idx':>4}  {'Job ID':>12}  {'Input (G)':>12}  {'Mem (G)':>10}")
+    print("  " + "-" * 46)
     for i, (row, x, y) in enumerate(zip(all_rows, x_vals, y_vals)):
         if i in deleted:
             continue
         flag = " !" if i in bad else ""
-        print(f"  {i:>4}  {str(row.get('jobID','')):>12}  {x:>12.4f}  {y:>10.4f}  {str(row.get('status','')):>10}{flag}")
+        print(f"  {i:>4}  {str(row[0]):>12}  {x:>12.4f}  {y:>10.4f}{flag}")
 
 # ── Index parsing ──────────────────────────────────────────────────────────────
 
@@ -277,21 +251,20 @@ def parse_indices(s, max_idx, exclude=None):
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
 def main():
-    headers, rows = read_job_records()
-    current_key   = None
-    group_rows    = []     # full snapshot of rows for the selected group (never trimmed)
-    deleted_indices = set()  # indices into group_rows that have been deleted
+    headers, rows, unique_programs = read_job_records()
+    current_program = None
+    program_rows    = []    # full snapshot of rows for selected program (never trimmed)
+    deleted_indices = set() # indices into program_rows that have been deleted
 
     while True:
 
-        # ── Group selection ──────────────────────────────────────────────────
-        if current_key is None:
-            groups = unique_groups(rows)
-            print("\n══════════════ SLURM Job Records — pipeline / step / ref ══════════════")
-            for i, key in enumerate(groups):
-                n = sum(1 for r in rows if group_key(r) == key)
-                print(f"  [{i:>2}] {group_label(key):<50} {n:>4} rec")
-            print("\n  Commands: <number> select group | s save | q quit")
+        # ── Program selection ────────────────────────────────────────────────
+        if current_program is None:
+            unique_programs = sorted({row[11] for row in rows if len(row) > 11})
+            print("\n══════════════════ SLURM Job Records ══════════════════")
+            for i, prog in enumerate(unique_programs):
+                print(f"  [{i:>2}] {prog}")
+            print("\n  Commands: <number> select program | s save | q quit")
             choice = input("  > ").strip().lower()
 
             if choice == "q":
@@ -302,17 +275,16 @@ def main():
                 continue
             else:
                 try:
-                    current_key   = groups[int(choice)]
-                    group_rows    = [r for r in rows if group_key(r) == current_key]
+                    current_program = unique_programs[int(choice)]
+                    # Snapshot all rows for this program; indices are stable for the session.
+                    program_rows    = [row for row in rows if current_program in row[11]]
                     deleted_indices = set()
                 except (ValueError, IndexError):
                     print("  Invalid choice — enter a number from the list.")
                     continue
 
-        label = group_label(current_key)
-
         # ── Show plot and prompt for deletion ────────────────────────────────
-        show_plot_and_table(group_rows, label, deleted=deleted_indices)
+        show_plot_and_table(program_rows, current_program, deleted=deleted_indices)
 
         print(
             "\n  Commands: <indices> delete (e.g. 0  or  1,3  or  2-5)"
@@ -320,40 +292,38 @@ def main():
         )
         action = input("  > ").strip().lower()
 
-        pipeline, step, _ref = current_key
-
         if action == "q":
             print("Bye.")
             break
         elif action == "b":
-            current_key     = None
-            group_rows      = []
+            current_program = None
+            program_rows    = []
             deleted_indices = set()
         elif action == "a":
             confirm = input(
-                f"  Delete ALL {len(group_rows) - len(deleted_indices)} remaining"
-                f" records for '{label}'? [y/N] "
+                f"  Delete ALL {len(program_rows) - len(deleted_indices)} remaining"
+                f" records for '{current_program}'? [y/N] "
             ).strip().lower()
             if confirm == "y":
-                all_indices = set(range(len(group_rows))) - deleted_indices
-                job_ids = {group_rows[i]["jobID"] for i in all_indices}
+                all_indices = set(range(len(program_rows))) - deleted_indices
+                job_ids = {program_rows[i][0] for i in all_indices}
                 deleted_indices |= all_indices
-                rows = [r for r in rows if r["jobID"] not in job_ids]
+                rows = [r for r in rows if r[0] not in job_ids]
                 write_tmp(headers, rows)
-                delete_stats_files(pipeline, step)
-                print(f"  Deleted all {len(job_ids)} records for '{label}'.")
+                delete_stats_files(current_program)
+                print(f"  Deleted all {len(job_ids)} records for '{current_program}'.")
             else:
                 print("  Cancelled.")
         elif action == "s":
             save_to_file(headers, rows)
         elif action:
-            indices = parse_indices(action, len(group_rows), exclude=deleted_indices)
+            indices = parse_indices(action, len(program_rows), exclude=deleted_indices)
             if indices:
-                job_ids = {group_rows[i]["jobID"] for i in indices}
+                job_ids = {program_rows[i][0] for i in indices}
                 deleted_indices |= indices
-                rows = [r for r in rows if r["jobID"] not in job_ids]
+                rows = [r for r in rows if r[0] not in job_ids]
                 write_tmp(headers, rows)
-                delete_stats_files(pipeline, step)
+                delete_stats_files(current_program)
                 print(
                     f"  Deleted {len(job_ids)} job(s): "
                     + ", ".join(sorted(job_ids))
@@ -364,3 +334,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
