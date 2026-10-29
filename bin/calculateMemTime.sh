@@ -49,6 +49,23 @@ relMarginFrac() {
               m = r[i]; if (m < 0) m = 0; printf "%.6f", m }'
 }
 
+# trendScaled <slope a> <intercept b> <max observed size> <input size> <margin frac> <floor>
+# -> integer trend-scaled estimate for an INPUT SIZE beyond the observed MAX,
+# when there are too few records (SCount<=9) to trust the sparse fit's slope far
+# out. Rather than fall back to a bare default (which ignores the trend), anchor
+# at the in-range estimate at the top of the data -- (a*max+b)*(1+frac) -- and
+# scale it linearly by size/max. This never trusts the slope past the data, so it
+# cannot over/under-shoot wildly the way a sparse quadratic or raw extrapolation
+# can; any residual shortfall from super-linear growth is absorbed by the
+# auto/manual resubmit bootstrapping. Floors the result.
+trendScaled() {
+    awk -v a="$1" -v b="$2" -v mx="$3" -v x="$4" -v fr="$5" -v fl="$6" 'BEGIN{
+        if (mx <= 0) { printf "%d", fl; exit }
+        atMax = (a*mx + b) * (1 + fr); if (atMax < fl) atMax = fl
+        v = atMax * x / mx; if (v < fl) v = fl
+        printf "%d", v + 0.5 }'
+}
+
 echoerr Calculating mem:
 memFormu=memFormu:
 if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
@@ -80,16 +97,18 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
         frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$software.$ref.mem" "$Finala" "$Finalb" "$targetFirstPassPct"`
         [ -z "$frac" ] && frac=`awk -v s="$STDFIT" -v a="$Finala" -v x="$inputSize" -v b="$Finalb" 'BEGIN{ d=a*x+b; if(d<=0){print 0}else{printf "%.6f", 2*s/d} }'`
         echoerr "mem model: LINE ( $Finala x $inputSize + $Finalb ) * (1 + frac[$frac] @p${targetFirstPassPct})"
-        # Within observed range, or extrapolate only with enough data; else outOfRange.
+        # Within the observed range, or data-rich enough (SCount>9) to trust the
+        # slope: use the fitted line directly. Otherwise (thin data beyond the
+        # observed max) use the trend-scaled fallback instead of a bare default.
         if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )) || (( $(echo "$SCount > 9" |bc -l) )); then
             # Round and floor to 100 M with awk (robust to negative/sub-1 results).
             mem=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v fr="$frac" \
                  'BEGIN{ v = (a*x + b) * (1 + fr); if (v < 100) v = 100; printf "%d", v + 0.5 }'`
             memFormu=$memFormu${Finala}X${inputSize}+$Finalb,p${targetFirstPassPct}*$frac
         else
-            echoerr outOfRange
-            echo outOfRange
-            exit
+            mem=`trendScaled "$Finala" "$Finalb" "$Maximum" "$inputSize" "$frac" 100`
+            memFormu=${memFormu}trend:fit@${Maximum}*${inputSize}/${Maximum},p${targetFirstPassPct}
+            echoerr "mem model: THIN-DATA TREND (anchor fit@max=$Maximum, scale $inputSize/$Maximum) = $mem"
         fi
     else
         # Constant model: p-th percentile of observed memUsed (size-independent, so
@@ -129,9 +148,18 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
         frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$software.$ref.time" "$Finala" "$Finalb" "$targetFirstPassPct"`
         [ -z "$frac" ] && frac=`awk -v s="$STDFIT" -v a="$Finala" -v x="$inputSize" -v b="$Finalb" 'BEGIN{ d=a*x+b; if(d<=0){print 0}else{printf "%.6f", 2*s/d} }'`
         echoerr "time model: LINE ( $Finala x $inputSize + $Finalb ) * (1 + frac[$frac] @p${targetFirstPassPct})"
-        time=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v fr="$frac" \
-              'BEGIN{ v = (a*x + b) * (1 + fr); if (v < 10) v = 10; printf "%d", v + 0.5 }'`
-        timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb,p${targetFirstPassPct}*$frac
+        # Same thin-data guard as mem: trust the slope only in range or with
+        # enough records; otherwise anchor-and-scale rather than extrapolate a
+        # sparse slope far beyond the data.
+        if (( $(echo "$Maximum + 0.01 >= $inputSize" |bc -l) )) || (( $(echo "$SCount > 9" |bc -l) )); then
+            time=`awk -v a="$Finala" -v x="$inputSize" -v b="$Finalb" -v fr="$frac" \
+                  'BEGIN{ v = (a*x + b) * (1 + fr); if (v < 10) v = 10; printf "%d", v + 0.5 }'`
+            timeFormu=$timeFormu:${Finala}X${inputSize}+$Finalb,p${targetFirstPassPct}*$frac
+        else
+            time=`trendScaled "$Finala" "$Finalb" "$Maximum" "$inputSize" "$frac" 10`
+            timeFormu=${timeFormu}:trend:fit@${Maximum}*${inputSize}/${Maximum},p${targetFirstPassPct}
+            echoerr "time model: THIN-DATA TREND (anchor fit@max=$Maximum, scale $inputSize/$Maximum) = $time"
+        fi
     else
         time=`pctile "$smartSlurmJobRecordDir/stats/$software.$ref.time" "$targetFirstPassPct"`
         [ -z "$time" ] && time=$Maximum
