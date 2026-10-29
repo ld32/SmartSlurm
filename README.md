@@ -62,7 +62,6 @@ Two companion tools help you watch and debug runs:
   - [Cromwell](#cromwell)
 - [Reviewing and cleaning job records](#reviewing-and-cleaning-job-records)
 - [sbatchAndTop](#sbatchandtop)
-- [Testing \& development](#testing--development)
 - [Upgrading](#upgrading)
 
 ---
@@ -1173,23 +1172,6 @@ sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2"
 # or with a script:
 sbatchAndTop job.sh
 ```
-
----
-
-# Testing & development
-
-SmartSlurm ships a **Slurm-free test harness** in **[`slurmless/`](slurmless/README.md)**:
-it runs the unmodified tools (`runAsPipeline`, `ssbatch`, `cleanUp.sh`, `checkRun`,
-`diagnose.sh`, …) with **no Slurm scheduler**, so pipeline conversion, resource
-estimation, the monitor UI, and failure handling can be developed and
-regression-tested off-cluster — on a laptop, in CI, or in an AI-agent sandbox.
-
-```bash
-./slurmless/bootstrap.sh               # one command: set up and run the baseline
-./slurmless/test/run_tests.sh --list   # every test block and what it checks
-```
-
-See **[`slurmless/README.md`](slurmless/README.md)** for the full guide.
 
 ---
 

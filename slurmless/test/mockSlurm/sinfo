@@ -1,3 +1,0 @@
-#!/bin/bash
-# minimal: report one idle partition if queried, else nothing
-exit 0
