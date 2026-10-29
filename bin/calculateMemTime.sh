@@ -92,13 +92,21 @@ if [ -s $smartSlurmJobRecordDir/stats/$statKey.mem.stat ]; then
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
     # Issue A1/A2: choose the model per dimension.
-    #  - Positive slope  -> the fitted LINE captures real size dependence (and is
-    #    monotone non-decreasing, so no bigger-input-uses-less inversion).
-    #  - Slope <= 0       -> a non-positive slope cannot be trusted to extrapolate
-    #    and usually means the resource is size-INDEPENDENT (e.g. constant memory,
-    #    only time scales) or the slope is just scheduler/perf noise. Fall back to
-    #    a size-independent CONSTANT model: the target percentile of observed usage.
-    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
+    #  - Meaningfully positive slope -> the fitted LINE captures real size
+    #    dependence (and is monotone non-decreasing, so no bigger-input-uses-less
+    #    inversion).
+    #  - Slope <= 0, OR a slope so small it is numerically zero -> the resource is
+    #    size-INDEPENDENT (e.g. constant memory, only time scales) or the slope is
+    #    just scheduler/perf noise. Fall back to a size-independent CONSTANT model:
+    #    the target percentile of observed usage.
+    #    A bare "a > 0" test is not enough: gnuplot fits a*x+b to perfectly flat
+    #    data with a singular design matrix and returns a floating-point epsilon
+    #    slope (e.g. 7e-15 > 0) plus an aborted fit (no Maximum/STDFIT in the stat).
+    #    Trusted as a real trend, that constant workload is then pushed down the
+    #    thin-data path and collapses to the floor. So require the slope's rise
+    #    over the predicted input size (a*x) to be a non-negligible fraction
+    #    (>= 1e-6) of the baseline intercept before treating it as a real line.
+    if awk -v a="$Finala" -v b="$Finalb" -v x="$inputSize" 'BEGIN{ ab=(b<0?-b:b); if(ab<1)ab=1; exit !(a>0 && a*x>=1e-6*ab) }'; then
         # Scale-invariant upper-prediction margin targeting targetFirstPassPct (B1):
         # estimate = line*(1+frac), frac = p-th percentile of relative residuals.
         # Fall back to an STDFIT-derived fraction if the raw data is gone.
@@ -125,7 +133,7 @@ if [ -s $smartSlurmJobRecordDir/stats/$statKey.mem.stat ]; then
         [ -z "$mem" ] && mem=$Maximum
         mem=`awk -v v="$mem" 'BEGIN{ if (v < 100) v = 100; printf "%d", v + 0.5 }'`
         memFormu=${memFormu}const.p${targetFirstPassPct}=${mem}
-        echoerr "mem model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $mem"
+        echoerr "mem model: CONSTANT (slope $Finala not meaningfully positive); p${targetFirstPassPct} of observed = $mem"
     fi
     echoerr
 else
@@ -150,9 +158,11 @@ if [ -s $smartSlurmJobRecordDir/stats/$statKey.time.stat ]; then
 
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    # Issue A1/A2: same per-dimension model choice as mem. Positive slope -> line;
-    # otherwise size-independent constant model (p-th percentile of observed time).
-    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
+    # Issue A1/A2: same per-dimension model choice as mem. Meaningfully positive
+    # slope -> line; otherwise (slope <= 0, or a numerically-zero epsilon slope
+    # from a flat/singular fit) size-independent constant model (p-th percentile
+    # of observed time). See the mem branch for why "a > 0" alone is insufficient.
+    if awk -v a="$Finala" -v b="$Finalb" -v x="$inputSize" 'BEGIN{ ab=(b<0?-b:b); if(ab<1)ab=1; exit !(a>0 && a*x>=1e-6*ab) }'; then
         frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$statKey.time" "$Finala" "$Finalb" "$targetFirstPassPct"`
         [ -z "$frac" ] && frac=`awk -v s="$STDFIT" -v a="$Finala" -v x="$inputSize" -v b="$Finalb" 'BEGIN{ d=a*x+b; if(d<=0){print 0}else{printf "%.6f", 2*s/d} }'`
         echoerr "time model: LINE ( $Finala x $inputSize + $Finalb ) * (1 + frac[$frac] @p${targetFirstPassPct})"
@@ -173,7 +183,7 @@ if [ -s $smartSlurmJobRecordDir/stats/$statKey.time.stat ]; then
         [ -z "$time" ] && time=$Maximum
         time=`awk -v v="$time" 'BEGIN{ if (v < 10) v = 10; printf "%d", v + 0.5 }'`
         timeFormu=${timeFormu}:const.p${targetFirstPassPct}=${time}
-        echoerr "time model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $time"
+        echoerr "time model: CONSTANT (slope $Finala not meaningfully positive); p${targetFirstPassPct} of observed = $time"
     fi
 else
     time=0
