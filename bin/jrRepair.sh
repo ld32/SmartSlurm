@@ -5,6 +5,9 @@
 #
 #   jrRepair.sh [jobRecordDir]     # default: $smartSlurmJobRecordDir
 #   jrRepair.sh --dry-run [dir]    # report what would change; write nothing
+#   jrRepair.sh --check [dir]      # health report only (schema + row census +
+#                                  # unrecognized rows); writes nothing, exits
+#                                  # non-zero if any store has unrecognized rows
 #
 # It converts jobRecord.txt and jobRecord.oom.oot.over.txt in place, after
 # backing each up to <name>.back.<timestamp>.txt (never deleted -- that backup
@@ -23,11 +26,13 @@ set -uo pipefail
 . "$(dirname "$0")/jobRecordSchema.sh"
 
 dryrun=""
+check=""
 dir=""
 for a in "$@"; do
     case "$a" in
         --dry-run) dryrun=1 ;;
-        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --check)   check=1 ;;
+        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "jrRepair: unknown option: $a" >&2; exit 2 ;;
         *)  dir=$a ;;
     esac
@@ -40,6 +45,20 @@ if [ -z "$dir" ]; then
 fi
 [ -n "$dir" ] || { echo "jrRepair: no jobRecord dir (pass one, or set smartSlurmJobRecordDir)" >&2; exit 2; }
 [ -d "$dir" ] || { echo "jrRepair: not a directory: $dir" >&2; exit 2; }
+
+# --check: read-only health report (schema version + row census + unrecognized
+# rows) for every store in the dir. Writes nothing. Exits non-zero if any store
+# has unrecognized rows, so it can gate CI / a cluster audit.
+if [ -n "$check" ]; then
+    echo "jrRepair: health check of $dir"
+    rc=0
+    for s in jobRecord.txt jobRecord.oom.oot.over.txt; do
+        [ -e "$dir/$s" ] || continue
+        jrLint "$dir/$s" || rc=1
+    done
+    [ "$rc" = 0 ] && echo "jrRepair: all stores clean." || echo "jrRepair: some stores have unrecognized rows (see above)."
+    exit $rc
+fi
 
 # convertOne <file> : backs up and rewrites one v1 file to v2 (honors $dryrun).
 convertOne() {

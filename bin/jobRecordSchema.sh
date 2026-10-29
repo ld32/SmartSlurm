@@ -72,31 +72,97 @@ jrSchemaVersion() {
         }' "$f"
 }
 
+# jrCountUnrecognized <file> -> count of non-blank, non-header rows that are
+# NEITHER a v1 record (numeric jobID, 20 or 21 cols) NOR a v2 record (non-numeric
+# first field, 17 cols). These are the rows jrEmitV2 drops on conversion -- the
+# ones that must never vanish silently. Used for the migration warning and lint.
+jrCountUnrecognized() {
+    [ -s "$1" ] || { echo 0; return; }
+    awk -F, '
+        /^[[:space:]]*$/            { next }
+        $1=="pipeline" || $1=="1jobID" { next }
+        $1 ~ /^[0-9]+$/ && (NF==20 || NF==21) { next }
+        $1 !~ /^[0-9]+$/ && NF==17 { next }
+        { c++ } END { print c+0 }' "$1" 2>/dev/null
+}
+
+# jrLint <file> -- print a human health report of a store to stdout (schema
+# version + a row-shape census + the line numbers of unrecognized rows). Pure
+# read; changes nothing. The audit tool behind `jrRepair.sh --check` so a stale
+# or malformed store on a real cluster is a visible finding, never a silent one.
+# Returns 0 if the store is clean (v1 or v2, no unrecognized rows), 1 otherwise.
+jrLint() {
+    local f=$1 ver
+    if [ ! -f "$f" ]; then echo "  $f: (absent)"; return 0; fi
+    if [ ! -s "$f" ]; then echo "  $f: (empty)"; return 0; fi
+    ver=$(jrSchemaVersion "$f")
+    awk -F, -v file="$f" -v ver="$ver" '
+        /^[[:space:]]*$/            { blank++; next }
+        $1=="pipeline"             { h2++; next }
+        $1=="1jobID"               { h1++; next }
+        $1 ~ /^[0-9]+$/ && NF==21  { v1_21++; next }
+        $1 ~ /^[0-9]+$/ && NF==20  { v1_20++; next }
+        $1 !~ /^[0-9]+$/ && NF==17 { v2++; next }
+        { bad++; if (nbad<5) badln[++nbad]=NR" (NF="NF"): "substr($0,1,60) }
+        END {
+            tag = (ver==2?"v2 (current)":(ver==1?"v1/mixed -> will auto-migrate":"UNRECOGNIZED"))
+            printf "  %s\n", file
+            printf "    schema version : %s  [%s]\n", ver, tag
+            printf "    v2 rows        : %d\n", v2+0
+            if (v1_21||v1_20) printf "    v1 rows        : %d  (21-col:%d  20-col/no-epoch:%d)\n", v1_21+v1_20, v1_21+0, v1_20+0
+            if (h2||h1)       printf "    header lines   : v2:%d v1:%d\n", h2+0, h1+0
+            if (blank)        printf "    blank lines    : %d\n", blank
+            if (bad) {
+                printf "    UNRECOGNIZED   : %d row(s) -- will NOT migrate (kept in backup); first few:\n", bad
+                for (i=1;i<=nbad;i++) printf "        line %s\n", badln[i]
+            }
+            exit (bad>0 ? 1 : 0)
+        }' "$f"
+}
+
+# _jrWarnUnknown <file> -- warn (once per file state) that a store matches no known
+# schema. Deduped via a marker so a per-job hot path (ssbatch/cleanUp) does not
+# flood: we warn again only after the file changes (marker older than the file).
+_jrWarnUnknown() {
+    local f=$1 m="$1.schemaWarning"
+    [ -f "$m" ] && [ ! "$f" -nt "$m" ] && return 0
+    echo "SmartSlurm: WARNING: jobRecord store matches no known schema (not v1 or v2); left untouched: $f" >&2
+    echo "SmartSlurm:          inspect it with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+    : > "$m" 2>/dev/null
+}
+
 # jrMigrateStore <file> -- one-time, automatic, SAFE migration of a legacy (v1) or
 # mixed store to pure v2, so the v2 writer/prune never operate on a mixed file (the
 # cause of the data-loss bug: the v1-positional prune deleted appended v2 rows).
 # Idempotent (a v2 file is a no-op), atomic (write-temp-then-rename), locked (many
 # jobs' ssbatch/cleanUp run concurrently on a cluster), and it backs the original
 # up to <file>.back.<ts>.txt first -- that backup is the rollback, same as jrRepair.
+# NOT SILENT: if conversion drops rows it could not classify, or the whole file is
+# unrecognized, it says so on stderr and names the backup + the jrRepair check.
 jrMigrateStore() {
-    local f=$1 lock bak tmp i
+    local f=$1 lock bak tmp i ver bad
     [ -s "$f" ] || return 0
-    # Only a v1/mixed store (version 1) is migrated. A clean v2 store (2) is a
-    # no-op; an UNRECOGNIZED file (0 -- all junk, some other format) is left
-    # untouched rather than silently replaced with an empty header (the backup
-    # would hold the data, but auto-destroying an unknown file is the kind of
-    # surprise this whole change exists to prevent). jrRepair is the explicit,
-    # user-run tool for inspecting/salvaging an unrecognized store.
-    [ "$(jrSchemaVersion "$f")" = 1 ] || return 0
+    ver=$(jrSchemaVersion "$f")
+    [ "$ver" = 2 ] && return 0          # already clean v2 -> no-op
+    if [ "$ver" = 0 ]; then             # unrecognized: leave it, but do NOT be silent
+        _jrWarnUnknown "$f"
+        return 0
+    fi
+    # ver == 1: a v1/mixed/headerless-v2 store to normalize.
     lock="$f.migrate.lock"
     if mkdir "$lock" 2>/dev/null; then
         if [ "$(jrSchemaVersion "$f")" = 1 ]; then          # re-check under the lock
             bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
             cp -p "$f" "$bak" 2>/dev/null
+            bad=$(jrCountUnrecognized "$f")                 # count BEFORE we replace
             tmp="$f.v2.$$"
             if jrEmitV2 "$f" > "$tmp" && [ -s "$tmp" ]; then
                 mv "$tmp" "$f"
-                echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
+                if [ "${bad:-0}" -gt 0 ]; then
+                    echo "SmartSlurm: WARNING: migrated $f to v2, but $bad row(s) matched no known schema and were NOT carried into the live store (kept in backup: $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+                else
+                    echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
+                fi
             else
                 rm -f "$tmp"
             fi
