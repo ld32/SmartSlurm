@@ -61,7 +61,7 @@ jrSchemaVersion() {
         !seen { seen=1; firstIsV2H = ($1=="pipeline") }           # is the FIRST real line the v2 header?
         $1=="pipeline"             { h2=1; next }                  # v2 header
         $1=="1jobID"               { h1=1; next }                  # v1 header (18- or 21-col)
-        $1 ~ /^[0-9]+$/ && (NF==20 || NF==21) { v1=1; next }       # v1 data row
+        $1 ~ /^[0-9]+$/ && NF>=20  { v1=1; next }                  # v1 data row (20/21 col; >21 if a comma crept into the old date)
         $1 !~ /^[0-9]+$/ && NF==17 { v2=1; next }                  # v2 data row
                                    { }                             # junk: does not vote
         END {
@@ -100,7 +100,7 @@ jrLint() {
         /^[[:space:]]*$/            { blank++; next }
         $1=="pipeline"             { h2++; next }
         $1=="1jobID"               { h1++; next }
-        $1 ~ /^[0-9]+$/ && NF==21  { v1_21++; next }
+        $1 ~ /^[0-9]+$/ && NF>=21  { v1_21++; next }
         $1 ~ /^[0-9]+$/ && NF==20  { v1_20++; next }
         $1 !~ /^[0-9]+$/ && NF==17 { v2++; next }
         { bad++; if (nbad<5) badln[++nbad]=NR" (NF="NF"): "substr($0,1,60) }
@@ -131,46 +131,71 @@ _jrWarnUnknown() {
     : > "$m" 2>/dev/null
 }
 
-# jrMigrateStore <file> -- one-time, automatic, SAFE migration of a legacy (v1) or
+# ===========================================================================
+# ONE lock, ONE I/O API. Every mutation of a store (migrate, append, prune/rewrite)
+# goes through these so no two writers can interleave and no tool can hand-roll the
+# format. The lock is a directory (mkdir is atomic even on NFS, unlike flock), held
+# only for the critical section. A crashed holder cannot wedge the cluster: waiters
+# reclaim a lock older than JR_LOCK_STALE seconds, and give up waiting after a bound.
+# ---------------------------------------------------------------------------
+JR_LOCK_STALE="${JR_LOCK_STALE:-30}"   # seconds before a held lock is treated as stale
+JR_LOCK_TRIES="${JR_LOCK_TRIES:-200}"  # poll attempts (x0.05s) before giving up waiting
+
+# _jrLock <file> -> 0 if the lock was acquired (caller MUST _jrUnlock), 1 on timeout.
+_jrLock() {
+    local lock="$1.lock" i=0 age now
+    while :; do
+        mkdir "$lock" 2>/dev/null && return 0
+        # reclaim a stale lock (holder likely died mid-write)
+        now=$(date +%s); age=$(( now - $(stat -c %Y "$lock" 2>/dev/null || echo "$now") ))
+        [ "$age" -ge "$JR_LOCK_STALE" ] && rmdir "$lock" 2>/dev/null && continue
+        i=$((i+1)); [ "$i" -ge "$JR_LOCK_TRIES" ] && return 1
+        sleep 0.05
+    done
+}
+_jrUnlock() { rmdir "$1.lock" 2>/dev/null; }
+
+# _jrMigrateUnlocked <file> -- the migration body WITHOUT taking the lock (the
+# caller already holds it). Converts a v1/mixed/headerless-v2 store to canonical
+# v2 in place: back up, convert via jrEmitV2, atomic rename. NOT SILENT about
+# dropped (unrecognized) rows or an unrecognized file.
+_jrMigrateUnlocked() {
+    local f=$1 ver bak tmp bad
+    ver=$(jrSchemaVersion "$f")
+    [ "$ver" = 2 ] && return 0
+    if [ "$ver" = 0 ]; then _jrWarnUnknown "$f"; return 0; fi
+    bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
+    cp -p "$f" "$bak" 2>/dev/null
+    bad=$(jrCountUnrecognized "$f")
+    tmp="$f.v2.$$"
+    if jrEmitV2 "$f" > "$tmp" && [ -s "$tmp" ]; then
+        mv "$tmp" "$f"
+        if [ "${bad:-0}" -gt 0 ]; then
+            echo "SmartSlurm: WARNING: migrated $f to v2, but $bad row(s) matched no known schema and were NOT carried into the live store (kept in backup: $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        else
+            echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
+        fi
+    else
+        rm -f "$tmp"
+    fi
+}
+
+# jrMigrateStore <file> -- public, locked, idempotent migration of a legacy (v1)/
 # mixed store to pure v2, so the v2 writer/prune never operate on a mixed file (the
 # cause of the data-loss bug: the v1-positional prune deleted appended v2 rows).
-# Idempotent (a v2 file is a no-op), atomic (write-temp-then-rename), locked (many
-# jobs' ssbatch/cleanUp run concurrently on a cluster), and it backs the original
-# up to <file>.back.<ts>.txt first -- that backup is the rollback, same as jrRepair.
-# NOT SILENT: if conversion drops rows it could not classify, or the whole file is
-# unrecognized, it says so on stderr and names the backup + the jrRepair check.
+# The backup (<file>.back.<ts>.txt) is the rollback, same as jrRepair.
 jrMigrateStore() {
-    local f=$1 lock bak tmp i ver bad
+    local f=$1 ver
     [ -s "$f" ] || return 0
     ver=$(jrSchemaVersion "$f")
-    [ "$ver" = 2 ] && return 0          # already clean v2 -> no-op
-    if [ "$ver" = 0 ]; then             # unrecognized: leave it, but do NOT be silent
-        _jrWarnUnknown "$f"
-        return 0
+    [ "$ver" = 2 ] && return 0                 # already clean v2 -> no-op (no lock needed)
+    if [ "$ver" = 0 ]; then _jrWarnUnknown "$f"; return 0; fi
+    if _jrLock "$f"; then
+        _jrMigrateUnlocked "$f"                # re-checks version under the lock
+        _jrUnlock "$f"
     fi
-    # ver == 1: a v1/mixed/headerless-v2 store to normalize.
-    lock="$f.migrate.lock"
-    if mkdir "$lock" 2>/dev/null; then
-        if [ "$(jrSchemaVersion "$f")" = 1 ]; then          # re-check under the lock
-            bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
-            cp -p "$f" "$bak" 2>/dev/null
-            bad=$(jrCountUnrecognized "$f")                 # count BEFORE we replace
-            tmp="$f.v2.$$"
-            if jrEmitV2 "$f" > "$tmp" && [ -s "$tmp" ]; then
-                mv "$tmp" "$f"
-                if [ "${bad:-0}" -gt 0 ]; then
-                    echo "SmartSlurm: WARNING: migrated $f to v2, but $bad row(s) matched no known schema and were NOT carried into the live store (kept in backup: $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
-                else
-                    echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
-                fi
-            else
-                rm -f "$tmp"
-            fi
-        fi
-        rmdir "$lock" 2>/dev/null
-    else
-        i=0; while [ -d "$lock" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i+1)); done
-    fi
+    # lock timeout -> another job is migrating; it will become v2 shortly. A reader
+    # (jrEmitV2) is hybrid-safe meanwhile, so skipping here loses nothing.
 }
 
 # jrEnsureHeader <file> -- make sure the store exists AND is v2 before writing:
@@ -180,11 +205,69 @@ jrEnsureHeader() {
     jrMigrateStore "$1"
 }
 
+# jrAppendLine <file> <preformatted-v2-row> -- the ONE sanctioned way to append a
+# row. Under the lock it: creates the v2 header if the file is new, migrates a
+# v1/mixed store to v2 first (so we never append a v2 row onto a v1 file and make a
+# hybrid), then appends atomically. If the lock cannot be taken in time it appends
+# anyway and warns -- a possibly-interleaved row is far better than a LOST record.
+jrAppendLine() {
+    local f=$1 row=$2
+    if _jrLock "$f"; then
+        [ -f "$f" ] || printf '%s\n' "$JR_HEADER_V2" > "$f"
+        _jrMigrateUnlocked "$f"
+        printf '%s\n' "$row" >> "$f"
+        _jrUnlock "$f"
+    else
+        [ -f "$f" ] || printf '%s\n' "$JR_HEADER_V2" > "$f"
+        printf '%s\n' "$row" >> "$f"
+        echo "SmartSlurm: WARNING: jobRecord append proceeded WITHOUT the lock (contention/stale): $f" >&2
+    fi
+}
+
+# jrAppendRow <file> name=value ... -- build a sanitized v2 row with jrRow and
+# append it via jrAppendLine. The convenience front door for writers.
+jrAppendRow() {
+    local f=$1; shift
+    jrAppendLine "$f" "$(jrRow "$@")"
+}
+
+# jrRewrite <file> <awk-row-program> [awk -v args ...] -- the ONE sanctioned way to
+# prune/rewrite a store. Under the lock it migrates to v2, then runs the row program
+# over every DATA row with col["name"] available (OFS=","), keeping rows the program
+# `print`s; the header is always preserved. Atomic (temp + rename). The two prunes
+# (7-day recency, fail-prune) are one call each -- no positional columns, no second
+# colmap, no v1 fallback. Skips a store that is not (or cannot become) v2.
+jrRewrite() {
+    local f=$1 prog=$2; shift 2
+    [ -s "$f" ] || return 0
+    _jrLock "$f" || return 0
+    _jrMigrateUnlocked "$f"
+    if [ "$(jrSchemaVersion "$f")" = 2 ]; then
+        local tmp="$f.rw.$$"
+        if awk -F, -v OFS=, "$@" '
+                NR==1 { for(i=1;i<=NF;i++) col[$i]=i; print; next }
+                { '"$prog"' }
+            ' "$f" > "$tmp" && [ -s "$tmp" ]; then
+            mv "$tmp" "$f"
+        else
+            rm -f "$tmp"
+        fi
+    fi
+    _jrUnlock "$f"
+}
+
 # jrRow name=value ... -> one CSV row with the fields placed in JR_COLUMNS_V2 order.
 # Unspecified columns are emitted empty. This is the single writer: callers name
 # fields, so the on-disk column order lives only in JR_COLUMNS_V2 and a row can
-# never silently drift from the header. Values must not contain commas/newlines
-# (CSV). Portable (no associative arrays): 17 columns x a few args is trivial.
+# never silently drift from the header. Portable (no associative arrays).
+#
+# SANITIZED: every value has commas, spaces, tabs and CRs/newlines replaced with
+# '_', so a row is ALWAYS exactly 17 clean comma-separated fields. This is what
+# keeps field parsing accurate -- the legacy store's human `date` column (from the
+# `date` command) carried spaces, and in some locales a comma, which is how a row
+# could gain an extra field and shift the rest. A v2 row can never do that. Keys
+# (pipeline/step/ref/sample) are tokens and should not contain spaces anyway; if
+# one does, it is normalized identically on every write so it stays self-consistent.
 jrRow() {
     local c kv val out=""
     for c in $JR_COLUMNS_V2; do
@@ -192,6 +275,8 @@ jrRow() {
         for kv in "$@"; do
             case "$kv" in "$c="*) val="${kv#*=}"; break ;; esac
         done
+        val=${val//,/_}; val=${val// /_}; val=${val//$'\t'/_}
+        val=${val//$'\n'/_}; val=${val//$'\r'/_}
         out="$out,$val"
     done
     printf '%s\n' "${out#,}"
@@ -209,25 +294,34 @@ jrRow() {
 #   * a v1 header ("1jobID,...") or v2 header ("pipeline,...") line -> skipped
 #   * an already-v2 data row (17 fields) -> passed through unchanged
 #   * a v1 data row (numeric jobID in field 1, 20+ fields) -> mapped to v2
-#     (both real widths: 21 cols with epoch=$21, and the older 20-col variant
-#      with no epoch; inputSize is carried verbatim, even non-numeric like
-#      "missingInputFile" -- nothing is dropped here)
+#     (inputSize is carried verbatim, even non-numeric like "missingInputFile")
 #   * anything else (junk / unexpected shape) -> skipped (jrRepair diverts these
 #     to a .skipped file so they are visible, not silently lost)
+#
+# ROBUST field extraction: the legacy human `date` column (from `date`) carries
+# spaces and, in some locales, a COMMA -- which would shift the trailing columns
+# under -F,. So epoch is taken from the LAST field only if it looks like a unix
+# timestamp (>=9 digits), never from a fixed position; the mapped fields we need
+# (jobID, inputSize, mem/time, status, user, program, ref, cores, flag) all live
+# in columns 1..15, BEFORE the date, so they are position-stable regardless. The
+# carried text fields are sanitized (commas/spaces -> '_') so the emitted v2 row
+# is always exactly 17 clean fields. isoDate is carried (sanitized) only when the
+# row has a clean width (<=21); on a comma-shifted row it is left blank -- epoch,
+# the authoritative timestamp, is preserved either way.
 jrEmitV2() {
     local f=$1
     [ -s "$f" ] || return 0
     awk -F, -v OFS=, -v hdr="$JR_HEADER_V2" '
       function sampleOf(fl,  n,a,i){ n=split(fl,a,"."); if(n<2)return ""; i=2;
           while(i<=n && a[i]~/^[0-9]+$/) i++; i++; return (i<=n)?a[i]:"" }
+      function san(x){ gsub(/[, \t\r]/,"_",x); return x }
       BEGIN{ print hdr }
       $1=="pipeline" || $1=="1jobID" { next }                 # header line (either schema)
       $1 !~ /^[0-9]+$/ && NF==17 { print; next }              # already-v2 data row -> pass through
       $1 ~ /^[0-9]+$/ && NF>=20 {                             # v1 data row -> map
-          # two real v1 widths: 21 cols (date=$20, epoch=$21) and older 20 cols
-          # (date=$20, no epoch). Take epoch from $21 when present, else leave blank.
-          ep=(NF>=21)?$21:""
-          print "legacy",$12,$13,sampleOf($14),$1,$2,$7,$5,$8,$6,$15,$9,$10,"",ep,$20,$14; next }
+          ep = ($NF ~ /^[0-9]{9,}$/) ? $NF : ""               # epoch = numeric tail, else none (20-col)
+          iso = (NF<=21) ? san($20) : ""                       # human date only on a clean-width row
+          print "legacy",san($12),san($13),san(sampleOf($14)),$1,san($2),$7,$5,$8,$6,$15,san($9),san($10),"",ep,iso,san($14); next }
       # else: junk / unexpected -> skip
     ' "$f"
 }

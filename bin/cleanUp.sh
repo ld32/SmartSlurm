@@ -82,28 +82,36 @@ statKey="$pipeline.$software.$refGroup"
 # twice (threshold pass, then filter pass), writing the pruned store.
 jrFailPrune() {
     local a=$1 b=$2 backup=$3 out="$smartSlurmJobRecordDir/jobRecord.txt"
-    if [ "$(jrSchemaVersion "$backup")" = 2 ]; then
-        awk -F, -v a="$a" -v b="$b" '
-          NR==FNR{
-            if(FNR==1){ for(i=1;i<=NF;i++)c[$i]=i; next }
-            if($(c["step"])==a && $(c["ref"])==b && $(c["status"])!="COMPLETED"){
-              if($(c["status"])~/OOM/){ if(!mN++ || $(c["inputSize"])<fsM)fsM=$(c["inputSize"]); if($(c["memAllocated"])>fmM)fmM=$(c["memAllocated"]) }
-              if($(c["status"])~/OOT/){ if(!tN++ || $(c["inputSize"])<fsT)fsT=$(c["inputSize"]); if($(c["timeAllocated"])>ftM)ftM=$(c["timeAllocated"]) }
+    # Pass 1 (read-only, name-addressed via the shared shim): the failure envelope
+    # for this step/ref -- the smallest failing input size and largest failing
+    # allocation, for OOM and OOT separately.
+    local th mN fsM fmM tN fsT ftM
+    th=$(jrEmitV2 "$backup" | awk -F, -v a="$a" -v b="$b" "$JR_AWK_COLMAP"'
+            $(col["step"])==a && $(col["ref"])==b && $(col["status"])!="COMPLETED"{
+              if($(col["status"])~/OOM/){ if(!mN++ || $(col["inputSize"])<fsM)fsM=$(col["inputSize"]); if($(col["memAllocated"])>fmM)fmM=$(col["memAllocated"]) }
+              if($(col["status"])~/OOT/){ if(!tN++ || $(col["inputSize"])<fsT)fsT=$(col["inputSize"]); if($(col["timeAllocated"])>ftM)ftM=$(col["timeAllocated"]) }
             }
-            next
-          }
-          FNR==1{ print; next }
-          {
-            if(!($(c["step"])==a && $(c["ref"])==b)){ print; next }
-            if($(c["status"])!="COMPLETED") next
-            s=0
-            if(mN && $(c["inputSize"])>=fsM && $(c["memUsed"])<=fmM) s=1
-            if(tN && $(c["inputSize"])>=fsT && $(c["timeUsed"])<=ftM) s=1
-            if(!s) print
-          }' "$backup" "$backup" > "$out"
-    else
-        awk -F"," -v a="$a" -v b="$b" 'NR==FNR{ if($12==a && $13==b && $9!="COMPLETED"){ if($9 ~ /OOM/){ if(!mN++ || $2<fsM)fsM=$2; if($5>fmM)fmM=$5 } if($9 ~ /OOT/){ if(!tN++ || $2<fsT)fsT=$2; if($6>ftM)ftM=$6 } } next } { if(!($12==a && $13==b)){ print; next } if($9!="COMPLETED") next; s=0; if(mN && $2>=fsM && $7<=fmM) s=1; if(tN && $2>=fsT && $8<=ftM) s=1; if(!s) print }' "$backup" "$backup" > "$out"
-    fi
+            END{ print mN+0, fsM+0, fmM+0, tN+0, fsT+0, ftM+0 }')
+    read -r mN fsM fmM tN fsT ftM <<< "$th"
+    # Pass 2 (atomic, locked, header-preserved): drop this step/ref's failed rows
+    # and its "failure-disproven" COMPLETED rows (a success at >= a failing size
+    # using <= the failing allocation -- an under-reporter); keep everything else.
+    # jrRewrite reads from the live store; seed it from the backup first so the
+    # pruned store is built from the same snapshot the thresholds came from.
+    cp -p "$backup" "$out" 2>/dev/null
+    jrRewrite "$out" '
+        keep=1
+        if ($(col["step"])==a && $(col["ref"])==b) {
+            if ($(col["status"])!="COMPLETED") keep=0
+            else {
+                s=0
+                if (mN && $(col["inputSize"])>=fsM && $(col["memUsed"])<=fmM) s=1
+                if (tN && $(col["inputSize"])>=fsT && $(col["timeUsed"])<=ftM) s=1
+                if (s) keep=0
+            }
+        }
+        if (keep) print' \
+        -v a="$a" -v b="$b" -v mN="$mN" -v fsM="$fsM" -v fmM="$fmM" -v tN="$tN" -v fsT="$fsT" -v ftM="$ftM"
 }
 
 #skipEstimate=${15} # todo. remove it
@@ -278,14 +286,13 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$effEpoch" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
     "$totalM" "$srunM" "$totalT" "$min" "$inputs" "$effDate" >> "$effFile"
 
-# delete rows other than 1 week and not COMPLETED
-#awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
-if [ "$(jrSchemaVersion "$smartSlurmJobRecordDir/jobRecord.txt")" = 2 ]; then
-    # v2: keep the header + rows that are recent or COMPLETED (name-addressed).
-    awk -F, -v t="$(date -d '7 days ago' +%s)" 'NR==1{for(i=1;i<=NF;i++)c[$i]=i; print; next} ($(c["epoch"])+0 > t) || ($(c["status"])=="COMPLETED")' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"
-else
-    awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
-fi
+# 7-day prune: keep rows that are recent (epoch within a week) OR COMPLETED. One
+# name-addressed jrRewrite call -- migrates first, locks, rewrites atomically,
+# preserves the header. (Replaces the old version-branched inline awk, including
+# the v1-positional fallback that deleted v2 rows read through the wrong columns.)
+jrRewrite "$smartSlurmJobRecordDir/jobRecord.txt" \
+    'if (($(col["epoch"])+0 > t) || ($(col["status"])=="COMPLETED")) print' \
+    -v t="$(date -d '7 days ago' +%s)"
 
 
 records=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b { print $(col["inputSize"]), $(col["memUsed"]) }' | sort -u -n`
@@ -293,7 +300,7 @@ records=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v
 #   less than 500 records or current one is larger than all old data and not exist already
 if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(printf '%s\n' "$records" | grep -c .)" -lt 500 || "$(printf '%s\n' "$records" | tail -n1 | cut -d' ' -f1)" -lt "$inputSize" ]] && ! printf '%s\n' "$records" | grep -qxF "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
-        [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        [ -z "$START" ] || jrAppendLine "$smartSlurmJobRecordDir/jobRecord.txt" "$record"
         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
     #else
     #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
@@ -342,7 +349,7 @@ if [ ! -f $succFile ]; then
 
         record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
 
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        jrAppendLine "$smartSlurmJobRecordDir/jobRecord.txt" "$record"
 
         recentFails=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"])==b' | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
@@ -630,7 +637,7 @@ if [ ! -f $succFile ]; then
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
         record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="OverEstimate" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
+        jrAppendLine "$smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt" "$record"
 
     
         recentFails=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"])==b' | wc -l`
