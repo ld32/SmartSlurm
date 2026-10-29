@@ -50,7 +50,7 @@ jrExtractBoth() {
         jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
             -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
             $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p) && \
-            $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"])!=0 {
+            $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])+0>0 {
                 print $(col["inputSize"]), $(col["memUsed"])  > mo
                 print $(col["inputSize"]), $(col["timeUsed"]) > to
             }'
@@ -83,7 +83,17 @@ if [ $inputs == none ]; then
     if test `find $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSlurmJobRecordDir/stats/
 
-        jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP"'$(col["status"])=="COMPLETED" && $(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }' | uniq > $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput
+        # No-input history (percentile source). Mirror jrExtractBoth's fallback
+        # ladder: query this pipeline first, and if it has fewer than 3 records,
+        # re-query pooling across ALL pipelines (same step + ref group) so a job
+        # without -I still gets a percentile from past usage instead of the bare
+        # default (e.g. right after migration, where old rows are pipeline=legacy).
+        noInAwk='$(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p) && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }'
+        nif="$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"
+        jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+        if [ "$( { wc -l < "$nif" 2>/dev/null || echo 0; } )" -lt 3 ]; then
+            jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+        fi
 
         # make plot and calculate statistics
         gnuplot -e 'set key outside; set key reverse; set key invert; set fit logfile "/dev/null"; set fit quiet; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; print "STDFIT=", FIT_STDFIT; stats "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\|STDFIT\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.memTime.stat.noInput
