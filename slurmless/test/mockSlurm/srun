@@ -1,0 +1,40 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# mock srun  --  run a task locally.
+#
+# Real invocation shape:  srun [SRUN_OPTS...] <executable> [EXEC_ARGS...]
+# Only srun's OWN options appear before the executable. Once we reach the first
+# non-option token (the executable), everything from there on belongs to the
+# command and must be passed through UNTOUCHED -- otherwise flags like the
+# `-e -o pipefail -c` in `sh -e -o pipefail -c '...'` get eaten and the payload
+# breaks (e.g. "sh: pipefail: No such file or directory").
+# ---------------------------------------------------------------------------
+set -uo pipefail
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  case "$a" in
+    -n|--ntasks|-c|--cpus-per-task|-N|--nodes|--mem|--mem-per-cpu|\
+    -A|--account|-p|--partition|-t|--time|-J|--job-name|-w|--nodelist|\
+    -x|--exclude|--gres|--cpu-bind|--distribution)
+        i=$((i+2)); continue;;
+    --exclusive|--overlap|--pty|-l|--label|-u|--unbuffered|-Q|--quiet|-v|--verbose|-K|--kill-on-bad-exit)
+        i=$((i+1)); continue;;
+    --*=*) i=$((i+1)); continue;;
+    -*)    i=$((i+1)); continue;;
+    *)     break;;
+  esac
+done
+cmd=("${args[@]:$i}")
+[ ${#cmd[@]} -eq 0 ] && exit 0
+
+# Failure injection: if MOCK_INJECT is set (by mock sbatch), simulate the job
+# being killed / failing BEFORE the payload runs, so the `&& touch .success` in
+# the job body never fires and cleanUp.sh falls through to the sacct state.
+case "${MOCK_INJECT:-}" in
+  oom)     printf 'slurmstepd: error: Detected 1 oom_kill event in StepId=%s. Some of your processes may have been killed by the cgroup out-of-memory handler.\nsrun: error: node01: task 0: Out Of Memory\n' "${SLURM_JOBID:-0}" >&2; exit 137;;
+  timeout) printf 'slurmstepd: error: *** STEP %s ON node01 CANCELLED AT 2024-01-01T00:50:00 DUE TO TIME LIMIT ***\n' "${SLURM_JOBID:-0}" >&2; exit 143;;
+  nonzero) printf 'srun: error: node01: task 0: Exited with exit code 1\n' >&2; exit 1;;
+esac
+
+exec "${cmd[@]}"

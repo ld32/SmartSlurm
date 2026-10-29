@@ -1,0 +1,3 @@
+#!/bin/bash
+# mock squeue: nothing is ever pending/running (synchronous execution model).
+exit 0

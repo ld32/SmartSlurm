@@ -1,0 +1,14 @@
+# Large-magnitude linear mem with ~8% noise, so the +extraMem safety is negligible
+# and the measured first-pass rate reflects the targetFirstPassPct margin (issue B1).
+MODEL_PROGRAM=bigJob
+MODEL_REF=none
+MEM_FORM=linear
+MEM_A=5
+MEM_B=2000
+TIME_FORM=linear
+TIME_A=0.05
+TIME_B=30
+MAXRSS_FACTOR=0.95
+NOISE_MEM=0.08
+NOISE_TIME=0.08
+SEED=42

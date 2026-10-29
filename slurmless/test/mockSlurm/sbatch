@@ -1,0 +1,183 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# mock sbatch  --  Slurm-free stand-in for the real sbatch.
+#
+# Purpose: let unmodified runAsPipeline / ssbatch run in a sandbox with no
+# scheduler, while STILL executing the real job payload so that failure
+# attribution (exit codes, empty outputs, .success/.failed) behaves realistically.
+#
+# Contract this models (what ssbatch actually calls):
+#   sbatch [slurm opts] --parsable -o <out> -e <err> -J <name> \
+#          [-d afterok:IDS] [-H] <jobScript>
+#   - with --parsable, print ONLY the numeric job id on stdout (ssbatch parses it)
+#   - execute <jobScript> so the trap/cleanUp.sh + payload run for real
+#   - record state under $MOCK_SLURM_STATE/jobs/<id>.* for sacct to replay
+#
+# Because we execute synchronously in submission order, afterok dependencies are
+# naturally satisfied by the time a dependent job runs, so -H/-d need no special
+# handling beyond being recorded.
+#
+# Failure injection (env, read by this shim AND by mock sacct):
+#   MOCK_FAIL_JOB=<jobName-substring>   only inject for jobs whose -J matches
+#   MOCK_FAIL_MODE=nonzero|oom|timeout  force the payload / reported state
+#   (exit0-empty is modeled by the *fixture's tool*, not here.)
+# ---------------------------------------------------------------------------
+set -uo pipefail
+state="${MOCK_SLURM_STATE:-/tmp/mockslurm}"; mkdir -p "$state/jobs"
+
+out=""; err=""; script=""; parsable=""; hold=""; deps=""; name=""
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  case "$a" in
+    -o|--output)     out="${args[i+1]:-}";  i=$((i+2)); continue;;
+    --output=*)      out="${a#--output=}";;
+    -e|--error)      err="${args[i+1]:-}";  i=$((i+2)); continue;;
+    --error=*)       err="${a#--error=}";;
+    -J|--job-name)   name="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --job-name=*)    name="${a#--job-name=}";;
+    -d|--dependency) deps="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --dependency=*)  deps="${a#--dependency=}";;
+    -H|--hold)       hold=1;;
+    --parsable)      parsable=1;;
+    # Capture the ACTUAL requested mem/time: on an auto-requeue cleanUp.sh changes
+    # --mem/-t (the real cgroup limit / time limit) but NOT the job script's trap
+    # line, so the emergent-OOM/OOT check must use these, not the stale trap values.
+    --mem)           memCli="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --mem=*)         memCli="${a#--mem=}";;
+    -t|--time)       timeCli="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --time=*)        timeCli="${a#--time=}";;
+    # options that consume a value we don't need -> skip both tokens
+    -p|-c|-A|-D|-w|-x|-n|-N|--mail-user|--qos|--open-mode)
+                     i=$((i+2)); continue;;
+    --*)             ;;   # standalone long option (e.g. --requeue, --mail-type=FAIL)
+    -*)              ;;   # unknown short option
+    *)               [ -z "$script" ] && [ -f "$a" ] && script="$a";;
+  esac
+  i=$((i+1))
+done
+
+# Monotonic, collision-free job ids. Jobs run synchronously in submission order
+# (no races), so a per-state counter is both unique and deterministic. A random
+# id risked silent collisions that overwrite another job's .meta/.rc/.inject/
+# .resource and corrupt attribution.
+seqf="$state/.jobseq"
+id=$(( $(cat "$seqf" 2>/dev/null || echo 10000) + 1 )); printf '%s' "$id" > "$seqf"
+printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$deps" "$hold" > "$state/jobs/$id.meta"
+
+# announce the id in the format ssbatch expects
+if [ -n "$parsable" ]; then echo "$id"; else echo "Submitted batch job $id"; fi
+
+[ -z "$script" ] && exit 0
+
+# Honor afterok: if any upstream dependency failed (recorded rc != 0 or injected),
+# this job is cancelled by the scheduler and never runs -> leaves no flags, so
+# checkRun sees it as an orphaned downstream job. deps look like "afterok:ID:ID".
+if [ -n "$deps" ]; then
+  depfailed=""
+  IFS=':' read -ra dparts <<< "$deps"
+  for d in "${dparts[@]}"; do
+    [[ "$d" =~ ^[0-9]+$ ]] || continue          # skip the "afterok" keyword
+    drc="0"; [ -f "$state/jobs/$d.rc" ] && drc="$(cat "$state/jobs/$d.rc")"
+    dinj=""; [ -f "$state/jobs/$d.inject" ] && dinj="$(cat "$state/jobs/$d.inject")"
+    { [ "$drc" != "0" ] || [ -n "$dinj" ]; } && depfailed=1
+  done
+  if [ -n "$depfailed" ]; then
+    echo "cancelled" > "$state/jobs/$id.rc"
+    echo "dependency" > "$state/jobs/$id.inject"
+    exit 0     # do NOT run the payload; dependent is orphaned
+  fi
+fi
+
+# decide whether this job is targeted for EXPLICIT failure injection
+inject=""
+if [ -n "${MOCK_FAIL_MODE:-}" ]; then
+  if [ -z "${MOCK_FAIL_JOB:-}" ] || [[ "$name" == *"${MOCK_FAIL_JOB}"* ]]; then
+    inject="$MOCK_FAIL_MODE"
+  fi
+fi
+
+# ---- resource model (optional) -------------------------------------------
+# When SS_MODEL names a model file, synthesize this job's "measured" resources
+# from its input size, cache them under $id.resource for the mock memCpuMonitor
+# (time + peak) and mock sacct (MaxRSS + State) to replay, so the UNMODIFIED
+# cleanUp.sh writes a realistic jobRecord.txt row. The job's program/ref/inputSize
+# and the ALLOCATED mem/time are read from the cleanUp.sh trap line the job script
+# carries (fixed positions set by ssbatch): cleanUp.sh <flag> <program> <ref>
+# <inputSize> <core> <memO> <minO> <allocMem> <allocMin> <partition> ...
+if [ -n "${SS_MODEL:-}" ] && [ -f "$SS_MODEL" ]; then
+  trapline="$(grep -o 'cleanUp\.sh [^"]*' "$script" 2>/dev/null | head -1)"
+  if [ -n "$trapline" ]; then
+    read -r _cu mflag mprog mref msize mcore mmemO mminO mAllocMem mAllocMin _rest <<<"$trapline"
+    # Guard the positional contract with ssbatch's generated trap line:
+    #   cleanUp.sh <flag> <program> <ref> <inputSize> <core> <memO> <minO> \
+    #              <allocMem> <allocMin> <partition> ...
+    # If the shape is unexpected (ssbatch changed cleanUp.sh's arg order/count),
+    # warn LOUDLY and skip modeling rather than silently feeding a wrong size /
+    # allocation into jobRecord.txt — the hardest kind of drift to notice.
+    badtrap=""
+    if [ -z "$mprog" ] || [ -z "$mAllocMin" ]; then
+      badtrap=1
+      echo "mock sbatch: WARNING: unexpected cleanUp.sh trap-line shape; resource" \
+           "model skipped (ssbatch arg order may have changed): $trapline" >&2
+    fi
+    # only model jobs that match this model's program/ref (blank = match any)
+    mpOK=1; mrOK=1
+    mp="$(sed -n 's/^MODEL_PROGRAM=//p' "$SS_MODEL" | head -1)"
+    mr="$(sed -n 's/^MODEL_REF=//p'     "$SS_MODEL" | head -1)"
+    [ -n "$mp" ] && [ "$mp" != "$mprog" ] && mpOK=""
+    [ -n "$mr" ] && [ "$mr" != "$mref" ]  && mrOK=""
+    if [ -n "$mpOK" ] && [ -n "$mrOK" ] && [ -z "$badtrap" ]; then
+      # per-submission reproducible seed: a monotonic counter. Keep it in the
+      # (shared, not-per-workspace) record dir so a sweep's points each get a
+      # distinct seed -> independent noise draws, even though each point runs in
+      # its own workspace/mock-state subdir.
+      seqf="${smartSlurmJobRecordDir:-$state}/model.seq"
+      mkdir -p "$(dirname "$seqf")"
+      seq=0; [ -f "$seqf" ] && seq="$(cat "$seqf")"; echo $((seq+1)) > "$seqf"
+      read -r trueMem trueTime trueRSS < <(resourceModel.sh "$SS_MODEL" "${msize:-0}" "$seq")
+      memUsed="$trueMem"; timeUsed="$trueTime"; maxRSS="$trueRSS"
+      # Prefer the ACTUAL --mem/-t from this submission (so an auto-requeue's raised
+      # limits take effect) over the job script's stale trap-line values.
+      allocMem="$mAllocMem"; allocMin="$mAllocMin"
+      if [ -n "${memCli:-}" ]; then
+        case "$memCli" in
+          *G|*g) allocMem=$(( ${memCli%[Gg]} * 1024 ));;
+          *M|*m) allocMem=${memCli%[Mm]};;
+          *)     allocMem=$memCli;;
+        esac
+      fi
+      if [ -n "${timeCli:-}" ]; then
+        case "$timeCli" in
+          *-*) d=${timeCli%%-*}; hms=${timeCli#*-}; allocMin=$(( d*1440 + ${hms%%:*}*60 + $(echo "$hms" | cut -d: -f2) ));;
+          *:*:*) allocMin=$(( ${timeCli%%:*}*60 + $(echo "$timeCli" | cut -d: -f2) ));;
+          *:*) allocMin=${timeCli%%:*};;         # MM:SS  (slurm "min:sec")
+          *)   allocMin=$timeCli;;
+        esac
+      fi
+      # Emergent errors: a too-small allocation (from a bad fit) kills the job,
+      # exactly like the cluster. Explicit MOCK_FAIL_MODE still wins.
+      if [ -z "$inject" ] && [ "${allocMem:-0}" -gt 0 ] 2>/dev/null && [ "$trueMem" -gt "$allocMem" ]; then
+        inject="oom";     memUsed="$allocMem"; maxRSS="$allocMem"   # killed at the cap
+      elif [ -z "$inject" ] && [ "${allocMin:-0}" -gt 0 ] 2>/dev/null && [ "$trueTime" -gt "$allocMin" ]; then
+        inject="timeout"; timeUsed="$allocMin"
+      fi
+      printf '%s %s %s %s\n' "$memUsed" "$timeUsed" "$maxRSS" "$inject" > "$state/jobs/$id.resource"
+    fi
+  fi
+fi
+
+echo "${inject:-}" > "$state/jobs/$id.inject"   # sacct reads this to report state
+
+# run the job body for real; capture rc. Under injection we STILL run the script
+# (so the cleanUp.sh EXIT trap fires and consults sacct), but export MOCK_INJECT
+# so the mock srun makes the PAYLOAD fail before .success is touched -- exactly
+# like a real OOM/timeout/failed job.
+(
+  export SLURM_JOBID="$id"
+  export SLURM_JOB_ID="$id"      # real memCpuMonitor.sh names its file with THIS
+  export MOCK_INJECT="$inject"
+  if [ -n "$out" ]; then bash "$script" >"$out" 2>&1; else bash "$script"; fi
+  echo $? > "$state/jobs/$id.rc"
+)
+exit 0

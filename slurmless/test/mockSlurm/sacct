@@ -1,0 +1,129 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# mock sacct  --  replay recorded job state in Slurm's tabular format.
+# Pinned to production Slurm 25.11 (sacct default output; --format drives columns,
+# which are stable across versions). See test/mockSlurm/README.md.
+#
+# Consumers in SmartSlurm:
+#   cleanUp.sh:
+#     sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,\
+#           ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14,ExitCode --units=M -j <id>
+#     - reads the LAST line (tail -n 1); on a real cluster `sacct -j <id>` returns
+#       the alloc line PLUS <id>.batch and <id>.extern step lines, so tail lands
+#       on `.extern`. It then does `echo $line | cut -d" " -f5` (MaxRSS) and
+#       `-f7` (NodeList). Because $line is UNQUOTED, empty fields vanish, so we
+#       keep fields 1..7 non-empty on every emitted line.
+#     - greps the whole blob for COMPLETED / TIMEOUT / OUT_OF_ME / FAILED / CANCEL.
+#   snakemakeJobStatus.sh:  sacct -j <id> --format=State --noheader  (token only)
+#   ssbatch (fallback):     sacct --name <flag> --format jobid       (return empty)
+# ---------------------------------------------------------------------------
+set -uo pipefail
+state_dir="${MOCK_SLURM_STATE:-/tmp/mockslurm}"; mkdir -p "$state_dir/jobs"
+
+fmt="JobID,Submit,Start,End,MaxRSS,State,NodeList,Partition,ReqTRES,TotalCPU,Elapsed,Timelimit,ExitCode"
+noheader=""; parsable=""; jid=""; name=""; allocations=""
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  case "$a" in
+    --format=*)          fmt="${a#--format=}";;
+    --format|-o|-O)      fmt="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --noheader|-n)       noheader=1;;
+    -p|--parsable|--parsable2) parsable=1;;
+    -X|--allocations)    allocations=1;;
+    --units=*)           ;;                    # units accepted, values already in M
+    --units)             i=$((i+2)); continue;;
+    -j|--jobs)           jid="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --jobs=*)            jid="${a#--jobs=}";;
+    --name)              name="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --name=*)            name="${a#--name=}";;
+  esac
+  i=$((i+1))
+done
+
+# ssbatch socket-timeout fallback: `sacct --name <flag> --format jobid` -> empty
+[ -n "$name" ] && { [ -z "$noheader" ] && echo "JobID"; exit 0; }
+
+jid="${jid%%,*}"; jid="${jid%%.*}"          # first id, strip any step suffix
+inject=""; rc="0"
+[ -f "$state_dir/jobs/$jid.inject" ] && inject="$(cat "$state_dir/jobs/$jid.inject")"
+[ -f "$state_dir/jobs/$jid.rc" ]     && rc="$(cat "$state_dir/jobs/$jid.rc")"
+
+# resource model (optional): a cached $jid.resource (memUsed timeUsed maxRSS state)
+# gives this job a realistic MaxRSS instead of the fixed placeholder. cleanUp.sh
+# reads MaxRSS from the LAST emitted line (.extern), so that is where it must land.
+modelRSS=""
+if [ -f "$state_dir/jobs/$jid.resource" ]; then
+  read -r _mu _tu modelRSS _st < "$state_dir/jobs/$jid.resource"
+fi
+case "$inject" in
+  oom)       st="OUT_OF_MEMORY"; ec="0:125";;
+  timeout)   st="TIMEOUT";       ec="0:0";;
+  nonzero)   st="FAILED";        ec="1:0";;
+  cancelled) st="CANCELLED";     ec="0:15";;
+  *) if [ "${rc:-0}" = "0" ]; then st="COMPLETED"; ec="0:0"; else st="FAILED"; ec="1:0"; fi;;
+esac
+
+# value for a given column name, given the step suffix ("", ".batch", ".extern")
+colval() {
+  local col="$1" step="$2" maxrss="$3"
+  col="${col%%%*}"                         # strip %width
+  case "$col" in
+    JobID)     echo "${jid}${step}";;
+    Submit)    echo "2024-01-01T00:00:00";;
+    Start)     echo "2024-01-01T00:00:01";;
+    End)       echo "2024-01-01T00:01:01";;
+    MaxRSS)    echo "$maxrss";;
+    State)     echo "$st";;
+    NodeList*) echo "node01";;
+    Partition) echo "short";;
+    ReqTRES*)  echo "cpu=1,mem=2G,node=1";;
+    AllocTRES*)echo "cpu=1,mem=2G,node=1";;
+    ReqMem)    echo "2G";;
+    TotalCPU)  echo "00:00.030";;
+    Elapsed*)  echo "00:01:00";;
+    Timelimit*)echo "00:50:00";;
+    ExitCode)  echo "$ec";;
+    Elapsedraw)echo "60";;
+    *)         echo "-";;                    # unknown column: non-empty placeholder
+  esac
+}
+
+IFS=',' read -ra cols <<< "$fmt"
+
+emit_row() {  # $1=step suffix  $2=MaxRSS value
+  local step="$1" mr="$2" out="" c v
+  for c in "${cols[@]}"; do
+    v="$(colval "$c" "$step" "$mr")"
+    if [ -n "$parsable" ]; then out+="${v}|"; else out+="$(printf '%-12s ' "$v")"; fi
+  done
+  echo "$out"
+}
+
+# header (+ separator for the aligned form) unless --noheader
+if [ -z "$noheader" ]; then
+  hdr=""; sep=""
+  for c in "${cols[@]}"; do
+    name_only="${c%%%*}"
+    if [ -n "$parsable" ]; then hdr+="${name_only}|"
+    else hdr+="$(printf '%-12s ' "$name_only")"; sep+="$(printf '%-12s ' '------------')"; fi
+  done
+  echo "$hdr"; [ -z "$parsable" ] && echo "$sep"
+fi
+
+# alloc line, then .batch and .extern step lines (as real `sacct -j` returns),
+# unless -X/--allocations. MaxRSS: blank-ish on alloc, real on .batch, tiny on .extern.
+if [ -n "$modelRSS" ]; then
+  # model-driven: real MaxRSS on .batch AND .extern (cleanUp reads the last line)
+  emit_row ""        "0.00M"
+  if [ -z "$allocations" ]; then
+    emit_row ".batch"  "${modelRSS}.00M"
+    emit_row ".extern" "${modelRSS}.00M"
+  fi
+else
+  emit_row ""        "0.00M"
+  if [ -z "$allocations" ]; then
+    emit_row ".batch"  "10.00M"
+    emit_row ".extern" "0.10M"
+  fi
+fi
