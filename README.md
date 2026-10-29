@@ -359,7 +359,7 @@ Slurm's own email is only a subject line. SmartSlurm instead sends **consolidate
 - **Per sample** — one **warning** the first time a step in that sample fails (telling you to re-run the same command), and one **confirmation** when the sample's last step completes.
 - **Per run** — a single **efficiency summary** when the whole run finishes successfully, carrying the per-sample [efficiency](#resource-efficiency) table and pointing you to `checkRun` (press `e`) for the per-step breakdown.
 
-Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots are off by default; set `ssMakePlots=yes` to regenerate them.
+Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots (the per-job/barchart gnuplot pngs and their CSVs) are no longer generated — efficiency now lives in `efficiency.tsv` and `checkRun` (press `e`), so nothing clutters `smartSlurmLog`.
 
 ## ssbatch FAQ
 
