@@ -54,9 +54,13 @@ convertOne() {
     out="$f.jrRepair.new.$$"
     skip="$f.jrRepair.skipped.$ts"
 
-    # Divert any non-21-field data row so nothing is silently lost (jrEmitV2 drops
-    # these; we capture them here for the migration record).
-    awk -F, 'NR>1 && NF!=21' "$f" > "$skip"
+    # Divert only rows jrEmitV2 actually drops (genuine junk): NOT a header, NOT an
+    # already-v2 row (17 fields), NOT a v1 data row (numeric jobID, 20+ fields --
+    # both the 20-col no-epoch and 21-col epoch variants convert).
+    # (The old test diverted every non-21-field row, which wrongly skipped v2 rows.)
+    awk -F, 'NF>0 && $1!="pipeline" && $1!="1jobID" \
+             && !($1 !~ /^[0-9]+$/ && NF==17) \
+             && !($1 ~ /^[0-9]+$/ && NF>=20)' "$f" > "$skip"
     skip_n=$(wc -l < "$skip"); skip_n=${skip_n//[^0-9]/}
     [ "${skip_n:-0}" -gt 0 ] || rm -f "$skip"
 

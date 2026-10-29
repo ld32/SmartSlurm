@@ -60,6 +60,12 @@ pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatc
 jrNode=${SLURMD_NODENAME:-$(hostname 2>/dev/null)}
 jrSample=$(jrSampleFromFlag "$flag")
 
+# Defense in depth: make sure the store is v2 before we read/prune/append. ssbatch
+# migrates at submit, but a v1/mixed file reaching cleanUp (older job, direct use)
+# must be migrated here too, or the v1-positional prune below would delete the v2
+# rows we append. Idempotent + locked, so concurrent jobs are safe.
+[ -n "${smartSlurmJobRecordDir:-}" ] && jrMigrateStore "$smartSlurmJobRecordDir/jobRecord.txt"
+
 # statKey names the per-group fitted .stat/.mem/.time/.memTime files, exactly as
 # estimateResource.sh and calculateMemTime.sh write them: pipeline.step.refGroup
 # (refGroup pools same-size refs via jrRefClass). When this job over-reserves or
