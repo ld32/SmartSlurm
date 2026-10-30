@@ -52,6 +52,67 @@ extraMemC=${13}
 extraTime=${14}
 userEmail=${15}
 excludeFailedNodes=${16}
+pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatch -L)
+
+# v2 jobRecord: schema helpers + provenance. The record= column ORDER below must
+# match JR_COLUMNS_V2 in jobRecordSchema.sh (name-addressed on read).
+. "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
+jrNode=${SLURMD_NODENAME:-$(hostname 2>/dev/null)}
+jrSample=$(jrSampleFromFlag "$flag")
+
+# NOTE: no explicit migrate call here. Every mutation of the store goes through the
+# jobRecordSchema.sh API (jrAppendLine for appends, jrRewrite for the prunes), each
+# of which migrates a v1/mixed store to v2 under the lock before touching it. The
+# reads in between use jrEmitV2, which is hybrid-safe per row. So a separate
+# up-front scan would be pure redundant work on every job.
+
+# statKey names the per-group fitted .stat/.mem/.time/.memTime files, exactly as
+# estimateResource.sh and calculateMemTime.sh write them: pipeline.step.refGroup
+# (refGroup pools same-size refs via jrRefClass). When this job over-reserves or
+# fails, those group files are stale and must be dropped so they regenerate from
+# the updated jobRecord -- so the invalidation globs below MUST use this key, not
+# the old software.ref. (extraMem.* stays keyed software.ref, matching its reader.)
+refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+statKey="$pipeline.$software.$refGroup"
+
+# jrFailPrune <step> <ref> <backupFile> : rewrite jobRecord.txt removing failed and
+# failure-disproven records for one step/ref (keeps validated COMPLETED history).
+# Version-branched: v1 backup uses the original positional two-pass unchanged; v2
+# uses the same logic name-addressed (and preserves the header). Reads the backup
+# twice (threshold pass, then filter pass), writing the pruned store.
+jrFailPrune() {
+    local a=$1 b=$2 backup=$3 out="$smartSlurmJobRecordDir/jobRecord.txt"
+    # Pass 1 (read-only, name-addressed via the shared shim): the failure envelope
+    # for this step/ref -- the smallest failing input size and largest failing
+    # allocation, for OOM and OOT separately.
+    local th mN fsM fmM tN fsT ftM
+    th=$(jrEmitV2 "$backup" | awk -F, -v a="$a" -v b="$b" "$JR_AWK_COLMAP"'
+            $(col["step"])==a && $(col["ref"])==b && $(col["status"])!="COMPLETED"{
+              if($(col["status"])~/OOM/){ if(!mN++ || $(col["inputSize"])<fsM)fsM=$(col["inputSize"]); if($(col["memAllocated"])>fmM)fmM=$(col["memAllocated"]) }
+              if($(col["status"])~/OOT/){ if(!tN++ || $(col["inputSize"])<fsT)fsT=$(col["inputSize"]); if($(col["timeAllocated"])>ftM)ftM=$(col["timeAllocated"]) }
+            }
+            END{ print mN+0, fsM+0, fmM+0, tN+0, fsT+0, ftM+0 }')
+    read -r mN fsM fmM tN fsT ftM <<< "$th"
+    # Pass 2 (atomic, locked, header-preserved): drop this step/ref's failed rows
+    # and its "failure-disproven" COMPLETED rows (a success at >= a failing size
+    # using <= the failing allocation -- an under-reporter); keep everything else.
+    # jrRewrite reads from the live store; seed it from the backup first so the
+    # pruned store is built from the same snapshot the thresholds came from.
+    cp -p "$backup" "$out" 2>/dev/null
+    jrRewrite "$out" '
+        keep=1
+        if ($(col["step"])==a && $(col["ref"])==b) {
+            if ($(col["status"])!="COMPLETED") keep=0
+            else {
+                s=0
+                if (mN && $(col["inputSize"])>=fsM && $(col["memUsed"])<=fmM) s=1
+                if (tN && $(col["inputSize"])>=fsT && $(col["timeUsed"])<=ftM) s=1
+                if (s) keep=0
+            }
+        }
+        if (keep) print' \
+        -v a="$a" -v b="$b" -v mN="$mN" -v fsM="$fsM" -v fmM="$fmM" -v tN="$tN" -v fsT="$fsT" -v ftM="$ftM"
+}
 
 #skipEstimate=${15} # todo. remove it
 #smartSlurmJobRecordDir=${15}
@@ -186,7 +247,7 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
         echo $overText
 
         # delete the .stat files, so that next time will re-generate
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
 
         # get current extraMem
         currentExtraMem=0
@@ -197,9 +258,12 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
 fi
 ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|bc`
 
-# todo: move this part to main job, so that when release job, this job record can be used for the statics 
-                                #3defult,  5given,  7cGroupUsed                  sacct used
-record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`"
+# todo: move this part to main job, so that when release job, this job record can be used for the statics
+# v2 column order == JR_COLUMNS_V2: pipeline,step,ref,sample,jobID,inputSize,memUsed,
+#   memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
+record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
+# (dataToPlot mirrors the record; its only readers are the default-off ssMakePlots
+#  plot parsers below, which feat/retire-unused-plots removes.)
 echo dataToPlot,$record
 
 # --- per-run efficiency row -------------------------------------------------
@@ -222,36 +286,42 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$effEpoch" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
     "$totalM" "$srunM" "$totalT" "$min" "$inputs" "$effDate" >> "$effFile"
 
-# delete rows other than 1 week and not COMPLETED
-#awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if($21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+# 7-day prune: keep rows that are recent (epoch within a week) OR COMPLETED. One
+# name-addressed jrRewrite call -- migrates first, locks, rewrites atomically,
+# preserves the header. (Replaces the old version-branched inline awk, including
+# the v1-positional fallback that deleted v2 rows read through the wrong columns.)
+jrRewrite "$smartSlurmJobRecordDir/jobRecord.txt" \
+    'if (($(col["epoch"])+0 > t) || ($(col["status"])=="COMPLETED")) print' \
+    -v t="$(date -d '7 days ago' +%s)"
 
 
-records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
+records=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"])==b { print $(col["inputSize"]), $(col["memUsed"]) }' | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
-if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(echo $records | wc -l)" -lt 500 || "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ]] && ! echo $records | grep "$inputSize $srunM"; then
+if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(printf '%s\n' "$records" | grep -c .)" -lt 500 || "$(printf '%s\n' "$records" | tail -n1 | cut -d' ' -f1)" -lt "$inputSize" ]] && ! printf '%s\n' "$records" | grep -qxF "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
-        [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        [ -z "$START" ] || jrAppendLine "$smartSlurmJobRecordDir/jobRecord.txt" "$record"
         echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
     #else
     #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
     #fi
-    mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+    mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
 else
     echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
 fi
 
 
-# the last column is date. first get the mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
-# if more than 10, then delete the stat file ( will re-generate next time to estimate)
-if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
-    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
+# If >10 records for this step/ref landed since the fitted .stat was built, drop
+# the group .stat files so the next estimate regenerates them from fresh data.
+# v2: compare the numeric `epoch` column against the stat file's mtime, name-
+# addressed via jrEmitV2 (the old code read v1 positional fields $21/$12/$13 and
+# split the human date, which no longer exist -- it silently counted 0).
+if [ -f $smartSlurmJobRecordDir/stats/$statKey.mem.stat ]; then
+    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$statKey.mem.stat`
 
-    # todo: time format in jobRecord.txt is not consistent. some are in seconds, some are in date format. need to fix it.  
-    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($21, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+    newRecords=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v prog="$2" -v refx="$3" -v t="$tFile" "$JR_AWK_COLMAP"'($(col["epoch"])+0) > t && $(col["step"])==prog && $(col["ref"])==refx' | wc -l`
     if [ $newRecords -gt 10 ]; then
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSlurmJobRecordDir/stats/$statKey.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
     fi
 fi
 
@@ -277,11 +347,11 @@ if [ ! -f $succFile ]; then
     # Handle OOM, OOT, and OOMOOT cases
     if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
 
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        jrAppendLine "$smartSlurmJobRecordDir/jobRecord.txt" "$record"
 
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if(  $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+        recentFails=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"])==b' | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
 
@@ -292,10 +362,10 @@ if [ ! -f $succFile ]; then
             if [ ! -f $backup ]; then 
                 mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
                 echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and removing failed + failure-disproven records for $software $ref (validated history kept)." 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 'NR==FNR{ if($12==a && $13==b && $9!="COMPLETED"){ if($9 ~ /OOM/){ if(!mN++ || $2<fsM)fsM=$2; if($5>fmM)fmM=$5 } if($9 ~ /OOT/){ if(!tN++ || $2<fsT)fsT=$2; if($6>ftM)ftM=$6 } } next } { if(!($12==a && $13==b)){ print; next } if($9!="COMPLETED") next; s=0; if(mN && $2>=fsM && $7<=fmM) s=1; if(tN && $2>=fsT && $8<=ftM) s=1; if(!s) print }' $backup $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                jrFailPrune "$2" "$3" "$backup" 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                rm $smartSlurmJobRecordDir/stats/$statKey.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
             echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
@@ -459,10 +529,10 @@ if [ ! -f $succFile ]; then
 
         # Clean up statistics files
         if [ "$inputs" == "none" ]; then
-            mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
         else
-            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
-                mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            if [ -f $smartSlurmJobRecordDir/stats/$statKey.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$statKey.time.stat ]; then
+                mv $smartSlurmJobRecordDir/stats/$statKey.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
             fi
         fi
 
@@ -566,11 +636,11 @@ if [ ! -f $succFile ]; then
 
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
-        record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,OverEstimate,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="OverEstimate" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
+        jrAppendLine "$smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt" "$record"
 
     
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if( $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+        recentFails=`jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" | awk -F, -v a="$2" -v b="$3" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"])==b' | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
@@ -579,10 +649,10 @@ elif [ ! -z "$overEstimate" ]; then
             if [ ! -f $backup ]; then 
                 mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
                 echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and removing failed + failure-disproven records for $software $ref, validated history kept. 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 'NR==FNR{ if($12==a && $13==b && $9!="COMPLETED"){ if($9 ~ /OOM/){ if(!mN++ || $2<fsM)fsM=$2; if($5>fmM)fmM=$5 } if($9 ~ /OOT/){ if(!tN++ || $2<fsT)fsT=$2; if($6>ftM)ftM=$6 } } next } { if(!($12==a && $13==b)){ print; next } if($9!="COMPLETED") next; s=0; if(mN && $2>=fsM && $7<=fmM) s=1; if(tN && $2>=fsT && $8<=ftM) s=1; if(!s) print }' $backup $backup > $smartSlurmJobRecordDir/jobRecord.txt 
+                jrFailPrune "$2" "$3" "$backup" 
                 #ls -l $smartSlurmJobRecordDir/ 
                 #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                rm $smartSlurmJobRecordDir/stats/$statKey.* 2>/dev/null
             fi
             # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
             echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref  have been backed up to $backup; failed and failure-disproven records were removed, validated COMPLETED history kept in jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
@@ -611,11 +681,11 @@ savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc 
 
 
 minimumsize=9000
-actualsize=`wc -c $out || echo 0`
+actualsize=`wc -c < "$out" || echo 0`
 
 [ -f $succFile ] && s="${overEstimate}Succ:$SLURM_JOBID:$SLURM_JOB_NAME" || s="$jobStatus:$SLURM_JOBID:$SLURM_JOB_NAME"
 
-if [ "${actualsize% *}" -ge "$minimumsize" ]; then
+if [ "$actualsize" -ge "$minimumsize" ]; then
    #toSend=`echo Job script content:; cat $script;`
    toSend="$overText\nLog path: $out"
    toSend="$toSend\nOutput is too big for email. Please find output from log mentioned above."
@@ -633,8 +703,8 @@ toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this j
 
 
 if [ -f "$err" ]; then
-    actualsize=`wc -c $err`
-    if [ "${actualsize% *}" -ge "$minimumsize" ]; then
+    actualsize=`wc -c < "$err"`
+    if [ "$actualsize" -ge "$minimumsize" ]; then
         toSend="$toSend\nError file is too big for email. Please find output in: $err"
         toSend="$toSend\n...\nLast 10 rows of error file:\n`tail -n 10 $err`"
     else
@@ -654,7 +724,6 @@ fi
 
 
 
-[ -z "$userEmail" ] || USER=$userEmail
 [ -z "$userEmail" ] || USER=$userEmail
 
 
