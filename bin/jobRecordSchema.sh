@@ -354,7 +354,10 @@ jrEmitV2() {
       $1=="pipeline" || $1=="1jobID" { next }                 # header line (either schema)
       $1 !~ /^[0-9]+$/ && NF==17 { print; next }              # already-v2 data row -> pass through
       $1 ~ /^[0-9]+$/ && NF>=20 {                             # v1 data row -> map
-          ep = ($NF ~ /^[0-9]{9,}$/) ? $NF : ""               # epoch = numeric tail, else none (20-col)
+          # epoch = numeric tail if it looks like a unix timestamp, else none (20-col).
+          # Use length(), NOT an {n,} interval regex: mawk (Debian/Ubuntu default awk)
+          # ignores interval regexes, which would silently blank EVERY migrated epoch.
+          ep = ($NF ~ /^[0-9]+$/ && length($NF) >= 9) ? $NF : ""
           iso = (NF<=21) ? san($20) : ""                       # human date only on a clean-width row
           print "legacy",san($12),san($13),san(sampleOf($14)),$1,san($2),$7,$5,$8,$6,$15,san($9),san($10),"",ep,iso,san($14); next }
       # else: junk / unexpected -> skip
