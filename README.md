@@ -267,33 +267,47 @@ smartslurm deactivate
 
 ### jobRecord.txt
 
-A CSV of resource records for every successful job, one row per job. Its location is set by `smartSlurmJobRecordDir` in [`config.txt`](#configtxt) and defaults to `~/.smartSlurm/jobRecord.txt`.
+A CSV of resource records for every job, one row per job, with a header line. Its location is set by `smartSlurmJobRecordDir` in [`config.txt`](#configtxt) and defaults to `~/.smartSlurm/jobRecord.txt`. The schema is **named** — tools read columns by header name, not position — so the column order can evolve without breaking readers.
 
-> [!WARNING]
-> The file has **18 columns** (created with the header below). Estimation matches on **program (col 12)** and **reference (col 13)** and reads **memory used (col 7)** and **time used (col 8)**. Input size (col 2) is used for the size-vs-resource fit.
+Estimation **groups by `pipeline` + `step` + `ref`**, fitting **memUsed** and **timeUsed** against **inputSize** and using **status** to keep only validated (COMPLETED) history. The same program used by two different pipelines (e.g. default vs `--very-sensitive`, or two assays whose data differ in effort), or run against two references, builds separate fits instead of one blended one. Details that decide which rows share a fit:
+
+- **`step` is the step *name*, not the step number.** It is the `runAsPipeline` step name (passed as `ssbatch -P`), which defaults to the command's first word when a step is left unnamed. `runAsPipeline` requires unique step *numbers* within a pipeline, but that number lives in the `flag` column, not in the grouping key — so two steps that share a step name **and** a ref would pool into one fit. Give each step a distinct name (or ref) and they stay separate; two genuinely identical steps are rare, and if intentional they usually *should* be modeled apart anyway.
+- **Standalone jobs stay isolated.** An `ssbatch` run outside a pipeline carries `pipeline=unknown`, and with no `-R` carries `ref=none`; it forms its own group and never mixes into a pipeline's fit.
+- **Missing values become sentinels, never blanks:** absent pipeline → `unknown`, absent ref → `none` (and `none` is never size-pooled).
+- **Thin groups broaden only on the pipeline axis.** When a group has fewer than 3 points to fit, estimation falls back to pooling across pipelines for the *same step + ref* only — it relaxes `pipeline`, never `step` or `ref` (e.g. right after migration, where old rows are `pipeline=legacy`).
 
 ```text
-1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date
+pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
 ```
 
 | Col | Name | Col | Name | Col | Name |
 |----:|------|----:|------|----:|------|
-| 1 | jobID | 7 | **memUsed** ⭐ | 13 | **reference** ⭐ |
-| 2 | **inputSize** ⭐ | 8 | **timeUsed** ⭐ | 14 | flag |
-| 3 | memDefault | 9 | jobStatus | 15 | core |
-| 4 | timeDefault | 10 | userID | 16 | extraMem |
-| 5 | memAllocated | 11 | saccMem | 17 | extraTime |
-| 6 | timeAllocated | 12 | **program** ⭐ | 18 | date |
+| 1 | **pipeline** ⭐ | 7 | **memUsed** ⭐ | 13 | user |
+| 2 | **step** ⭐ | 8 | memAllocated | 14 | node |
+| 3 | **ref** ⭐ | 9 | **timeUsed** ⭐ | 15 | epoch |
+| 4 | sample | 10 | timeAllocated | 16 | isoDate |
+| 5 | jobID | 11 | cores | 17 | flag |
+| 6 | **inputSize** ⭐ | 12 | **status** ⭐ | | |
 
-<sub>⭐ = used directly by resource estimation.</sub>
+<sub>⭐ = used directly by resource estimation. `pipeline` comes from `runAsPipeline --pipeline NAME` (default: the pipeline-script basename); `sample` and `flag` identify the per-sample job; `node`/`epoch`/`isoDate` are provenance.</sub>
+
+The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JR_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
 
 Example rows:
 
 ```text
-46531,1465,4G,2:0:0,4G,0-2:0:0,3.52,1,COMPLETED,ld32,,findNumber,none,...
-46535,2930,4G,2:0:0,4G,0-2:0:0,6.38,2,COMPLETED,ld32,,findNumber,none,...
-46534,4395,4G,2:0:0,4G,0-2:0:0,9.24,4,COMPLETED,ld32,,findNumber,none,...
+rnaseq,findNumber,none,,46531,1465,3,2048,1,120,1,COMPLETED,ld32,node01,1719830400,2024-07-01T10:00:00,1.0.findNumber
+rnaseq,findNumber,none,,46535,2930,6,2048,2,120,1,COMPLETED,ld32,node01,1719830700,2024-07-01T10:05:00,1.0.findNumber
+rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,1719831000,2024-07-01T10:10:00,1.0.findNumber
 ```
+
+> [!IMPORTANT]
+> **Upgrading from the old format.** Earlier SmartSlurm wrote a different, position-based `jobRecord.txt`. The tools read both, but to convert an existing store to the current schema once (recommended), run:
+> ```bash
+> jrRepair.sh            # converts $smartSlurmJobRecordDir/jobRecord.txt in place
+> jrRepair.sh --dry-run  # preview only, writes nothing
+> ```
+> It backs the original up to `jobRecord.back.<timestamp>.txt` (your rollback) before rewriting. Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own.
 
 ### config.txt
 
