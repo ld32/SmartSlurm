@@ -72,18 +72,33 @@ jrSchemaVersion() {
         }' "$f"
 }
 
-# jrCountUnrecognized <file> -> count of non-blank, non-header rows that are
-# NEITHER a v1 record (numeric jobID, 20 or 21 cols) NOR a v2 record (non-numeric
-# first field, 17 cols). These are the rows jrEmitV2 drops on conversion -- the
-# ones that must never vanish silently. Used for the migration warning and lint.
-jrCountUnrecognized() {
-    [ -s "$1" ] || { echo 0; return; }
+# A row is RECOGNIZED iff it is a v1 record (numeric jobID, 20+ cols -- 20/21, or
+# more if a comma crept into the old date) or a v2 record (non-numeric first field,
+# 17 cols). Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
+# so it must never vanish silently. These three helpers share ONE definition of
+# "recognized", matching jrEmitV2 exactly, so the migration integrity check and the
+# warnings can't disagree with what conversion actually did.
+
+# jrUnrecognizedLines <file> -> emit the unrecognized rows verbatim (for a .skipped
+# / .unrecognized divert file and for jrRepair). Blank lines and headers excluded.
+jrUnrecognizedLines() {
+    [ -s "$1" ] || return 0
     awk -F, '
         /^[[:space:]]*$/            { next }
         $1=="pipeline" || $1=="1jobID" { next }
-        $1 ~ /^[0-9]+$/ && (NF==20 || NF==21) { next }
-        $1 !~ /^[0-9]+$/ && NF==17 { next }
-        { c++ } END { print c+0 }' "$1" 2>/dev/null
+        $1 ~ /^[0-9]+$/ && NF>=20   { next }
+        $1 !~ /^[0-9]+$/ && NF==17  { next }
+        { print }' "$1" 2>/dev/null
+}
+# jrCountUnrecognized <file> -> how many such rows.
+jrCountUnrecognized() { jrUnrecognizedLines "$1" | grep -c . ; }
+# jrCountRecognized <file> -> how many v1+v2 data rows (the ones jrEmitV2 keeps).
+jrCountRecognized() {
+    [ -s "$1" ] || { echo 0; return; }
+    awk -F, '
+        $1=="pipeline" || $1=="1jobID" { next }
+        ($1 ~ /^[0-9]+$/ && NF>=20) || ($1 !~ /^[0-9]+$/ && NF==17) { c++ }
+        END { print c+0 }' "$1" 2>/dev/null
 }
 
 # jrLint <file> -- print a human health report of a store to stdout (schema
@@ -157,26 +172,46 @@ _jrUnlock() { rmdir "$1.lock" 2>/dev/null; }
 
 # _jrMigrateUnlocked <file> -- the migration body WITHOUT taking the lock (the
 # caller already holds it). Converts a v1/mixed/headerless-v2 store to canonical
-# v2 in place: back up, convert via jrEmitV2, atomic rename. NOT SILENT about
-# dropped (unrecognized) rows or an unrecognized file.
+# v2 in place: back up, convert via jrEmitV2, VERIFY the result, atomic rename.
+#
+# Post-conversion integrity gate (never commit a bad conversion): the temp output
+# must (a) be canonical v2, and (b) preserve EVERY recognizable (v1+v2) input row
+# -- output data-row count == recognized input-row count. Unrecognized junk is
+# allowed to drop (that is expected, and it is saved separately); but if the output
+# is not clean v2, or a RECOGNIZABLE row went missing, the migration ABORTS: the
+# live store is left untouched, the redundant backup is removed, and it errors
+# loudly. NOT SILENT about dropped rows (saved to a .unrecognized file + backup) or
+# an unrecognized file.
 _jrMigrateUnlocked() {
-    local f=$1 ver bak tmp bad
+    local f=$1 ver bak tmp bad recog outrows unrec
     ver=$(jrSchemaVersion "$f")
     [ "$ver" = 2 ] && return 0
     if [ "$ver" = 0 ]; then _jrWarnUnknown "$f"; return 0; fi
     bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
     cp -p "$f" "$bak" 2>/dev/null
     bad=$(jrCountUnrecognized "$f")
+    recog=$(jrCountRecognized "$f")
     tmp="$f.v2.$$"
-    if jrEmitV2 "$f" > "$tmp" && [ -s "$tmp" ]; then
-        mv "$tmp" "$f"
-        if [ "${bad:-0}" -gt 0 ]; then
-            echo "SmartSlurm: WARNING: migrated $f to v2, but $bad row(s) matched no known schema and were NOT carried into the live store (kept in backup: $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
-        else
-            echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
-        fi
+    if ! jrEmitV2 "$f" > "$tmp" || [ ! -s "$tmp" ]; then
+        rm -f "$tmp" "$bak"
+        echo "SmartSlurm: ERROR: jobRecord migration produced no output; store left UNTOUCHED: $f" >&2
+        return 1
+    fi
+    # integrity gate ------------------------------------------------------------
+    outrows=$(( $(grep -c . "$tmp") - 1 ))              # data rows (minus the header)
+    if [ "$(jrSchemaVersion "$tmp")" != 2 ] || [ "${outrows:-0}" -ne "${recog:-0}" ]; then
+        rm -f "$tmp" "$bak"
+        echo "SmartSlurm: ERROR: jobRecord migration failed its integrity check (output canonical-v2? / kept ${outrows:-0} of ${recog:-0} recognizable rows); store left UNTOUCHED: $f -- inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        return 1
+    fi
+    # commit --------------------------------------------------------------------
+    mv "$tmp" "$f"
+    if [ "${bad:-0}" -gt 0 ]; then
+        unrec="$f.unrecognized.$(date +%Y-%m-%d_%H-%M-%S).txt"
+        jrUnrecognizedLines "$bak" > "$unrec" 2>/dev/null
+        echo "SmartSlurm: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
     else
-        rm -f "$tmp"
+        echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
     fi
 }
 
