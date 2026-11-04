@@ -19,6 +19,14 @@ echoerr Running: $0 $@
 software=$1
 ref=$2
 inputSize=$3
+pipeline=${4:-unknown}
+
+# v2 grouping: stats files are keyed per (pipeline, step, refGroup) -- must match
+# the key estimateResource.sh writes. refGroup applies optional ref size-class
+# pooling (jrRefClass); falls back to the ref itself.
+. "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
+refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+statKey="$pipeline.$software.$refGroup"
 
 # Target first-pass completion rate (issue B1). Used as the percentile for the
 # size-independent (constant) model. Overridable via config/env; default 93%.
@@ -68,10 +76,10 @@ trendScaled() {
 
 echoerr Calculating mem:
 memFormu=memFormu:
-if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
+if [ -s $smartSlurmJobRecordDir/stats/$statKey.mem.stat ]; then   
     
     unset Finala Finalb Maximum STDFIT SCount
-    .  $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSlurmJobRecordDir/stats/$statKey.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.mem.stat.final:
 
@@ -84,17 +92,25 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
     # Issue A1/A2: choose the model per dimension.
-    #  - Positive slope  -> the fitted LINE captures real size dependence (and is
-    #    monotone non-decreasing, so no bigger-input-uses-less inversion).
-    #  - Slope <= 0       -> a non-positive slope cannot be trusted to extrapolate
-    #    and usually means the resource is size-INDEPENDENT (e.g. constant memory,
-    #    only time scales) or the slope is just scheduler/perf noise. Fall back to
-    #    a size-independent CONSTANT model: the target percentile of observed usage.
-    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
+    #  - Meaningfully positive slope -> the fitted LINE captures real size
+    #    dependence (and is monotone non-decreasing, so no bigger-input-uses-less
+    #    inversion).
+    #  - Slope <= 0, OR a slope so small it is numerically zero -> the resource is
+    #    size-INDEPENDENT (e.g. constant memory, only time scales) or the slope is
+    #    just scheduler/perf noise. Fall back to a size-independent CONSTANT model:
+    #    the target percentile of observed usage.
+    #    A bare "a > 0" test is not enough: gnuplot fits a*x+b to perfectly flat
+    #    data with a singular design matrix and returns a floating-point epsilon
+    #    slope (e.g. 7e-15 > 0) plus an aborted fit (no Maximum/STDFIT in the stat).
+    #    Trusted as a real trend, that constant workload is then pushed down the
+    #    thin-data path and collapses to the floor. So require the slope's rise
+    #    over the predicted input size (a*x) to be a non-negligible fraction
+    #    (>= 1e-6) of the baseline intercept before treating it as a real line.
+    if awk -v a="$Finala" -v b="$Finalb" -v x="$inputSize" 'BEGIN{ ab=(b<0?-b:b); if(ab<1)ab=1; exit !(a>0 && a*x>=1e-6*ab) }'; then
         # Scale-invariant upper-prediction margin targeting targetFirstPassPct (B1):
         # estimate = line*(1+frac), frac = p-th percentile of relative residuals.
         # Fall back to an STDFIT-derived fraction if the raw data is gone.
-        frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$software.$ref.mem" "$Finala" "$Finalb" "$targetFirstPassPct"`
+        frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$statKey.mem" "$Finala" "$Finalb" "$targetFirstPassPct"`
         [ -z "$frac" ] && frac=`awk -v s="$STDFIT" -v a="$Finala" -v x="$inputSize" -v b="$Finalb" 'BEGIN{ d=a*x+b; if(d<=0){print 0}else{printf "%.6f", 2*s/d} }'`
         echoerr "mem model: LINE ( $Finala x $inputSize + $Finalb ) * (1 + frac[$frac] @p${targetFirstPassPct})"
         # Within the observed range, or data-rich enough (SCount>9) to trust the
@@ -113,11 +129,11 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
     else
         # Constant model: p-th percentile of observed memUsed (size-independent, so
         # no outOfRange guard). Falls back to Maximum if the raw data file is gone.
-        mem=`pctile "$smartSlurmJobRecordDir/stats/$software.$ref.mem" "$targetFirstPassPct"`
+        mem=`pctile "$smartSlurmJobRecordDir/stats/$statKey.mem" "$targetFirstPassPct"`
         [ -z "$mem" ] && mem=$Maximum
         mem=`awk -v v="$mem" 'BEGIN{ if (v < 100) v = 100; printf "%d", v + 0.5 }'`
         memFormu=${memFormu}const.p${targetFirstPassPct}=${mem}
-        echoerr "mem model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $mem"
+        echoerr "mem model: CONSTANT (slope $Finala not meaningfully positive); p${targetFirstPassPct} of observed = $mem"
     fi
     echoerr
 else
@@ -129,10 +145,10 @@ echoerr Got  $mem
 echoerr Calculating time: 
 timeFormu=timeFormu:
 
-if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
+if [ -s $smartSlurmJobRecordDir/stats/$statKey.time.stat ]; then
     
     unset Finala Finalb Maximum STDFIT SCount
-    .  $smartSlurmJobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSlurmJobRecordDir/stats/$statKey.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.time.stat.final:
 
@@ -142,10 +158,12 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
 
     echoerr Finala: $Finala Finalb: $Finalb Maximum: $Maximum  STDFIT: $STDFIT
 
-    # Issue A1/A2: same per-dimension model choice as mem. Positive slope -> line;
-    # otherwise size-independent constant model (p-th percentile of observed time).
-    if awk -v a="$Finala" 'BEGIN{ exit !(a > 0) }'; then
-        frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$software.$ref.time" "$Finala" "$Finalb" "$targetFirstPassPct"`
+    # Issue A1/A2: same per-dimension model choice as mem. Meaningfully positive
+    # slope -> line; otherwise (slope <= 0, or a numerically-zero epsilon slope
+    # from a flat/singular fit) size-independent constant model (p-th percentile
+    # of observed time). See the mem branch for why "a > 0" alone is insufficient.
+    if awk -v a="$Finala" -v b="$Finalb" -v x="$inputSize" 'BEGIN{ ab=(b<0?-b:b); if(ab<1)ab=1; exit !(a>0 && a*x>=1e-6*ab) }'; then
+        frac=`relMarginFrac "$smartSlurmJobRecordDir/stats/$statKey.time" "$Finala" "$Finalb" "$targetFirstPassPct"`
         [ -z "$frac" ] && frac=`awk -v s="$STDFIT" -v a="$Finala" -v x="$inputSize" -v b="$Finalb" 'BEGIN{ d=a*x+b; if(d<=0){print 0}else{printf "%.6f", 2*s/d} }'`
         echoerr "time model: LINE ( $Finala x $inputSize + $Finalb ) * (1 + frac[$frac] @p${targetFirstPassPct})"
         # Same thin-data guard as mem: trust the slope only in range or with
@@ -161,11 +179,11 @@ if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
             echoerr "time model: THIN-DATA TREND (anchor fit@max=$Maximum, scale $inputSize/$Maximum) = $time"
         fi
     else
-        time=`pctile "$smartSlurmJobRecordDir/stats/$software.$ref.time" "$targetFirstPassPct"`
+        time=`pctile "$smartSlurmJobRecordDir/stats/$statKey.time" "$targetFirstPassPct"`
         [ -z "$time" ] && time=$Maximum
         time=`awk -v v="$time" 'BEGIN{ if (v < 10) v = 10; printf "%d", v + 0.5 }'`
         timeFormu=${timeFormu}:const.p${targetFirstPassPct}=${time}
-        echoerr "time model: CONSTANT (slope $Finala <= 0); p${targetFirstPassPct} of observed = $time"
+        echoerr "time model: CONSTANT (slope $Finala not meaningfully positive); p${targetFirstPassPct} of observed = $time"
     fi
 else
     time=0
