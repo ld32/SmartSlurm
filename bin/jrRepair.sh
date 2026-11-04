@@ -78,7 +78,10 @@ convertOne() {
     # already-v2 row (17 fields), NOT a v1 data row (numeric jobID, 20+ fields --
     # both the 20-col no-epoch and 21-col epoch variants convert).
     # (The old test diverted every non-21-field row, which wrongly skipped v2 rows.)
-    awk -F, 'NF>0 && $1!="pipeline" && $1!="1jobID" \
+    # The v2 header is ONLY "pipeline,step,..." ($1==pipeline AND $2==step); a data
+    # row whose pipeline is literally "pipeline" ($2 is a step name) must still be
+    # diverted if junk -- matching jrEmitV2's header test so the counts agree.
+    awk -F, 'NF>0 && ($1!="pipeline" || $2!="step") && $1!="1jobID" \
              && !($1 !~ /^[0-9]+$/ && NF==17) \
              && !($1 ~ /^[0-9]+$/ && NF>=20)' "$f" > "$skip"
     skip_n=$(wc -l < "$skip"); skip_n=${skip_n//[^0-9]/}

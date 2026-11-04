@@ -58,8 +58,8 @@ jrSchemaVersion() {
     # canonical header-led form; a file with nothing recognizable is left alone (0).
     awk -F, '
         /^[[:space:]]*$/            { next }                       # blank line (no vote, no "first")
-        !seen { seen=1; firstIsV2H = ($1=="pipeline") }           # is the FIRST real line the v2 header?
-        $1=="pipeline"             { h2=1; next }                  # v2 header
+        !seen { seen=1; firstIsV2H = ($1=="pipeline" && $2=="step") }   # is the FIRST real line the v2 header?
+        $1=="pipeline" && $2=="step" { h2=1; next }               # v2 header (NOT a row whose pipeline is named "pipeline")
         $1=="1jobID"               { h1=1; next }                  # v1 header (18- or 21-col)
         $1 ~ /^[0-9]+$/ && NF>=20  { v1=1; next }                  # v1 data row (20/21 col; >21 if a comma crept into the old date)
         $1 !~ /^[0-9]+$/ && NF==17 { v2=1; next }                  # v2 data row
@@ -85,7 +85,7 @@ jrUnrecognizedLines() {
     [ -s "$1" ] || return 0
     awk -F, '
         /^[[:space:]]*$/            { next }
-        $1=="pipeline" || $1=="1jobID" { next }
+        ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
         $1 ~ /^[0-9]+$/ && NF>=20   { next }
         $1 !~ /^[0-9]+$/ && NF==17  { next }
         { print }' "$1" 2>/dev/null
@@ -96,7 +96,7 @@ jrCountUnrecognized() { jrUnrecognizedLines "$1" | grep -c . ; }
 jrCountRecognized() {
     [ -s "$1" ] || { echo 0; return; }
     awk -F, '
-        $1=="pipeline" || $1=="1jobID" { next }
+        ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
         ($1 ~ /^[0-9]+$/ && NF>=20) || ($1 !~ /^[0-9]+$/ && NF==17) { c++ }
         END { print c+0 }' "$1" 2>/dev/null
 }
@@ -113,7 +113,7 @@ jrLint() {
     ver=$(jrSchemaVersion "$f")
     awk -F, -v file="$f" -v ver="$ver" '
         /^[[:space:]]*$/            { blank++; next }
-        $1=="pipeline"             { h2++; next }
+        $1=="pipeline" && $2=="step" { h2++; next }
         $1=="1jobID"               { h1++; next }
         $1 ~ /^[0-9]+$/ && NF>=21  { v1_21++; next }
         $1 ~ /^[0-9]+$/ && NF==20  { v1_20++; next }
@@ -351,7 +351,7 @@ jrEmitV2() {
           while(i<=n && a[i]~/^[0-9]+$/) i++; i++; return (i<=n)?a[i]:"" }
       function san(x){ gsub(/[, \t\r]/,"_",x); return x }
       BEGIN{ print hdr }
-      $1=="pipeline" || $1=="1jobID" { next }                 # header line (either schema)
+      ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }  # header line (NOT a data row whose pipeline is named "pipeline")
       $1 !~ /^[0-9]+$/ && NF==17 { print; next }              # already-v2 data row -> pass through
       $1 ~ /^[0-9]+$/ && NF>=20 {                             # v1 data row -> map
           # epoch = numeric tail if it looks like a unix timestamp, else none (20-col).
