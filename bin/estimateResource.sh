@@ -45,7 +45,8 @@ statKey="$pipeline.$program.$refGroup"
 jrExtractBoth() {
     local memOut=$1 timeOut=$2 jr="$smartSlurmJobRecordDir/jobRecord.txt"
     local rawM rawT; rawM=$(mktemp); rawT=$(mktemp)
-    # $1 of the inner filter is the pipeline to match ("" = pool across pipelines).
+    # $1 of the inner filter is the pipeline to match ("" = pool across NAMED
+    # pipelines, EXCLUDING standalone unknown -- it never mixes into a pipeline fit).
     _jrEmitPair() {
         jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
             -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
@@ -57,7 +58,10 @@ jrExtractBoth() {
     }
     : > "$rawM"; : > "$rawT"
     _jrEmitPair "$pipeline"
-    if [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
+    # Thin-group fallback relaxes ONLY the pipeline axis, and only across NAMED
+    # pipelines: standalone unknown never pools into a pipeline's fit, and unknown
+    # itself never broadens (it regresses on its own data only).
+    if [ "$pipeline" != unknown ] && [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
         : > "$rawM"; : > "$rawT"
         _jrEmitPair ""
     fi
@@ -241,9 +245,9 @@ fi
 command -v nextMemAfterFail >/dev/null 2>&1 || { _sjrd="$smartSlurmJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_sjrd" ] && smartSlurmJobRecordDir="$_sjrd"; }
 jr=$smartSlurmJobRecordDir/jobRecord.txt
 if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
-    recentFails=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
-    maxFailMem=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
-    maxFailTime=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
+    recentFails=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
+    maxFailMem=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
+    maxFailTime=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
     if [ "${maxFailMem:-0}" -gt 0 ]; then
         memFloor=`nextMemAfterFail "$maxFailMem" "$recentFails"`
         if [ "${memFloor:-0}" -gt "${mem:-0}" ]; then

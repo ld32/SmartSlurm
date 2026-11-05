@@ -10,7 +10,8 @@
 #                                  # non-zero if any store has unrecognized rows
 #
 # It converts jobRecord.txt and jobRecord.oom.oot.over.txt in place, after
-# backing each up to <name>.back.<timestamp>.txt (never deleted -- that backup
+# backing each up to <base>.back.<timestamp>.txt (jobRecord.txt -> jobRecord.back.<timestamp>.txt,
+# matching cleanUp.sh and the README; never deleted -- that backup
 # is your rollback). Idempotent: a file already in v2 is left untouched.
 #
 # v1 -> v2 mapping (by v1 position; see jobRecordSchema.sh):
@@ -94,7 +95,7 @@ convertOne() {
         return 0
     fi
 
-    bak="$f.back.$ts.txt"
+    bak="${f%.txt}.back.$ts.txt"
     cp -p "$f" "$bak" || { echo "  $f: backup failed, aborting this file" >&2; rm -f "$out"; return 1; }
     mv "$out" "$f"
     echo "  $f: converted $conv rows to v2 (backup: $bak)"
