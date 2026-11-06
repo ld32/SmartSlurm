@@ -46,11 +46,15 @@ jrExtractBoth() {
     local memOut=$1 timeOut=$2 jr="$smartSlurmJobRecordDir/jobRecord.txt"
     local rawM rawT; rawM=$(mktemp); rawT=$(mktemp)
     # $1 of the inner filter is the pipeline to match ("" = pool across NAMED
-    # pipelines, EXCLUDING standalone unknown -- it never mixes into a pipeline fit).
+    # pipelines for the thin-group fallback). A query for standalone "unknown" also
+    # matches "legacy": pre-v2 (jR1) rows carried no pipeline, so on migration they
+    # all became legacy and a v1 standalone run is indistinguishable from a v1
+    # pipeline run -- default to inclusion so standalone estimation can use that
+    # history (legacy is grouped by step/ref, exactly as before the pipeline column).
     _jrEmitPair() {
         jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
             -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
-            $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p) && \
+            $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && \
             $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])+0>0 {
                 print $(col["inputSize"]), $(col["memUsed"])  > mo
                 print $(col["inputSize"]), $(col["timeUsed"]) > to
@@ -59,8 +63,9 @@ jrExtractBoth() {
     : > "$rawM"; : > "$rawT"
     _jrEmitPair "$pipeline"
     # Thin-group fallback relaxes ONLY the pipeline axis, and only across NAMED
-    # pipelines: standalone unknown never pools into a pipeline's fit, and unknown
-    # itself never broadens (it regresses on its own data only).
+    # pipelines: standalone unknown never pools a named pipeline's fit (and is never
+    # pooled into one). unknown does not broaden here -- it already pools its own
+    # data plus legacy in the first pass above, and goes no further.
     if [ "$pipeline" != unknown ] && [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
         : > "$rawM"; : > "$rawT"
         _jrEmitPair ""
@@ -87,15 +92,16 @@ if [ $inputs == none ]; then
     if test `find $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSlurmJobRecordDir/stats/
 
-        # No-input history (percentile source). Mirror jrExtractBoth's fallback
-        # ladder: query this pipeline first, and if it has fewer than 3 records,
-        # re-query pooling across ALL pipelines (same step + ref group) so a job
-        # without -I still gets a percentile from past usage instead of the bare
-        # default (e.g. right after migration, where old rows are pipeline=legacy).
-        noInAwk='$(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p) && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }'
+        # No-input history (percentile source). Mirror jrExtractBoth exactly: query
+        # this pipeline first -- and for standalone unknown also pull in legacy, so a
+        # migrated jR1 store still gives a percentile instead of the bare default.
+        # Then, for NAMED pipelines only, if fewer than 3 records, re-query pooling
+        # across named pipelines (+ legacy). unknown never broadens to a named
+        # pipeline's history, matching the size-based path's isolation.
+        noInAwk='$(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }'
         nif="$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"
         jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
-        if [ "$( { wc -l < "$nif" 2>/dev/null || echo 0; } )" -lt 3 ]; then
+        if [ "$pipeline" != unknown ] && [ "$( { wc -l < "$nif" 2>/dev/null || echo 0; } )" -lt 3 ]; then
             jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
         fi
 
