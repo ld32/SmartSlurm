@@ -30,10 +30,12 @@
 # separate as long as their overall shapes differ. Each distinct shape gets a
 # placeholder id (legacyPipeN). The clustering is a guide, not an oracle.
 #
-# THE MANIFEST is the small edit surface -- one line per candidate:
-#     legacyPipe1 = <your name>    # steps={...} refs={...} rows=N samples={...}
-# Fill a real name after '=' to keep that candidate as a named pipeline; leave it
-# blank to leave those rows as legacy. Then: jrCurate.sh import <manifest>.
+# THE MANIFEST is the small edit surface -- one "|"-separated row per candidate, with
+# columns:   currentName | newName | rows | steps | refs
+#     legacyPipe1   | -       |     3 | align,count,trim | hg38,none
+# Edit the newName column only: replace "-" with a real pipeline name to keep those
+# rows as that pipeline; leave "-" to keep them as legacy. The other columns are
+# read-only hints. Then: jrCurate.sh import <manifest>.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 . "$(dirname "$0")/jobRecordSchema.sh"
@@ -133,20 +135,19 @@ cmd_export() {
     # per candidate from a quote-free awk over the CSV (sorted by placeholder number).
     {
         printf '#jrCurate-manifest-v1\n'
-        printf '# Fill a real pipeline name after each "=" to keep that candidate as a named\n'
-        printf '# pipeline; leave it blank to leave those rows as legacy. Edit ONLY the names.\n'
-        printf '# The hints below and the jobRecord.curate.csv beside this file map rows back.\n'
+        printf '# Rename migrated pipelines: edit the newName column ONLY -- replace the "-" with a\n'
+        printf '# real pipeline name to keep those rows as that pipeline; leave "-" to keep them as\n'
+        printf '# legacy. The other columns are read-only hints. Columns are "|"-separated.\n'
         printf '# Then:  %s import %s %s\n#\n' "$PROG" "$man" "$dir"
-        printf '#   <placeholder> = <your pipeline name>\n'
+        printf '# %-12s| %-16s| %5s| %-30s| %s\n' currentName newName rows steps refs
         awk -F, '
           function sortset(c,  m,b,i,j,t){ m=split(c,b,","); for(i=1;i<=m;i++)for(j=i+1;j<=m;j++)if(b[j]<b[i]){t=b[i];b[i]=b[j];b[j]=t} t=b[1];for(i=2;i<=m;i++)if(b[i]!=b[i-1])t=t","b[i]; return t }
           function addset(cur,v){ return (index(","cur",", ","v",")? cur : (cur==""?v:cur","v)) }
           NR==1 || $1=="unknown" { next }
           { ph=$1; cnt[ph]++; st[ph]=addset(st[ph],$2); rf[ph]=addset(rf[ph],$3);
-            if($4!="") sm[ph]=addset(sm[ph],$4);
             if(!(ph in seen)){ seen[ph]=1; ord[++k]=ph } }
           END{ for(i=1;i<=k;i++)for(j=i+1;j<=k;j++){ na=ord[i];gsub(/[^0-9]/,"",na); nb=ord[j];gsub(/[^0-9]/,"",nb); if(nb+0<na+0){t=ord[i];ord[i]=ord[j];ord[j]=t} }
-               for(i=1;i<=k;i++){ ph=ord[i]; printf "%-12s =                 # steps={%s} refs={%s} rows=%d samples={%s}\n", ph, sortset(st[ph]), sortset(rf[ph]), cnt[ph], sortset(sm[ph]) } }
+               for(i=1;i<=k;i++){ ph=ord[i]; printf "%-12s| %-16s| %5d| %-30s| %s\n", ph, "-", cnt[ph], sortset(st[ph]), sortset(rf[ph]) } }
         ' "$out"
     } > "$man"
 
@@ -173,14 +174,16 @@ cmd_import() {
         local csv; csv="$(dirname "$file")/jobRecord.curate.csv"
         [ -f "$csv" ] || csv="$dir/jobRecord.curate.csv"
         [ -f "$csv" ] || { rm -f "$map"; die "manifest mode needs jobRecord.curate.csv next to the manifest (re-run export)"; }
+        # manifest columns: currentName | newName | rows | steps | refs ("|"-separated).
+        # Edit only newName; "-" or empty means "leave as legacy" (skip).
         local phmap; phmap="$(mktemp)"
-        awk '
+        awk -F'|' '
             /^#/ || /^[[:space:]]*$/ { next }
-            { line=$0; sub(/#.*/,"",line); eq=index(line,"="); if(eq==0) next;
-              ph=substr(line,1,eq-1); nm=substr(line,eq+1);
-              gsub(/[[:space:]]/,"",ph); sub(/^[[:space:]]+/,"",nm); sub(/[[:space:]]+$/,"",nm);
-              if(ph=="" || nm=="") next;
-              print ph "\t" nm }
+            { cn=$1; nn=$2;
+              gsub(/^[[:space:]]+/,"",cn); gsub(/[[:space:]]+$/,"",cn);
+              gsub(/^[[:space:]]+/,"",nn); gsub(/[[:space:]]+$/,"",nn);
+              if(cn=="" || nn=="" || nn=="-") next;
+              print cn "\t" nn }
           ' "$file" > "$phmap"
         awk -F, -v pf="$phmap" '
             BEGIN{ while((getline l<pf)>0){ split(l,a,"\t"); nm[a[1]]=a[2] } }
