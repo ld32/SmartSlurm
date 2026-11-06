@@ -18,6 +18,7 @@ done
 
 usage() {
     echolog -e "Usage: \n${0##*/} --script \"bashScriptV2.sh [parameter1] [parameter2] ...\" --tmp useTmp|noTmp [--pipeline NAME] [--sbatch-options \"sbatch -p medium -t 24:0:0 -c 4\"] [--mode dryrun] [--lint] [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes] [-v|--verbose | -q|--quiet]"
+    echolog -e "Pipeline identity (keeps each pipeline's resource history separate): --pipeline NAME overrides a '#@pipeline NAME' directive in the script header, which overrides the script basename. Add '#@pipeline <name>' near the top of the script to give it a stable, unique id."
     exit 1
 }
 
@@ -102,16 +103,41 @@ done
 PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 [ -f "$PIPELINE_SCRIPT" ] || { echolog bash script file does not exist: .${PIPELINE_SCRIPT}... Exiting...; usage; }
 
-# v2 jobRecords: tag every step with a pipeline id so that the same program in
-# two different pipelines does not pool into one resource fit. Default to the
-# script basename; --pipeline overrides. Warn on a generic name since several
-# pipelines may share one jobRecord store.
+# v2 jobRecords: every step is tagged with a pipeline id so the same program in two
+# different pipelines does not pool into one resource fit. Identity precedence:
+#   1. --pipeline NAME   -- explicit flag (highest)
+#   2. #@pipeline NAME   -- directive hardcoded in the script header; travels with
+#                           the script (survives rename/copy) and needs no per-run flag
+#   3. script basename   -- fallback; warns, and on a terminal prompts, when it
+#                           resolves to a GENERIC name (ambiguous across pipelines)
+# The directive is read here by a pre-scan; the step loop below skips the directive
+# line so it is never parsed as a step marker (real step markers start with a digit).
 if [ -z "${PIPELINE_NAME:-}" ]; then
-    PIPELINE_NAME=$(basename "$PIPELINE_SCRIPT"); PIPELINE_NAME=${PIPELINE_NAME%.sh}
-    case "$PIPELINE_NAME" in
-        pipeline|run|script|main|workflow|test)
-            echolog "Warning: generic pipeline name '$PIPELINE_NAME' (from script); pass --pipeline NAME so pipelines sharing a jobRecord store stay distinct." ;;
-    esac
+    PIPELINE_NAME=$(awk '
+        /^[[:space:]]*#@pipeline([[:space:]]|=)/ {
+            s=$0; sub(/^[[:space:]]*#@pipeline[[:space:]]*=?[[:space:]]*/,"",s);
+            sub(/[[:space:]].*$/,"",s);            # first whitespace-delimited token
+            if (s!="") { print s; exit }
+        }' "$PIPELINE_SCRIPT")
+    if [ -n "$PIPELINE_NAME" ]; then
+        echolog1 "Pipeline name from #@pipeline directive: $PIPELINE_NAME"
+    else
+        PIPELINE_NAME=$(basename "$PIPELINE_SCRIPT"); PIPELINE_NAME=${PIPELINE_NAME%.sh}
+        case "$PIPELINE_NAME" in
+            pipeline|run|script|main|workflow|test)
+                _msg="This pipeline has no unique name: '#@pipeline <name>' is missing from the script header at $PIPELINE_SCRIPT. Resource usage will be recorded under the generic name '$PIPELINE_NAME', which pools unrelated pipelines' steps and degrades estimation. Add '#@pipeline <name>' near the top of the script (or pass --pipeline <name>) to fix this."
+                if [ -t 0 ]; then
+                    printf '%s\nContinue anyway? [y/N] ' "$_msg" >&2
+                    read -r _ans </dev/tty 2>/dev/null || _ans=""
+                    case "$_ans" in
+                        y|Y|yes|YES) echolog1 "Continuing under generic pipeline name '$PIPELINE_NAME' (user confirmed)." ;;
+                        *) echolog "Aborting: add '#@pipeline <name>' to $PIPELINE_SCRIPT (or pass --pipeline <name>) and re-run."; exit 1 ;;
+                    esac
+                else
+                    echolog "Warning: $_msg (non-interactive run: continuing under '$PIPELINE_NAME')."
+                fi ;;
+        esac
+    fi
 fi
 PIPELINE_NAME=$(printf '%s' "$PIPELINE_NAME" | tr -c 'A-Za-z0-9_.-' '_')   # CSV/flag-safe
 
@@ -382,6 +408,14 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
     if { [[ "$i" == \#@end ]] || [[ "$i" == \#@end\ * ]]; } && [ -z "$findjob" ]; then
         echolog "Error: '#@end' found with no open '#@ ...' step to close (orphan or duplicate #@end). Near: $t"
         touch "$smartSlurmLogDir/.conversionError"; exit 1
+    fi
+
+    # '#@pipeline NAME' is a header directive (pipeline identity, read in the pre-scan
+    # before this loop), NOT a step marker -- skip it so it is never parsed as a step.
+    # Real step markers start with a digit (#@1,...), so this can never shadow one.
+    if [[ "$i" =~ ^#@pipeline([[:space:]=]|$) ]]; then
+        echolog1 "    (pipeline directive line, applied in pre-scan: $i)"
+        continue
     fi
 
     if [[ "$i" == \#@* ]] && [[ "$i" != \#@end* ]]; then
