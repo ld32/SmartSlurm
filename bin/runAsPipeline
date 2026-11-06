@@ -486,6 +486,21 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
 
         ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echolog Job marker \"$i\" is wrong. The first three parameters cannot be empty. Please refer README.md for correct format! && exit
 
+        # The step number and its dependency(ies) are used as array indices and in
+        # arithmetic ($(( )) / jobID[]), so they MUST be numeric. Enforce it here: a
+        # non-numeric step (e.g. "foo") was silently accepted and broke DAG wiring, and
+        # an alphanumeric one (e.g. "1x") leaked a raw bash arithmetic error. Reject
+        # both with a clear message. step: a positive integer; dep: numeric step
+        # number(s), dot-joined (0 = no dependency).
+        if ! [[ "$step" =~ ^[0-9]+$ ]]; then
+            echolog "Job marker \"$i\" is wrong: the step number (first field) must be a positive integer, got '$step'. Please refer README.md for correct format!"
+            touch "$smartSlurmLogDir/.conversionError"; exit 1
+        fi
+        if ! [[ "$de" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echolog "Job marker \"$i\" is wrong: the dependency (second field) must be numeric step number(s), dot-joined (use 0 for none), got '$de'. Please refer README.md for correct format!"
+            touch "$smartSlurmLogDir/.conversionError"; exit 1
+        fi
+
         # if it is old format bash job annotation without inputs
         [[ "$name$ref$inputs" == *sbatch* ]] && echolog Job marker \"$i\" is wrong. Please refer README.md for correct format! && exit
 
