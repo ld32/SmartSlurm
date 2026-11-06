@@ -203,7 +203,10 @@ cmd_import() {
           ' "$file" > "$map" || { rm -f "$map"; die "invalid CSV (bad header)"; }
     fi
 
-    local n; n=$(grep -c . "$map" 2>/dev/null || echo 0)
+    # Count assignments. `grep -c` prints 0 AND exits non-zero on an empty map, so a
+    # `|| echo 0` fallback would append a second "0" and make $n a two-line string that
+    # breaks the numeric test below; capture stdout only and default an empty result.
+    local n; n=$(grep -c . "$map" 2>/dev/null); n=${n:-0}
     [ "${n:-0}" -gt 0 ] || { rm -f "$map"; echo "$PROG: nothing to import (no candidate was given a real pipeline name)."; return 0; }
 
     # validate every chosen name (flag/CSV-safe, has a non-digit, not reserved)
