@@ -108,8 +108,8 @@ PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 #   1. --pipeline NAME   -- explicit flag (highest)
 #   2. #@pipeline NAME   -- directive hardcoded in the script header; travels with
 #                           the script (survives rename/copy) and needs no per-run flag
-#   3. script basename   -- fallback; warns, and on a terminal prompts, when it
-#                           resolves to a GENERIC name (ambiguous across pipelines)
+#   3. script basename   -- fallback; warns (but still runs) when it resolves to a
+#                           GENERIC name (ambiguous across pipelines)
 # The directive is read here by a pre-scan; the step loop below skips the directive
 # line so it is never parsed as a step marker (real step markers start with a digit).
 #
@@ -160,17 +160,10 @@ fi
 if [ "$PIPELINE_SRC" = basename ]; then
     case "$PIPELINE_NAME" in
         pipeline|run|script|main|workflow|test)
-            _msg="This pipeline has no unique name: '#@pipeline <name>' is missing from the script header at $PIPELINE_SCRIPT. Resource usage will be recorded under the generic name '$PIPELINE_NAME', which pools unrelated pipelines' steps and degrades estimation. Add '#@pipeline <name>' near the top of the script (or pass --pipeline <name>) to fix this."
-            if [ -t 0 ]; then
-                printf '%s\nContinue anyway? [y/N] ' "$_msg" >&2
-                read -r _ans </dev/tty 2>/dev/null || _ans=""
-                case "$_ans" in
-                    y|Y|yes|YES) echolog1 "Continuing under generic pipeline name '$PIPELINE_NAME' (user confirmed)." ;;
-                    *) echolog "Aborting: add '#@pipeline <name>' to $PIPELINE_SCRIPT (or pass --pipeline <name>) and re-run."; exit 1 ;;
-                esac
-            else
-                echolog "Warning: $_msg (non-interactive run: continuing under '$PIPELINE_NAME')."
-            fi ;;
+            # No unique pipeline name resolved. Warn and continue under the generic
+            # default name -- no prompt, so neither an interactive run nor automation
+            # is ever blocked. Just tell the user how to give the pipeline a real id.
+            echolog "Warning: this pipeline has no unique name -- recording resource usage under the default name '$PIPELINE_NAME', which pools unrelated pipelines' steps and degrades estimation. Add '#@pipeline <name>' to the top of $PIPELINE_SCRIPT (or pass --pipeline <name>) to give it a stable, unique id." ;;
     esac
 fi
 
