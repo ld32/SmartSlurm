@@ -112,34 +112,67 @@ PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 #                           resolves to a GENERIC name (ambiguous across pipelines)
 # The directive is read here by a pre-scan; the step loop below skips the directive
 # line so it is never parsed as a step marker (real step markers start with a digit).
-if [ -z "${PIPELINE_NAME:-}" ]; then
+#
+# A pipeline id is NORMALIZED then VALIDATED hard, because it becomes the first CSV
+# column of every jobRecord row and the schema keys row-type detection on it:
+#   * _ssNormPipe strips a trailing CR (CRLF files), keeps only the first token, and
+#     maps any char outside [A-Za-z0-9_.-] to '_' (CSV/flag-safe);
+#   * an id must then be non-empty, contain a NON-digit (jrEmitV2 detects a v2 data
+#     row by a non-numeric first field, so an all-digit id silently drops every row
+#     for that pipeline), and not be a reserved marker (legacy / unknown).
+# An explicit bad name (--pipeline or #@pipeline) is a hard error; a degenerate
+# basename falls through to the generic-name path.
+_ssNormPipe() { printf '%s' "${1:-}" | tr -d '\r' | awk 'NR==1{printf "%s",$1; exit}' | tr -c 'A-Za-z0-9_.-' '_'; }
+
+PIPELINE_SRC=flag
+if [ -n "${PIPELINE_NAME:-}" ]; then
+    PIPELINE_NAME=$(_ssNormPipe "$PIPELINE_NAME")
+else
     PIPELINE_NAME=$(awk '
         /^[[:space:]]*#@pipeline([[:space:]]|=)/ {
-            s=$0; sub(/^[[:space:]]*#@pipeline[[:space:]]*=?[[:space:]]*/,"",s);
-            sub(/[[:space:]].*$/,"",s);            # first whitespace-delimited token
-            if (s!="") { print s; exit }
+            s=$0; sub(/^[[:space:]]*#@pipeline[[:space:]]*=?[[:space:]]*/,"",s); print s; exit
         }' "$PIPELINE_SCRIPT")
+    PIPELINE_NAME=$(_ssNormPipe "$PIPELINE_NAME")
     if [ -n "$PIPELINE_NAME" ]; then
+        PIPELINE_SRC=directive
         echolog1 "Pipeline name from #@pipeline directive: $PIPELINE_NAME"
     else
-        PIPELINE_NAME=$(basename "$PIPELINE_SCRIPT"); PIPELINE_NAME=${PIPELINE_NAME%.sh}
-        case "$PIPELINE_NAME" in
-            pipeline|run|script|main|workflow|test)
-                _msg="This pipeline has no unique name: '#@pipeline <name>' is missing from the script header at $PIPELINE_SCRIPT. Resource usage will be recorded under the generic name '$PIPELINE_NAME', which pools unrelated pipelines' steps and degrades estimation. Add '#@pipeline <name>' near the top of the script (or pass --pipeline <name>) to fix this."
-                if [ -t 0 ]; then
-                    printf '%s\nContinue anyway? [y/N] ' "$_msg" >&2
-                    read -r _ans </dev/tty 2>/dev/null || _ans=""
-                    case "$_ans" in
-                        y|Y|yes|YES) echolog1 "Continuing under generic pipeline name '$PIPELINE_NAME' (user confirmed)." ;;
-                        *) echolog "Aborting: add '#@pipeline <name>' to $PIPELINE_SCRIPT (or pass --pipeline <name>) and re-run."; exit 1 ;;
-                    esac
-                else
-                    echolog "Warning: $_msg (non-interactive run: continuing under '$PIPELINE_NAME')."
-                fi ;;
-        esac
+        PIPELINE_NAME=$(_ssNormPipe "$(basename "$PIPELINE_SCRIPT" .sh)")
+        PIPELINE_SRC=basename
     fi
 fi
-PIPELINE_NAME=$(printf '%s' "$PIPELINE_NAME" | tr -c 'A-Za-z0-9_.-' '_')   # CSV/flag-safe
+
+_ssBadPipe=""
+case "$PIPELINE_NAME" in
+    legacy|unknown) _ssBadPipe="'$PIPELINE_NAME' is a reserved jobRecord marker" ;;
+    *[!0-9]*)       : ;;                              # contains a non-digit -> valid
+    '')             _ssBadPipe="empty after sanitizing" ;;
+    *)              _ssBadPipe="all-digits ('$PIPELINE_NAME') -- the schema would drop its rows" ;;
+esac
+if [ -n "$_ssBadPipe" ]; then
+    case "$PIPELINE_SRC" in
+        flag)      echolog "Error: --pipeline name is invalid: $_ssBadPipe. Use a name with at least one letter (and not 'legacy'/'unknown')."; exit 1 ;;
+        directive) echolog "Error: #@pipeline name in $PIPELINE_SCRIPT is invalid: $_ssBadPipe. Use a name with at least one letter (and not 'legacy'/'unknown')."; exit 1 ;;
+        basename)  PIPELINE_NAME=pipeline ;;          # degenerate filename -> generic path
+    esac
+fi
+
+if [ "$PIPELINE_SRC" = basename ]; then
+    case "$PIPELINE_NAME" in
+        pipeline|run|script|main|workflow|test)
+            _msg="This pipeline has no unique name: '#@pipeline <name>' is missing from the script header at $PIPELINE_SCRIPT. Resource usage will be recorded under the generic name '$PIPELINE_NAME', which pools unrelated pipelines' steps and degrades estimation. Add '#@pipeline <name>' near the top of the script (or pass --pipeline <name>) to fix this."
+            if [ -t 0 ]; then
+                printf '%s\nContinue anyway? [y/N] ' "$_msg" >&2
+                read -r _ans </dev/tty 2>/dev/null || _ans=""
+                case "$_ans" in
+                    y|Y|yes|YES) echolog1 "Continuing under generic pipeline name '$PIPELINE_NAME' (user confirmed)." ;;
+                    *) echolog "Aborting: add '#@pipeline <name>' to $PIPELINE_SCRIPT (or pass --pipeline <name>) and re-run."; exit 1 ;;
+                esac
+            else
+                echolog "Warning: $_msg (non-interactive run: continuing under '$PIPELINE_NAME')."
+            fi ;;
+    esac
+fi
 
 export bashScriptPath=`dirname "$PIPELINE_SCRIPT"`
 
@@ -411,12 +444,19 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
     fi
 
     # '#@pipeline NAME' is a header directive (pipeline identity, read in the pre-scan
-    # before this loop), NOT a step marker -- skip it so it is never parsed as a step.
-    # Real step markers start with a digit (#@1,...), so this can never shadow one.
-    if [[ "$i" =~ ^#@pipeline([[:space:]=]|$) ]]; then
-        echolog1 "    (pipeline directive line, applied in pre-scan: $i)"
-        continue
-    fi
+    # before this loop), NOT a step marker. A line starting with '#@pipeline' is only
+    # ever this directive (real step markers start with a digit, e.g. '#@1,...'), so
+    # skip the valid form and reject a malformed one (e.g. '#@pipelineFoo') with a
+    # clear message instead of letting it fail as a bogus step marker below.
+    case "$i" in
+      '#@pipeline'*)
+        if [[ "$i" =~ ^#@pipeline([[:space:]=]|$) ]]; then
+            echolog1 "    (pipeline directive line, applied in pre-scan: $i)"; continue
+        else
+            echolog "Error: malformed '#@pipeline' directive (use '#@pipeline <name>'). Near: $t"
+            touch "$smartSlurmLogDir/.conversionError"; exit 1
+        fi ;;
+    esac
 
     if [[ "$i" == \#@* ]] && [[ "$i" != \#@end* ]]; then
 
