@@ -68,6 +68,7 @@ _badname() {
     case "$1" in
         *[,\ ]*|*"	"*) echo "contains a space/comma/tab" ;;
         legacy|unknown)   echo "is a reserved marker" ;;
+        1jobID|pipeline)  echo "collides with a jobRecord header line (the schema would silently drop its rows)" ;;
         *[!0-9]*)         : ;;                       # has a non-digit -> ok
         '')               echo "is empty" ;;
         *)                echo "is all-digits (the schema would drop its rows)" ;;
