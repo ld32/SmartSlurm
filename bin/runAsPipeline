@@ -489,7 +489,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         # Leading zeros are rejected because step/dep index bash arrays/arithmetic,
         # where e.g. "08"/"09" leak "value too great for base" and "010" is read octal.
         if ! [[ "$step" =~ ^[1-9][0-9]*$ ]]; then
-            echolog "Job marker \"$i\" is wrong: the step number (first field) must be a positive integer with no leading zero (it indexes bash arrays / arithmetic, where a leading zero leaks a 'value too great for base' error or is silently misread as octal), got '$step'. Please refer README.md for correct format!"
+            echolog "Job marker \"$i\" is wrong: the step number (first field) must be a positive integer with no leading zero (it indexes bash arrays / arithmetic, where a leading zero is invalid or is silently misread as octal), got '$step'. Please refer README.md for correct format!"
             touch "$smartSlurmLogDir/.conversionError"; exit 1
         fi
         if ! [[ "$de" =~ ^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*$ ]]; then
