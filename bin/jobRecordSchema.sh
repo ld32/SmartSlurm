@@ -240,6 +240,21 @@ _jrMigrateUnlocked() {
         printf '%s\n' "$dup" >> "$unrec"
         echo "SmartSlurm: WARNING: $f had $(printf '%s\n' "$dup" | grep -c .) line(s) identical to the jobRecord header beyond the first -- a stray duplicate header, or a data row whose pipeline/step are literally the header words (rename that pipeline). NOT migrated as data; saved to $unrec (full original in $bak)." >&2
     fi
+    # Curation pointer: v1 rows have no pipeline column, so jrEmitV2 tags every migrated
+    # legacy row pipeline=legacy. Those rows still feed the standalone/legacy estimate
+    # bucket, but all pipelines' history is pooled under one "legacy" id, which blunts
+    # PER-PIPELINE accuracy. Point the user at the (optional, one-time) curation step so
+    # the v2 experience is complete, not a dead end. Fires only when this migration
+    # actually produced legacy rows, so a store with none is left silent. The explicit
+    # command is named only when jrCurate.sh is actually installed (it ships separately);
+    # otherwise the note stays generic so we never point at a tool that is not present.
+    if awk -F, 'NR>1 && $1=="legacy"{f=1; exit} END{exit !f}' "$f" 2>/dev/null; then
+        if command -v jrCurate.sh >/dev/null 2>&1; then
+            echo "SmartSlurm: NOTE: for optimal per-pipeline performance after migrating records, migrated history is tagged pipeline=legacy (v1 stored no pipeline id) and pooled. It still informs estimates, but assigning real pipeline names sharpens per-pipeline accuracy. Optional one-time curation: 'jrCurate.sh export \"$(dirname -- "$f")\"', edit the manifest, then 'jrCurate.sh import <manifest>'." >&2
+        else
+            echo "SmartSlurm: NOTE: for optimal per-pipeline performance after migrating records, migrated history is tagged pipeline=legacy (v1 stored no pipeline id) and pooled under one id. It still informs estimates, but assigning real per-pipeline names sharpens accuracy -- ask your SmartSlurm maintainer about curating legacy records." >&2
+        fi
+    fi
 }
 
 # jrMigrateStore <file> -- public, locked, idempotent migration of a legacy (v1)/
