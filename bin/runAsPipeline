@@ -145,6 +145,7 @@ fi
 _ssBadPipe=""
 case "$PIPELINE_NAME" in
     legacy|unknown) _ssBadPipe="'$PIPELINE_NAME' is a reserved jobRecord marker" ;;
+    1jobID|pipeline) _ssBadPipe="'$PIPELINE_NAME' collides with a jobRecord header line -- the schema would silently drop its rows" ;;
     *[!0-9]*)       : ;;                              # contains a non-digit -> valid
     '')             _ssBadPipe="empty after sanitizing" ;;
     *)              _ssBadPipe="all-digits ('$PIPELINE_NAME') -- the schema would drop its rows" ;;
@@ -153,13 +154,13 @@ if [ -n "$_ssBadPipe" ]; then
     case "$PIPELINE_SRC" in
         flag)      echolog "Error: --pipeline name is invalid: $_ssBadPipe. Use a name with at least one letter (and not 'legacy'/'unknown')."; exit 1 ;;
         directive) echolog "Error: #@pipeline name in $PIPELINE_SCRIPT is invalid: $_ssBadPipe. Use a name with at least one letter (and not 'legacy'/'unknown')."; exit 1 ;;
-        basename)  PIPELINE_NAME=pipeline ;;          # degenerate filename -> generic path
+        basename)  PIPELINE_NAME=generic ;;           # degenerate filename -> generic path ('generic' cannot collide with a header line; 'pipeline' can, when a step is named 'step')
     esac
 fi
 
 if [ "$PIPELINE_SRC" = basename ]; then
     case "$PIPELINE_NAME" in
-        pipeline|run|script|main|workflow|test)
+        generic|run|script|main|workflow|test)
             # No unique pipeline name resolved. Warn and continue under the generic
             # default name -- no prompt, so neither an interactive run nor automation
             # is ever blocked. Just tell the user how to give the pipeline a real id.
@@ -483,14 +484,16 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         # arithmetic ($(( )) / jobID[]), so they MUST be numeric. Enforce it here: a
         # non-numeric step (e.g. "foo") was silently accepted and broke DAG wiring, and
         # an alphanumeric one (e.g. "1x") leaked a raw bash arithmetic error. Reject
-        # both with a clear message. step: a positive integer; dep: numeric step
-        # number(s), dot-joined (0 = no dependency).
-        if ! [[ "$step" =~ ^[0-9]+$ ]]; then
-            echolog "Job marker \"$i\" is wrong: the step number (first field) must be a positive integer, got '$step'. Please refer README.md for correct format!"
+        # both with a clear message. step: a positive integer, NO leading zero; dep:
+        # numeric step number(s) (no leading zero), dot-joined (0 = no dependency).
+        # Leading zeros are rejected because step/dep index bash arrays/arithmetic,
+        # where e.g. "08"/"09" leak "value too great for base" and "010" is read octal.
+        if ! [[ "$step" =~ ^[1-9][0-9]*$ ]]; then
+            echolog "Job marker \"$i\" is wrong: the step number (first field) must be a positive integer with no leading zero (it indexes bash arrays / arithmetic, where a leading zero leaks a 'value too great for base' error or is silently misread as octal), got '$step'. Please refer README.md for correct format!"
             touch "$smartSlurmLogDir/.conversionError"; exit 1
         fi
-        if ! [[ "$de" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
-            echolog "Job marker \"$i\" is wrong: the dependency (second field) must be numeric step number(s), dot-joined (use 0 for none), got '$de'. Please refer README.md for correct format!"
+        if ! [[ "$de" =~ ^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*$ ]]; then
+            echolog "Job marker \"$i\" is wrong: the dependency (second field) must be numeric step number(s) with no leading zero, dot-joined (use 0 for none), got '$de'. Please refer README.md for correct format!"
             touch "$smartSlurmLogDir/.conversionError"; exit 1
         fi
 
