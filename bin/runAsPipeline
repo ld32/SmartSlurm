@@ -123,6 +123,10 @@ PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 # An explicit bad name (--pipeline or #@pipeline) is a hard error; a degenerate
 # basename falls through to the generic-name path.
 _ssNormPipe() { printf '%s' "${1:-}" | tr -d '\r' | awk 'NR==1{printf "%s",$1; exit}' | tr -c 'A-Za-z0-9_.-' '_'; }
+# Strip leading/trailing whitespace from a value. Used on the comma-separated #@
+# marker fields so the README's documented spacing (`#@ step , deps , name , ...`),
+# which stock master tolerated, keeps working after the numeric-grammar checks.
+_ssTrim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
 PIPELINE_SRC=flag
 if [ -n "${PIPELINE_NAME:-}" ]; then
@@ -477,6 +481,12 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         ref=${arrIN[3]%%:*} # references files which need to rsync to tmp space
         inputs=${arrIN[4]}
         xsuba=${arrIN[5]}  # sbatch options
+
+        # Back-compat: the README's format shows spaces around the commas
+        # (`#@ step , deps , name , ref , inputs , ...`) and stock master tolerated
+        # them. Trim the identifier fields so the numeric-grammar checks below don't
+        # reject a leading space (e.g. dep ' 0'); sbatch options keep their spacing.
+        step=$(_ssTrim "$step"); de=$(_ssTrim "$de"); name=$(_ssTrim "$name"); ref=$(_ssTrim "$ref"); inputs=$(_ssTrim "$inputs")
 
         ( [ -z "$step" ] || [ -z "$de" ] || [ -z "$name" ] ) && echolog Job marker \"$i\" is wrong. The first three parameters cannot be empty. Please refer README.md for correct format! && exit
 
