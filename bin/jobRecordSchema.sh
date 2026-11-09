@@ -314,10 +314,17 @@ jrAppendRow() {
 # `print`s; the header is always preserved. Atomic (temp + rename). The two prunes
 # (7-day recency, fail-prune) are one call each -- no positional columns, no second
 # colmap, no v1 fallback. Skips a store that is not (or cannot become) v2.
+# RETURN CONTRACT: 0 only when the rewrite was APPLIED (atomic rename done) or the
+# store was empty (honest no-op); NON-ZERO when it did NOT write -- lock timeout, awk
+# error, empty output, or a store that is not (and cannot become) v2. Prune-only
+# callers (cleanUp) ignore the status and safely skip on contention; a caller that
+# reports success to a user (e.g. a curation import) MUST check it, because a false
+# "applied" on a silent skip is a data-integrity trap (adversary Finding 1).
 jrRewrite() {
     local f=$1 prog=$2; shift 2
-    [ -s "$f" ] || return 0
-    _jrLock "$f" || return 0
+    [ -s "$f" ] || return 0                        # nothing to rewrite -> honest no-op
+    _jrLock "$f" || return 1                        # could NOT take the lock -> did NOT write
+    local rc=1                                      # "did not apply" until a successful rename
     _jrMigrateUnlocked "$f"
     if [ "$(jrSchemaVersion "$f")" = 2 ]; then
         local tmp="$f.rw.$$"
@@ -325,12 +332,13 @@ jrRewrite() {
                 NR==1 { for(i=1;i<=NF;i++) col[$i]=i; print; next }
                 { '"$prog"' }
             ' "$f" > "$tmp" && [ -s "$tmp" ]; then
-            mv "$tmp" "$f"
+            mv "$tmp" "$f" && rc=0                  # applied iff the atomic rename succeeded
         else
             rm -f "$tmp"
         fi
     fi
     _jrUnlock "$f"
+    return $rc
 }
 
 # jrRow name=value ... -> one CSV row with the fields placed in JR_COLUMNS_V2 order.
