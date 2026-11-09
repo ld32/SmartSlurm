@@ -62,7 +62,7 @@ jrSchemaVersion() {
         $1=="pipeline" && $2=="step" { h2=1; next }               # v2 header (NOT a row whose pipeline is named "pipeline")
         $1=="1jobID"               { h1=1; next }                  # v1 header (18- or 21-col)
         $1 ~ /^[0-9]+$/ && NF>=20  { v1=1; next }                  # v1 data row (20/21 col; >21 if a comma crept into the old date)
-        $1 !~ /^[0-9]+$/ && NF==17 { v2=1; next }                  # v2 data row
+        NF==17 && (h2 || $1 !~ /^[0-9]+$/) { v2=1; next }          # v2 data row (17 col). An all-digit $1 is ambiguous (v2 pipeline name vs corrupt v1 jobID), so it votes v2 ONLY under a v2 header already seen above; headerless, it stays unrecognized.
                                    { }                             # junk: does not vote
         END {
             if (v1)                 { print 1; exit }   # any v1 row -> migrate (even if mixed)
@@ -73,8 +73,14 @@ jrSchemaVersion() {
 }
 
 # A row is RECOGNIZED iff it is a v1 record (numeric jobID, 20+ cols -- 20/21, or
-# more if a comma crept into the old date) or a v2 record (non-numeric first field,
-# 17 cols). Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
+# more if a comma crept into the old date) or a v2 record (17 cols). NF separates
+# the clear cases (v1>=20, v2==17). The one ambiguity is a 17-col row with an
+# all-digit field 1: that is EITHER a v2 row whose pipeline name is all-digit OR a
+# corrupt/truncated v1 row (jobID-first). We disambiguate by HEADER CONTEXT -- such
+# a row counts as v2 only when a v2 header has already appeared above it in the store
+# (the shape every sanctioned v2 writer produces); headerless, it stays UNRECOGNIZED
+# rather than being guessed into v2. A non-digit-$1 17-col row is always v2.
+# Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
 # so it must never vanish silently. These three helpers share ONE definition of
 # "recognized", matching jrEmitV2 exactly, so the migration integrity check and the
 # warnings can't disagree with what conversion actually did.
@@ -85,9 +91,10 @@ jrUnrecognizedLines() {
     [ -s "$1" ] || return 0
     awk -F, '
         /^[[:space:]]*$/            { next }
-        ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
+        $1=="pipeline" && $2=="step" { v2h=1; next }
+        $1=="1jobID"                { next }
         $1 ~ /^[0-9]+$/ && NF>=20   { next }
-        $1 !~ /^[0-9]+$/ && NF==17  { next }
+        NF==17 && (v2h || $1 !~ /^[0-9]+$/) { next }
         { print }' "$1" 2>/dev/null
 }
 # jrCountUnrecognized <file> -> how many such rows.
@@ -96,8 +103,9 @@ jrCountUnrecognized() { jrUnrecognizedLines "$1" | grep -c . ; }
 jrCountRecognized() {
     [ -s "$1" ] || { echo 0; return; }
     awk -F, '
-        ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
-        ($1 ~ /^[0-9]+$/ && NF>=20) || ($1 !~ /^[0-9]+$/ && NF==17) { c++ }
+        $1=="pipeline" && $2=="step" { v2h=1; next }
+        $1=="1jobID"                { next }
+        ($1 ~ /^[0-9]+$/ && NF>=20) || (NF==17 && (v2h || $1 !~ /^[0-9]+$/)) { c++ }
         END { print c+0 }' "$1" 2>/dev/null
 }
 
@@ -117,7 +125,7 @@ jrLint() {
         $1=="1jobID"               { h1++; next }
         $1 ~ /^[0-9]+$/ && NF>=21  { v1_21++; next }
         $1 ~ /^[0-9]+$/ && NF==20  { v1_20++; next }
-        $1 !~ /^[0-9]+$/ && NF==17 { v2++; next }
+        NF==17 && (h2 || $1 !~ /^[0-9]+$/) { v2++; next }
         { bad++; if (nbad<5) badln[++nbad]=NR" (NF="NF"): "substr($0,1,60) }
         END {
             tag = (ver==2?"v2 (current)":(ver==1?"v1/mixed -> will auto-migrate":"UNRECOGNIZED"))
@@ -131,7 +139,15 @@ jrLint() {
                 printf "    UNRECOGNIZED   : %d row(s) -- will NOT migrate (kept in backup); first few:\n", bad
                 for (i=1;i<=nbad;i++) printf "        line %s\n", badln[i]
             }
-            exit (bad>0 ? 1 : 0)
+            # A valid store has exactly ONE header. More than one header-shaped line is
+            # either a concatenated duplicate header OR a data row whose pipeline+step
+            # literally equal the header ("pipeline"+"step", or "1jobID") -- which is
+            # byte-identical to the header and cannot be told apart from it, so it is
+            # read as a header and its data silently excluded. Make that loud.
+            if (h2>1 || h1>1) {
+                printf "    DUPLICATE HEADER: %d extra header-shaped line(s) -- a store has ONE header. An extra one is a stray duplicate header, OR a data row whose pipeline/step are literally the header words (rename that pipeline: it is indistinguishable from the header and its row is not counted as data).\n", (h2>1?h2-1:0)+(h1>1?h1-1:0)
+            }
+            exit ((bad>0 || h2>1 || h1>1) ? 1 : 0)
         }' "$f"
 }
 
@@ -212,6 +228,17 @@ _jrMigrateUnlocked() {
         echo "SmartSlurm: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
     else
         echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
+    fi
+    # Case 2 (header collision): a data row whose pipeline/step are literally the header
+    # words ("pipeline"/"step", or "1jobID") is byte-identical to the header, so it was
+    # read as a (duplicate) header and its data excluded -- not counted in recog or bad,
+    # so the gate above can't see it. Surface it loudly and preserve it: divert every
+    # header-shaped line BEYOND THE FIRST (the real header) to the .unrecognized file.
+    local dup; dup=$(awk -F, '(($1=="pipeline"&&$2=="step")||$1=="1jobID"){ if(seen++) print }' "$bak" 2>/dev/null)
+    if [ -n "$dup" ]; then
+        [ -n "${unrec:-}" ] || unrec="$f.unrecognized.$(date +%Y-%m-%d_%H-%M-%S).txt"
+        printf '%s\n' "$dup" >> "$unrec"
+        echo "SmartSlurm: WARNING: $f had $(printf '%s\n' "$dup" | grep -c .) line(s) identical to the jobRecord header beyond the first -- a stray duplicate header, or a data row whose pipeline/step are literally the header words (rename that pipeline). NOT migrated as data; saved to $unrec (full original in $bak)." >&2
     fi
 }
 
@@ -351,8 +378,9 @@ jrEmitV2() {
           while(i<=n && a[i]~/^[0-9]+$/) i++; i++; return (i<=n)?a[i]:"" }
       function san(x){ gsub(/[, \t\r]/,"_",x); return x }
       BEGIN{ print hdr }
-      ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }  # header line (NOT a data row whose pipeline is named "pipeline")
-      $1 !~ /^[0-9]+$/ && NF==17 { print; next }              # already-v2 data row -> pass through
+      $1=="pipeline" && $2=="step" { v2h=1; next }           # v2 header line (NOT a data row whose pipeline is named "pipeline")
+      $1=="1jobID" { next }                                  # v1 header line
+      NF==17 && (v2h || $1 !~ /^[0-9]+$/) { print; next }    # already-v2 data row -> pass through. An all-digit $1 is kept ONLY under a v2 header seen above (else it is an ambiguous corrupt v1 row, skipped below).
       $1 ~ /^[0-9]+$/ && NF>=20 {                             # v1 data row -> map
           # epoch = numeric tail if it looks like a unix timestamp, else none (20-col).
           # Use length(), NOT an {n,} interval regex: mawk (Debian/Ubuntu default awk)
