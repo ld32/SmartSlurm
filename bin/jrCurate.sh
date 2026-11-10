@@ -66,6 +66,7 @@ _resolve_dir() {
 # bad, nothing if OK.
 _badname() {
     case "$1" in
+        *'|'*)            echo "contains a pipe (the manifest column separator -- would be truncated)" ;;
         *[,\ ]*|*"	"*) echo "contains a space/comma/tab" ;;
         legacy|unknown)   echo "is a reserved marker" ;;
         1jobID|pipeline)  echo "collides with a jobRecord header line (the schema would silently drop its rows)" ;;
@@ -85,12 +86,19 @@ cmd_export() {
     local jr="$dir/jobRecord.txt"
     [ -s "$jr" ] || die "no jobRecord.txt in $dir"
     local out="$dir/jobRecord.curate.csv" man="$dir/jobRecord.curate.manifest"
+    # An export-id stamped into BOTH the CSV and the manifest binds them together, so
+    # import can refuse a manifest that was edited against a DIFFERENT (e.g. newer)
+    # export -- otherwise stale placeholder numbering could rename the wrong rows to a
+    # perfectly valid name (silent misassignment).
+    local exid; exid="$(date +%Y%m%d%H%M%S)-$$-${RANDOM}"
 
     local legacy_n
     legacy_n=$(jrEmitV2 "$jr" 2>/dev/null | awk -F, 'NR>1 && $1=="legacy"{c++} END{print c+0}')
     [ "${legacy_n:-0}" -gt 0 ] || { echo "$PROG: no legacy rows to curate in $jr (nothing migrated, or already curated)."; return 0; }
 
     # Pass 1: cluster + write the CSV (pipeline col = placeholder) + a stderr summary.
+    # The CSV leads with the export-id comment (import skips '#' lines on read).
+    { printf '#jrCurate-export-id:%s\n' "$exid"
     jrEmitV2 "$jr" 2>/dev/null | awk -F, -v OFS=, -v hdr="$JR_HEADER_V2" '
       function parseFlag(fl,  n,a,i) {
           n=split(fl,a,"."); _isRap=0; _name=""; _sample="";
@@ -130,12 +138,13 @@ cmd_export() {
               printf "  %-12s steps={%s} refs={%s} rows=%d\n", id, shapeOf[k], refs[id], cnt[id] > "/dev/stderr" }
           if ("unknown" in cnt)
               printf "  %-12s (standalone / free-form flag -- kept as the shared standalone bucket) rows=%d\n", "unknown", cnt["unknown"] > "/dev/stderr";
-      }' > "$out"
+      }'
+    } > "$out"
 
     # Pass 2: the manifest template. Header from bash (quoting-safe); one data line
     # per candidate from a quote-free awk over the CSV (sorted by placeholder number).
     {
-        printf '#jrCurate-manifest-v1\n'
+        printf '#jrCurate-manifest-v1 export-id:%s\n' "$exid"
         printf '# Rename migrated pipelines: edit the newName column ONLY -- replace the "-" with a\n'
         printf '# real pipeline name to keep those rows as that pipeline; leave "-" to keep them as\n'
         printf '# legacy. The other columns are read-only hints. Columns are "|"-separated.\n'
@@ -144,7 +153,7 @@ cmd_export() {
         awk -F, '
           function sortset(c,  m,b,i,j,t){ m=split(c,b,","); for(i=1;i<=m;i++)for(j=i+1;j<=m;j++)if(b[j]<b[i]){t=b[i];b[i]=b[j];b[j]=t} t=b[1];for(i=2;i<=m;i++)if(b[i]!=b[i-1])t=t","b[i]; return t }
           function addset(cur,v){ return (index(","cur",", ","v",")? cur : (cur==""?v:cur","v)) }
-          NR==1 || $1=="unknown" { next }
+          /^#/ || $1=="pipeline" || $1=="unknown" { next }
           { ph=$1; cnt[ph]++; st[ph]=addset(st[ph],$2); rf[ph]=addset(rf[ph],$3);
             if(!(ph in seen)){ seen[ph]=1; ord[++k]=ph } }
           END{ for(i=1;i<=k;i++)for(j=i+1;j<=k;j++){ na=ord[i];gsub(/[^0-9]/,"",na); nb=ord[j];gsub(/[^0-9]/,"",nb); if(nb+0<na+0){t=ord[i];ord[i]=ord[j];ord[j]=t} }
@@ -175,26 +184,48 @@ cmd_import() {
         local csv; csv="$(dirname "$file")/jobRecord.curate.csv"
         [ -f "$csv" ] || csv="$dir/jobRecord.curate.csv"
         [ -f "$csv" ] || { rm -f "$map"; die "manifest mode needs jobRecord.curate.csv next to the manifest (re-run export)"; }
+        # Bind the manifest to the CSV it was generated from: refuse a manifest edited
+        # against a DIFFERENT export. Placeholder numbering (legacyPipeN) can change
+        # between exports, so a stale manifest + fresh CSV would silently rename the
+        # WRONG rows to a perfectly valid name -- the hardest kind of error to notice.
+        local man_id csv_id
+        man_id=$(sed -n '1{s/.*export-id:\([^[:space:]]*\).*/\1/p;q}' "$file")
+        csv_id=$(sed -n '1{s/^#jrCurate-export-id:\([^[:space:]]*\).*/\1/p;q}' "$csv")
+        [ -n "$man_id" ] && [ -n "$csv_id" ] || { rm -f "$map"; die "manifest/CSV predate export-id tagging; re-run '$PROG export' and edit the fresh manifest"; }
+        [ "$man_id" = "$csv_id" ] || { rm -f "$map"; die "manifest (export-id $man_id) does not match jobRecord.curate.csv (export-id $csv_id): the manifest is from a different export. Re-run '$PROG export' and re-edit, or pair the manifest with its own CSV."; }
         # manifest columns: currentName | newName | rows | steps | refs ("|"-separated).
-        # Edit only newName; "-" or empty means "leave as legacy" (skip).
+        # Edit only newName; "-" or empty means "leave as legacy" (skip). A currentName
+        # must appear at most once -- otherwise a duplicate is silently last-wins.
         local phmap; phmap="$(mktemp)"
         awk -F'|' '
             /^#/ || /^[[:space:]]*$/ { next }
+            # The template has exactly 5 "|"-columns. More than 5 means a value (almost
+            # always an edited newName) contains the "|" separator, which would silently
+            # truncate the name -- reject it rather than apply the fragment.
+            NF>5 { printf "jrCurate: malformed manifest line (a value contains the '"'"'|'"'"' separator): %s\n", $0 > "/dev/stderr"; bad=1; next }
             { cn=$1; nn=$2;
               gsub(/^[[:space:]]+/,"",cn); gsub(/[[:space:]]+$/,"",cn);
               gsub(/^[[:space:]]+/,"",nn); gsub(/[[:space:]]+$/,"",nn);
-              if(cn=="" || nn=="" || nn=="-") next;
+              if(cn=="") next;
+              if(cn in seen){ printf "jrCurate: duplicate currentName in manifest: %s\n", cn > "/dev/stderr"; dup=1; next }
+              seen[cn]=1;
+              if(nn=="" || nn=="-") next;
               print cn "\t" nn }
-          ' "$file" > "$phmap"
+            END{ if(dup||bad) exit 7 }
+          ' "$file" > "$phmap" || { rm -f "$map" "$phmap"; die "manifest has duplicate or malformed lines (see above); each candidate appears once, and no value may contain '|'"; }
+        # CSV read skips the leading '#export-id' comment; the data header
+        # (pipeline,step,...) never matches a placeholder name, so it is ignored too.
         awk -F, -v pf="$phmap" '
             BEGIN{ while((getline l<pf)>0){ split(l,a,"\t"); nm[a[1]]=a[2] } }
-            NR==1{next} ($1 in nm){ print $5 "\t" nm[$1] }
+            /^#/ { next } ($1 in nm){ print $5 "\t" nm[$1] }
           ' "$csv" > "$map"
         rm -f "$phmap"
     else
-        # CSV MODE: the edited pipeline column directly (jobID col5, pipeline col1)
+        # CSV MODE: the edited pipeline column directly (jobID col5, pipeline col1).
+        # Skip the leading '#export-id' comment, then the first real line is the header.
         awk -F, '
-            NR==1 { if ($1!="pipeline" || $5!="jobID") { print "BADHEADER" > "/dev/stderr"; exit 3 } ; next }
+            /^#/ { next }
+            !hdr { hdr=1; if ($1!="pipeline" || $5!="jobID") { print "BADHEADER" > "/dev/stderr"; exit 3 } ; next }
             NF<17 { next }
             { p=$1; j=$5;
               if (j !~ /^[0-9]+$/) next;
@@ -231,10 +262,28 @@ cmd_import() {
             if($(col["pipeline"])=="legacy" && ($(col["jobID"]) in want)) $(col["pipeline"])=want[$(col["jobID"])];
             print
         ' -v mapfile="$map"; then
+        # Post-apply integrity gate: a 0 exit from jrRewrite is necessary but NOT
+        # sufficient (a skip on lock contention, or a partial rewrite, must not pass as
+        # success). Re-read the store and confirm EVERY assigned jobID now carries its
+        # chosen name -- none still reads "legacy", none vanished. Any discrepancy ->
+        # restore from backup and abort, so we never report an apply that did not happen.
+        local bad
+        bad=$(jrEmitV2 "$jr" 2>/dev/null | awk -F, -v mf="$map" '
+            BEGIN{ while((getline l<mf)>0){ split(l,a,"\t"); want[a[1]]=a[2] } }
+            NR>1 && ($5 in want){ seen[$5]=1; if($1!=want[$5]) wrong++ }
+            END{ miss=0; for(j in want) if(!(j in seen)) miss++; print (wrong+0)+(miss+0) }')
+        if [ "${bad:-1}" != 0 ]; then
+            cp -p "$bak" "$jr" && rm -f "$bak"; rm -f "$map"
+            die "post-apply check failed: $bad assigned row(s) not correctly relabeled (store restored from backup; no change made)"
+        fi
         echo "$PROG: assigned $n legacy row(s) to a pipeline (backup: $bak)"
         awk -F'\t' '{c[$2]++} END{for(p in c) printf "  %-20s %d row(s)\n", p, c[p]}' "$map"
     else
-        cp -p "$bak" "$jr"; rm -f "$map"; die "rewrite failed; store restored from backup"
+        # jrRewrite reports non-zero only when it did NOT write (lock timeout, awk error,
+        # or a store that is not/cannot-be v2). The live store is unchanged; restore is a
+        # no-op but harmless, and we drop the now-redundant backup.
+        cp -p "$bak" "$jr" && rm -f "$bak"; rm -f "$map"
+        die "rewrite did not apply (lock contention or error); store unchanged"
     fi
     rm -f "$map"
 }
