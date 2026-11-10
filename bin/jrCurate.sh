@@ -69,6 +69,7 @@ _badname() {
         *'|'*)            echo "contains a pipe (the manifest column separator -- would be truncated)" ;;
         *[,\ ]*|*"	"*) echo "contains a space/comma/tab" ;;
         legacy|unknown)   echo "is a reserved marker" ;;
+        legacyPipe[0-9]*) echo "collides with jrCurate's placeholder naming (legacyPipeN); choose a real pipeline name" ;;
         1jobID|pipeline)  echo "collides with a jobRecord header line (the schema would silently drop its rows)" ;;
         *[!0-9]*)         : ;;                       # has a non-digit -> ok
         '')               echo "is empty" ;;
@@ -272,11 +273,21 @@ cmd_import() {
         # Post-apply integrity gate: a 0 exit from jrRewrite is necessary but NOT
         # sufficient. Re-read the store and confirm EVERY assigned jobID now carries its
         # chosen name -- none still reads "legacy", none vanished.
+        # Scope the gate to LEGACY-ORIGIN rows only. We relabel legacy rows by jobID,
+        # but a non-legacy row can legitimately SHARE a jobID (the v1 counter resets, or
+        # a merged/multi-cluster store) and must keep its own name. So, per assigned
+        # jobID, success means: no row for it still reads "legacy" (every legacy row got
+        # relabeled) AND some row for it now carries the new name (nothing vanished).
+        # Keying "$1 must equal the new name for EVERY row with this jobID" would wrongly
+        # flag that unrelated same-jobID row and fail a correct import.
         local bad
         bad=$(jrEmitV2 "$jr" 2>/dev/null | awk -F, -v mf="$map" '
             BEGIN{ while((getline l<mf)>0){ split(l,a,"\t"); want[a[1]]=a[2] } }
-            NR>1 && ($5 in want){ seen[$5]=1; if($1!=want[$5]) wrong++ }
-            END{ miss=0; for(j in want) if(!(j in seen)) miss++; print (wrong+0)+(miss+0) }')
+            NR>1 && ($5 in want){
+                if($1=="legacy")      stillLegacy[$5]=1    # an assigned legacy row was NOT relabeled
+                if($1==want[$5])      gotName[$5]=1        # some row for this jobID now carries the new name
+            }
+            END{ bad=0; for(j in want){ if(j in stillLegacy) bad++; else if(!(j in gotName)) bad++ } print bad+0 }')
         if [ "${bad:-1}" != 0 ]; then
             # The relabel committed but verification could not confirm it. Do NOT
             # auto-restore: a blind "cp backup -> store" would clobber any row a
