@@ -154,7 +154,14 @@ cmd_export() {
           function sortset(c,  m,b,i,j,t){ m=split(c,b,","); for(i=1;i<=m;i++)for(j=i+1;j<=m;j++)if(b[j]<b[i]){t=b[i];b[i]=b[j];b[j]=t} t=b[1];for(i=2;i<=m;i++)if(b[i]!=b[i-1])t=t","b[i]; return t }
           function addset(cur,v){ return (index(","cur",", ","v",")? cur : (cur==""?v:cur","v)) }
           /^#/ || $1=="pipeline" || $1=="unknown" { next }
-          { ph=$1; cnt[ph]++; st[ph]=addset(st[ph],$2); rf[ph]=addset(rf[ph],$3);
+          # Sanitize pipe chars out of the read-only hint columns (steps/refs): the
+          # manifest is pipe-separated, so a stored value that legitimately contains a
+          # pipe (a ref or tool name) would otherwise push the line past 5 fields and
+          # trip the NF>5 guard on import, falsely rejecting a line the user never
+          # edited. Hints are cosmetic, so mapping pipe to underscore here is harmless;
+          # import keys on jobID, not on these columns.
+          { ph=$1; s2=$2; s3=$3; gsub(/\|/,"_",s2); gsub(/\|/,"_",s3);
+            cnt[ph]++; st[ph]=addset(st[ph],s2); rf[ph]=addset(rf[ph],s3);
             if(!(ph in seen)){ seen[ph]=1; ord[++k]=ph } }
           END{ for(i=1;i<=k;i++)for(j=i+1;j<=k;j++){ na=ord[i];gsub(/[^0-9]/,"",na); nb=ord[j];gsub(/[^0-9]/,"",nb); if(nb+0<na+0){t=ord[i];ord[i]=ord[j];ord[j]=t} }
                for(i=1;i<=k;i++){ ph=ord[i]; printf "%-12s| %-16s| %5d| %-30s| %s\n", ph, "-", cnt[ph], sortset(st[ph]), sortset(rf[ph]) } }
@@ -255,7 +262,7 @@ cmd_import() {
         END{ m=0; for(j in want) if(!(j in have)) m++; print m+0 }')
     [ "${miss:-0}" = 0 ] || { rm -f "$map"; die "$miss assigned jobID(s) are not legacy rows in the store (refusing to touch non-legacy history)"; }
 
-    local ts bak; ts=$(date +%Y-%m-%d_%H-%M-%S); bak="$jr.back.$ts.txt"
+    local ts bak; ts=$(date +%Y-%m-%d_%H-%M-%S); bak="$jr.back.$ts.$$.txt"
     cp -p "$jr" "$bak" || { rm -f "$map"; die "backup failed, aborting"; }
     if jrRewrite "$jr" '
             if(!_ld){ while((getline _l < mapfile)>0){ split(_l,_a,"\t"); want[_a[1]]=_a[2] } close(mapfile); _ld=1 }
@@ -263,27 +270,37 @@ cmd_import() {
             print
         ' -v mapfile="$map"; then
         # Post-apply integrity gate: a 0 exit from jrRewrite is necessary but NOT
-        # sufficient (a skip on lock contention, or a partial rewrite, must not pass as
-        # success). Re-read the store and confirm EVERY assigned jobID now carries its
-        # chosen name -- none still reads "legacy", none vanished. Any discrepancy ->
-        # restore from backup and abort, so we never report an apply that did not happen.
+        # sufficient. Re-read the store and confirm EVERY assigned jobID now carries its
+        # chosen name -- none still reads "legacy", none vanished.
         local bad
         bad=$(jrEmitV2 "$jr" 2>/dev/null | awk -F, -v mf="$map" '
             BEGIN{ while((getline l<mf)>0){ split(l,a,"\t"); want[a[1]]=a[2] } }
             NR>1 && ($5 in want){ seen[$5]=1; if($1!=want[$5]) wrong++ }
             END{ miss=0; for(j in want) if(!(j in seen)) miss++; print (wrong+0)+(miss+0) }')
         if [ "${bad:-1}" != 0 ]; then
-            cp -p "$bak" "$jr" && rm -f "$bak"; rm -f "$map"
-            die "post-apply check failed: $bad assigned row(s) not correctly relabeled (store restored from backup; no change made)"
+            # The relabel committed but verification could not confirm it. Do NOT
+            # auto-restore: a blind "cp backup -> store" would clobber any row a
+            # concurrent (lock-free) cleanUp append committed after our backup, and would
+            # also undo the migration jrRewrite may have performed. Leave the store as-is,
+            # keep the pre-curation backup, and fail loudly so a human inspects.
+            rm -f "$map"
+            die "post-apply check failed: $bad assigned row(s) not correctly relabeled; store left as-is -- inspect it; pre-curation backup: $bak"
         fi
         echo "$PROG: assigned $n legacy row(s) to a pipeline (backup: $bak)"
         awk -F'\t' '{c[$2]++} END{for(p in c) printf "  %-20s %d row(s)\n", p, c[p]}' "$map"
     else
-        # jrRewrite reports non-zero only when it did NOT write (lock timeout, awk error,
-        # or a store that is not/cannot-be v2). The live store is unchanged; restore is a
-        # no-op but harmless, and we drop the now-redundant backup.
-        cp -p "$bak" "$jr" && rm -f "$bak"; rm -f "$map"
-        die "rewrite did not apply (lock contention or error); store unchanged"
+        # jrRewrite returns non-zero ONLY when it did not commit (lock timeout, awk error,
+        # or a non-v2 store). It is atomic (temp+rename), so it NEVER leaves a partial
+        # store -- there is nothing to restore. Critically we must NOT "cp backup ->
+        # store" here: a concurrent, lock-free cleanUp append (jrAppendLine appends even
+        # when it cannot take the lock, by design) may have committed a record after our
+        # backup was taken; clobbering with the stale backup would silently delete it.
+        # Drop the backup only when it is byte-identical to the live store; otherwise the
+        # store moved under us, so keep the backup and name it.
+        cmp -s "$jr" "$bak" && rm -f "$bak"
+        rm -f "$map"
+        [ -f "$bak" ] && die "curation did not apply (lock contention or error); store left as-is (pre-curation backup: $bak)" \
+                      || die "curation did not apply (lock contention or error); store left as-is"
     fi
     rm -f "$map"
 }
