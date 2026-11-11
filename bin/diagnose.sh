@@ -24,16 +24,21 @@
 # ===========================================================================
 set -uo pipefail
 
-LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"; JSON=""; FLAG=""
+LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"; JSON=""; FLAG=""; RECONCILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) LOGDIR="$2"; shift 2;;
     --json) JSON=1; shift;;
+    # --reconcile : opt in to the cold-path sacct fallback for an otherwise
+    #   UNCONFIRMED job (writes a marker + appends the report). ONLY the single-job
+    #   interactive drill-ins pass it; bulk callers (list_view loops over every job)
+    #   leave it off so diagnose stays read-only and issues no scheduler calls.
+    --reconcile) RECONCILE=1; shift;;
     -h|--help) sed -n '2,22p' "$0"; exit 0;;
     *) FLAG="$1"; shift;;
   esac
 done
-[ -n "$FLAG" ] || { echo "usage: diagnose.sh <flag> [--log DIR] [--json]" >&2; exit 2; }
+[ -n "$FLAG" ] || { echo "usage: diagnose.sh <flag> [--log DIR] [--json] [--reconcile]" >&2; exit 2; }
 
 OUT="$LOGDIR/$FLAG.out"
 
@@ -109,22 +114,23 @@ else
     # region is unreadable (e.g. pre-M1 logs with no sentinels): the job failed,
     # so fall through to the FAILED branch which scans the log for the cause.
     STATE=FAILED
-  else
-    # Cold-path fallback: the log and flags are silent because a hard kill
-    # (OOM-killer, the SIGKILL after a timeout grace, node failure) bypassed
-    # cleanUp's EXIT trap, so nothing was recorded locally -- but Slurm accounting
-    # still has the verdict. The user explicitly drilled into THIS one job, so it
-    # is a legitimate, latency-tolerant place for a single live `sacct` query.
-    # jobFate resolves the fate, writes the .failed marker and appends the sacct
-    # report (so the grid and a later diagnose agree), and prints the state. This
-    # is gated to the otherwise-UNCONFIRMED branch, so a prior reconcile that
-    # already wrote a marker is never reached here (no redundant sacct call).
+  elif [ -n "$RECONCILE" ]; then
+    # Cold-path fallback -- ONLY when the caller opts in (--reconcile), which only
+    # the single-job interactive drill-ins do. The log and flags are silent because
+    # a hard kill (OOM-killer, the SIGKILL after a timeout grace, node failure)
+    # bypassed cleanUp's EXIT trap, so nothing was recorded locally -- but Slurm
+    # accounting still has the verdict. jobFate resolves the fate, writes the
+    # .failed marker (not for CANCELLED -- see jobFate) and appends the sacct report
+    # so the grid and a later diagnose agree, and prints the state. A prior reconcile
+    # that already wrote a marker takes an earlier branch, so no redundant sacct.
     fate="$("$(dirname "$0")/jobFate.sh" "$FLAG" --log "$LOGDIR" 2>/dev/null)"
     case "$fate" in
       OOM|OOT|OOMOOT|NODE_FAIL|CANCELLED|FAILED) STATE="$fate" ;;
       COMPLETED)   STATE=COMPLETED_NOSUCCESS ;;   # finished per Slurm, no .success
       *)           STATE=UNCONFIRMED ;;           # UNRESOLVED: no jobid/sacct, or lag
     esac
+  else
+    STATE=UNCONFIRMED     # read-only default: no flag, no scheduler query
   fi
 fi
 

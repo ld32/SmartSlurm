@@ -62,12 +62,16 @@ jobid_of() {
 # state token. Precedence mirrors cleanUp.sh and diagnose.sh report_state(): a
 # memory kill on any substep outranks a bare FAILED/CANCELLED on the batch line.
 map_state() {
-  if   grep -q 'OUT_OF_ME'            <<<"$1"; then echo OOM
-  elif grep -q 'TIMEOUT'              <<<"$1"; then echo OOT
-  elif grep -qE 'NODE_FAIL|BOOT_FAIL' <<<"$1"; then echo NODE_FAIL
-  elif grep -q 'CANCEL'               <<<"$1"; then echo CANCELLED
-  elif grep -q 'FAILED'               <<<"$1"; then echo FAILED
-  elif grep -q 'COMPLETED'            <<<"$1"; then echo COMPLETED
+  # Match whole, case-sensitive State tokens (sacct states are UPPERCASE), not bare
+  # substrings: a NodeList/Partition/QOS name containing "cancel" or "failed" must
+  # not be read as a job state. OUT_OF_MEMORY/TIMEOUT may appear on a .batch/.0
+  # substep while the alloc line shows FAILED, so scan all of this job's lines.
+  if   grep -qw 'OUT_OF_MEMORY'        <<<"$1"; then echo OOM
+  elif grep -qw 'TIMEOUT'              <<<"$1"; then echo OOT
+  elif grep -qwE 'NODE_FAIL|BOOT_FAIL' <<<"$1"; then echo NODE_FAIL
+  elif grep -qw 'CANCELLED'            <<<"$1"; then echo CANCELLED
+  elif grep -qw 'FAILED'               <<<"$1"; then echo FAILED
+  elif grep -qw 'COMPLETED'            <<<"$1"; then echo COMPLETED
   else echo ""; fi
 }
 
@@ -85,12 +89,15 @@ persist() {
       printf '%s\n' "$blob"
     } >> "$out" 2>/dev/null || true
   fi
-  # Write the .failed marker (which the grid reads as error) ONLY for a real
-  # failure -- never for COMPLETED: Slurm says it finished, so leave the grid's
-  # live "?" and let diagnose classify the missing-.success case, rather than
-  # stamping a false error on a job that completed.
+  # Write the .failed marker (which the grid reads as error) ONLY for an actual
+  # tool/resource/infra failure. NOT for COMPLETED (Slurm says it finished -- leave
+  # the grid's "?" and let diagnose classify the missing-.success case) and NOT for
+  # CANCELLED: a cancelled job is usually an orphan (upstream failed -> afterok
+  # cancel) or a manual scancel, not a tool failure, and stamping .failed would mask
+  # checkRunGrid's more informative orphan glyph. The appended report still lets
+  # diagnose explain the cancellation.
   case "$state" in
-    OOM|OOT|NODE_FAIL|CANCELLED|FAILED) touch "$LOGDIR/$flag.failed" 2>/dev/null || true;;
+    OOM|OOT|NODE_FAIL|FAILED) touch "$LOGDIR/$flag.failed" 2>/dev/null || true;;
   esac
 }
 

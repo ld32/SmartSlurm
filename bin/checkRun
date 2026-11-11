@@ -149,7 +149,9 @@ view_log() {   # FLAG FOLDER
 
 diagnose_card() {   # FLAG FOLDER
     _clear
-    "$_bindir/diagnose.sh" "$1" --log "$2"
+    # single-job drill-in: opt in to the cold-path sacct reconcile so a hard-killed
+    # job resolves to its real cause instead of UNCONFIRMED.
+    "$_bindir/diagnose.sh" "$1" --log "$2" --reconcile
     echo; pause
 }
 
@@ -166,7 +168,7 @@ ai_explain() {
         echo "=== Job: $flag ==="
         echo ""
         echo "--- SmartSlurm automated diagnosis ---"
-        "$_bindir/diagnose.sh" "$flag" --log "$folder" 2>/dev/null || echo "(diagnosis unavailable)"
+        "$_bindir/diagnose.sh" "$flag" --log "$folder" --reconcile 2>/dev/null || echo "(diagnosis unavailable)"
         echo ""
         echo "--- Tool output ---"
         # M1: the tool's own output sits between these sentinels; fall back to a
