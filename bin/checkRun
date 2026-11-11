@@ -400,7 +400,7 @@ _reconcile_vanished() {
 # address to view). Transient notices ride in $MSG and appear under the grid.
 # ---------------------------------------------------------------------------
 home_loop() {
-    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y _view
+    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y _view _last_refresh_hms=""
     MSG=""
     while true; do
         # Rebuild the grid only when the user asked for fresh data (Enter) or
@@ -415,6 +415,7 @@ home_loop() {
             # Reached only on launch and explicit Enter refresh (the only times
             # _need_render is set) -- never on a passive redraw.
             _reconcile_vanished "$logFolder"
+            _last_refresh_hms="$(date '+%H:%M:%S')"   # data-as-of stamp (trust: shows freshness)
             grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>"$_errf")
             if [ $? -ne 0 ]; then
                 _clear
@@ -441,7 +442,7 @@ home_loop() {
 
         # ---- location band on top: which run is on screen (full path) ----------
         _rule
-        pln "${BOLD}Showing run:${NC} ${abspath}"
+        pln "${BOLD}Showing run:${NC} ${abspath}${_last_refresh_hms:+   ${GREY}data as of ${_last_refresh_hms} · Enter to refresh${NC}}"
         _rule
         [ "$others" -gt 0 ] && pln "${GREY}--> ${others} other run(s) available — press ${NC}${BOLD}o${NC}${GREY} to switch${NC}"
         pln ""
