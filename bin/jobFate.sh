@@ -50,7 +50,12 @@ have_sacct() { command -v sacct >/dev/null 2>&1; }
 # compare on $3 (no regex) -> safe for the dotted/underscored real flags.
 jobid_of() {
   [ -f "$ALLJOBS" ] || { printf ''; return; }
-  awk -v f="$1" 'NR>1 && $3==f{v=$1} END{printf "%s", v}' "$ALLJOBS"
+  local id; id="$(awk -v f="$1" 'NR>1 && $3==f{v=$1} END{printf "%s", v}' "$ALLJOBS")"
+  # A real Slurm jobid is all digits. A non-numeric / garbage value (corrupt
+  # allJobs.txt) is not a job to query -- return empty so the caller degrades to
+  # UNRESOLVED instead of handing sacct a bogus -j argument.
+  [[ "$id" =~ ^[0-9]+$ ]] || id=""
+  printf '%s' "$id"
 }
 
 # Map a sacct blob (a job's alloc line plus its .batch/.0/.extern substeps) to one
