@@ -88,7 +88,12 @@ fi
 mkdir -p $smartSlurmJobRecordDir/stats
 
 . "$(dirname "$0")/jobRecordSchema.sh"
-jrEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
+# A dry run (runAsPipeline appends the literal "dryrun" as the last arg; see the
+# $dryrun test below) must not mutate the jobRecord store. jrEnsureHeader migrates
+# an existing v1 store (jrMigrateStore: rewrite + .back backup), which would
+# violate the "dryrun/--lint is read-only on the store" contract. Real runs still
+# ensure the v2 header here, and runAsPipeline migrates up front before the driver.
+[ "${@: -1}" = dryrun ] || jrEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
