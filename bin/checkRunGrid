@@ -334,13 +334,16 @@ rawrows="$(
 # Cached (shared with checkRun's squeue_cache.txt, 120s TTL) so that repeated grid
 # redraws during navigation don't each pay a live scheduler round-trip. An explicit
 # refresh in checkRun rewrites the cache, so live data is one keypress away.
-ACTIVE=""
+ACTIVE=""; _SQ_OK=0   # _SQ_OK=1: we hold a trustworthy squeue snapshot (even if it
+                      # lists no active jobs). Distinct from "ACTIVE is empty", which
+                      # also happens when squeue is simply unavailable -- and the two
+                      # must be told apart to call a job "vanished" safely.
 _SQ_CACHE="squeue_cache.txt"; _SQ_TTL=120
 if [ -f "$_SQ_CACHE" ] && [ "$(( $(date +%s) - $(stat -c %Y "$_SQ_CACHE" 2>/dev/null || echo 0) ))" -lt "$_SQ_TTL" ]; then
-  ACTIVE="$(cat "$_SQ_CACHE" 2>/dev/null)"
+  ACTIVE="$(cat "$_SQ_CACHE" 2>/dev/null)"; _SQ_OK=1
 elif command -v squeue >/dev/null 2>&1; then
   ACTIVE="$(squeue -u "${USER:-$(id -un)}" -t PD,R --noheader -o '%.18i-%t' 2>/dev/null)"
-  printf '%s\n' "$ACTIVE" > "$_SQ_CACHE" 2>/dev/null
+  printf '%s\n' "$ACTIVE" > "$_SQ_CACHE" 2>/dev/null; _SQ_OK=1
 fi
 # flag -> job_id map (last id wins, handles requeue)
 declare -A ID_OF
@@ -361,7 +364,7 @@ job_status() {   # $1=flag  -> echoes status
   fi
   # live scheduler truth, when available
   local id="${ID_OF[$f]:-}"
-  if [ -n "$id" ] && [ -n "$ACTIVE" ]; then
+  if [ -n "$id" ] && [ "$_SQ_OK" = 1 ]; then
     case "$ACTIVE" in
       *"$id-R"*) echo running; return;;
       *"$id-P"*) echo pending; return;;
@@ -371,6 +374,18 @@ job_status() {   # $1=flag  -> echoes status
   # to .out; ssbatch pre-writes a #-comment preamble even for cancelled jobs, so
   # ".out exists" is NOT "it ran".
   if [ -e "$LOGDIR/$f.out" ] && grep -qE '^[^#[:space:]]' "$LOGDIR/$f.out" 2>/dev/null; then
+    # It started, yet it is absent from a trustworthy squeue snapshot and has no
+    # terminal flag. A genuinely running job would be in squeue (matched above), so
+    # this is a VANISHED job: hard-killed (OOM/timeout bypasses cleanUp's EXIT trap,
+    # leaving no .success/.failed). Report it as unknown (?) -- actionable, "go look"
+    # -- instead of a phantom "running". Guard with an .out mtime window so a just-
+    # started job that still lags the 120s squeue cache keeps reading as running
+    # while its output is fresh. Only decide "vanished" when squeue is trustworthy
+    # AND we have this job's id to confirm its absence.
+    if [ "$_SQ_OK" = 1 ] && [ -n "$id" ]; then
+      local age; age=$(( $(date +%s) - $(stat -c %Y "$LOGDIR/$f.out" 2>/dev/null || echo 0) ))
+      [ "$age" -ge "${RECONCILE_LIVE_SECS:-90}" ] && { echo unknown; return; }
+    fi
     echo running; return
   fi
   echo pending
