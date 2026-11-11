@@ -219,9 +219,9 @@ browse_raw() {
     done
 }
 
-# workflow_dag FOLDER -- build (if stale) and display the DAG. Unchanged logic.
+# workflow_dag FOLDER -- build (if stale) and display the DAG.
 workflow_dag() {
-    local folder="$1" cache_mtime current_time
+    local folder="$1" cache_mtime current_time missing=""
     if [ -f "$folder/dag.svg" ]; then
         cache_mtime=$(stat -c %Y "$folder/dag.svg"); current_time=$(date +%s)
         [ $((current_time - cache_mtime)) -gt 600 ] && rm -f "$folder/dag.svg"
@@ -229,6 +229,20 @@ workflow_dag() {
     if [ ! -f "$folder/dag.svg" ]; then
         module load conda/miniforge3/24.11.3-0 2>/dev/null
         conda activate smartSlurmEnv 2>/dev/null
+        # The graph needs workflowPlot.py (Python) + Graphviz 'dot', both provided
+        # by the smartSlurmEnv conda env. If that env isn't built (or lacks
+        # graphviz), degrade gracefully with a clear message instead of leaking a
+        # raw 'command not found' and a wall of workflowPlot.py status lines --
+        # every other checkRun view works without them.
+        command -v workflowPlot.py >/dev/null 2>&1 || missing="$missing workflowPlot.py"
+        command -v dot             >/dev/null 2>&1 || missing="$missing dot(graphviz)"
+        if [ -n "$missing" ]; then
+            echo -e "${YELLOW}Workflow graph unavailable${NC} -- missing:$missing"
+            echo    "  It needs the 'smartSlurmEnv' conda env (dash plotly pandas graphviz), e.g.:"
+            echo -e "    ${GREEN}mamba create -n smartSlurmEnv dash plotly pandas graphviz${NC}"
+            echo    "  (All other checkRun views work without it.)"
+            pause; return
+        fi
         workflowPlot.py "$folder" && dot -Tsvg "$folder/jobs.dot" -o "$folder/dag.svg"
     fi
     if [ -f "$folder/dag.svg" ]; then display "$folder/dag.svg"
