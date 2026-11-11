@@ -27,7 +27,7 @@
 set -uo pipefail
 
 LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"
-FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""; EFF_MODE=""
+FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""; EFF_MODE=""; LIST_UNKNOWN=""
 EFF_VIEW="overview"; EFF_SELECT=""; EFF_SHOW="time,mem"
 EFF_LOW="${effLowPct:-25}"   # rows at/below this efficiency % get a red bar (waste alert)
 while [ $# -gt 0 ]; do
@@ -46,6 +46,12 @@ while [ $# -gt 0 ]; do
     # --render : explicit alias for the default no-address render path, so callers
     #            name the mode instead of relying on "no arg = render".
     --render) RENDER=1; shift;;
+    # --list-unknown : print the flags of cells currently classified "unknown"
+    #                  (vanished: started, gone from a fresh squeue, no terminal
+    #                  flag) that have NO failure marker yet -- i.e. the hard-killed
+    #                  jobs whose fate only sacct knows. checkRun's cold-path
+    #                  reconcile feeds these to jobFate. Read-only; no scheduler.
+    --list-unknown) LIST_UNKNOWN=1; shift;;
     --samples) SAMPLES_MODE=1; shift;;
     # --efficiency : htop-style per-sample resource-efficiency bars, read from the
     #                per-run efficiency.tsv (time = sum across steps, mem = peak step).
@@ -421,6 +427,22 @@ while IFS='|' read -r flag step name sample fan st dep; do
   neworows+="$flag|$step|$name|$sample|$fan|$st|$dep"$'\n'
 done <<<"$jobrows"
 jobrows="${neworows%$'\n'}"
+
+# ---- list-unknown mode: the vanished jobs checkRun's reconcile resolves --------
+# Emit flags classified "unknown" (started, gone from a fresh squeue, no terminal
+# flag) that have NO failure marker yet -- hard-killed jobs whose fate only sacct
+# knows. Jobs cleanUp already marked .failed (incl. its own "Unknown" case) are
+# excluded: they carry an authoritative marker + report, so re-querying sacct for
+# them would be wasted scheduler load. Read-only.
+if [ -n "$LIST_UNKNOWN" ]; then
+  echo "$jobrows" | awk -F'|' '$6=="unknown"{print $1}' | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ -e "$LOGDIR/$f.failed" ] && continue
+    compgen -G "$LOGDIR/$f.failed.requeued.*" >/dev/null 2>&1 && continue
+    printf '%s\n' "$f"
+  done
+  exit 0
+fi
 
 # ---- linear ordering: the ONE source of truth ------------------------------
 # Both the linear render (render_linear) and the plain-integer address resolver
