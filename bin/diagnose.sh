@@ -1,7 +1,11 @@
 #!/bin/bash
 # ===========================================================================
 # diagnose.sh  --  Module M2: explain why a job failed, and whether resubmitting
-#                  will help.  Read-only.
+#                  will help.  Read-mostly: on the cold UNCONFIRMED path (a job that
+#                  vanished with no local record) it reconciles the fate from a
+#                  single live `sacct` via jobFate.sh -- writing the .failed marker
+#                  and appending the sacct report -- so the grid and a re-diagnose
+#                  agree. Never queries the scheduler on the common (flagged) paths.
 #
 #   diagnose.sh <flag> [--log DIR] [--json]
 #
@@ -106,7 +110,21 @@ else
     # so fall through to the FAILED branch which scans the log for the cause.
     STATE=FAILED
   else
-    STATE=UNCONFIRMED     # no flag, no scheduler state: infrastructure-uncertain
+    # Cold-path fallback: the log and flags are silent because a hard kill
+    # (OOM-killer, the SIGKILL after a timeout grace, node failure) bypassed
+    # cleanUp's EXIT trap, so nothing was recorded locally -- but Slurm accounting
+    # still has the verdict. The user explicitly drilled into THIS one job, so it
+    # is a legitimate, latency-tolerant place for a single live `sacct` query.
+    # jobFate resolves the fate, writes the .failed marker and appends the sacct
+    # report (so the grid and a later diagnose agree), and prints the state. This
+    # is gated to the otherwise-UNCONFIRMED branch, so a prior reconcile that
+    # already wrote a marker is never reached here (no redundant sacct call).
+    fate="$("$(dirname "$0")/jobFate.sh" "$FLAG" --log "$LOGDIR" 2>/dev/null)"
+    case "$fate" in
+      OOM|OOT|OOMOOT|NODE_FAIL|CANCELLED|FAILED) STATE="$fate" ;;
+      COMPLETED)   STATE=COMPLETED_NOSUCCESS ;;   # finished per Slurm, no .success
+      *)           STATE=UNCONFIRMED ;;           # UNRESOLVED: no jobid/sacct, or lag
+    esac
   fi
 fi
 
