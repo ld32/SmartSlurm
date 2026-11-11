@@ -244,6 +244,15 @@ fi
 
 mkdir -p $smartSlurmLogDir
 
+# One-time jobRecord v1->v2 migration, done UP FRONT rather than lazily inside the
+# first ssbatch. Migrating a legacy store emits a one-line notice; triggering it here
+# (before the per-step submission progress table is printed) keeps that notice from
+# splitting the first sample's row. Real submissions only -- a --lint / --mode dryrun
+# must not mutate the store. jrMigrateStore is idempotent and silent once v2.
+if [ "$RUN_MODE" != dryrun ] && [ -n "${smartSlurmJobRecordDir:-}" ] && [ -s "$smartSlurmJobRecordDir/jobRecord.txt" ]; then
+    . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null && jrMigrateStore "$smartSlurmJobRecordDir/jobRecord.txt"
+fi
+
 checkSum=`md5sum "$PIPELINE_SCRIPT" | cut -d' ' -f 1`
 
 run=$smartSlurmLogDir/slurmPipeLine.$checkSum.sh

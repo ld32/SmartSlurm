@@ -149,7 +149,9 @@ view_log() {   # FLAG FOLDER
 
 diagnose_card() {   # FLAG FOLDER
     _clear
-    "$_bindir/diagnose.sh" "$1" --log "$2"
+    # single-job drill-in: opt in to the cold-path sacct reconcile so a hard-killed
+    # job resolves to its real cause instead of UNCONFIRMED.
+    "$_bindir/diagnose.sh" "$1" --log "$2" --reconcile
     echo; pause
 }
 
@@ -166,7 +168,7 @@ ai_explain() {
         echo "=== Job: $flag ==="
         echo ""
         echo "--- SmartSlurm automated diagnosis ---"
-        "$_bindir/diagnose.sh" "$flag" --log "$folder" 2>/dev/null || echo "(diagnosis unavailable)"
+        "$_bindir/diagnose.sh" "$flag" --log "$folder" --reconcile 2>/dev/null || echo "(diagnosis unavailable)"
         echo ""
         echo "--- Tool output ---"
         # M1: the tool's own output sits between these sentinels; fall back to a
@@ -217,9 +219,9 @@ browse_raw() {
     done
 }
 
-# workflow_dag FOLDER -- build (if stale) and display the DAG. Unchanged logic.
+# workflow_dag FOLDER -- build (if stale) and display the DAG.
 workflow_dag() {
-    local folder="$1" cache_mtime current_time
+    local folder="$1" cache_mtime current_time missing=""
     if [ -f "$folder/dag.svg" ]; then
         cache_mtime=$(stat -c %Y "$folder/dag.svg"); current_time=$(date +%s)
         [ $((current_time - cache_mtime)) -gt 600 ] && rm -f "$folder/dag.svg"
@@ -227,6 +229,20 @@ workflow_dag() {
     if [ ! -f "$folder/dag.svg" ]; then
         module load conda/miniforge3/24.11.3-0 2>/dev/null
         conda activate smartSlurmEnv 2>/dev/null
+        # The graph needs workflowPlot.py (Python) + Graphviz 'dot', both provided
+        # by the smartSlurmEnv conda env. If that env isn't built (or lacks
+        # graphviz), degrade gracefully with a clear message instead of leaking a
+        # raw 'command not found' and a wall of workflowPlot.py status lines --
+        # every other checkRun view works without them.
+        command -v workflowPlot.py >/dev/null 2>&1 || missing="$missing workflowPlot.py"
+        command -v dot             >/dev/null 2>&1 || missing="$missing dot(graphviz)"
+        if [ -n "$missing" ]; then
+            echo -e "${YELLOW}Workflow graph unavailable${NC} -- missing:$missing"
+            echo    "  It needs the 'smartSlurmEnv' conda env (dash plotly pandas graphviz), e.g.:"
+            echo -e "    ${GREEN}mamba create -n smartSlurmEnv dash plotly pandas graphviz${NC}"
+            echo    "  (All other checkRun views work without it.)"
+            pause; return
+        fi
         workflowPlot.py "$folder" && dot -Tsvg "$folder/jobs.dot" -o "$folder/dag.svg"
     fi
     if [ -f "$folder/dag.svg" ]; then display "$folder/dag.svg"
@@ -361,13 +377,46 @@ list_view() {
 }
 
 # ---------------------------------------------------------------------------
+# _reconcile_vanished FOLDER -- COLD PATH ONLY (launch + explicit Enter refresh,
+# never a passive redraw). Ask the grid engine which cells are "vanished" (started,
+# gone from a fresh squeue, no terminal flag -- a hard kill that bypassed cleanUp),
+# then resolve their real fate from sacct in ONE batched call via jobFate and
+# persist authoritative markers, so the grid and diagnose agree. Touches the
+# scheduler only when at least one vanished job exists (zero cost otherwise), and
+# writes only markers sacct justifies. Announces what changed in $MSG.
+_reconcile_vanished() {
+    local folder="$1" unknown resolved f
+    command -v sacct >/dev/null 2>&1 || return 0          # no scheduler -> nothing to do
+    [ -x "$_bindir/jobFate.sh" ] || return 0
+    unknown="$("$_bindir/checkRunGrid" --list-unknown --log "$folder" 2>/dev/null)"
+    [ -n "$unknown" ] || return 0                          # no vanished jobs -> no sacct call
+    local -a flags=()
+    while IFS= read -r f; do [ -n "$f" ] && flags+=("$f"); done <<<"$unknown"
+    [ "${#flags[@]}" -gt 0 ] || return 0
+    resolved="$("$_bindir/jobFate.sh" --batch "${flags[@]}" --log "$folder" 2>/dev/null)"
+    [ -n "$resolved" ] || return 0                         # sacct lag/unresolved -> keep "?"
+    local oom oot cx nf fl n parts=""
+    oom=$(grep -c ' OOM$'        <<<"$resolved"); oot=$(grep -c ' OOT$'       <<<"$resolved")
+    cx=$( grep -c ' CANCELLED$'  <<<"$resolved"); nf=$( grep -c ' NODE_FAIL$' <<<"$resolved")
+    fl=$( grep -c ' FAILED$'     <<<"$resolved")
+    n=$((oom+oot+cx+nf+fl))
+    [ "$n" -gt 0 ] || return 0                             # only COMPLETED resolved -> no glyph change
+    [ "$oom" -gt 0 ] && parts="$parts ${oom} OOM,"
+    [ "$oot" -gt 0 ] && parts="$parts ${oot} timeout,"
+    [ "$cx"  -gt 0 ] && parts="$parts ${cx} cancelled,"
+    [ "$nf"  -gt 0 ] && parts="$parts ${nf} node-fail,"
+    [ "$fl"  -gt 0 ] && parts="$parts ${fl} failed,"
+    parts="${parts# }"; parts="${parts%,}"
+    MSG="${YELLOW}Reconciled ${n} vanished job(s) from sacct:${NC} ${parts}"
+}
+
 # home_loop FOLDER -- the grid is the home screen. It is CLEARED and redrawn in
 # place each iteration (no scrolling/flooding). One prompt accepts addresses and
 # plain numbers; actions are "<verb> <address>" in either order (or a bare
 # address to view). Transient notices ride in $MSG and appear under the grid.
 # ---------------------------------------------------------------------------
 home_loop() {
-    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y _view
+    local logFolder="$1" tok flags flag vn addr grid _first=y others abspath term_lines cap_lines compact _need_render=y _view _last_refresh_hms=""
     MSG=""
     while true; do
         # Rebuild the grid only when the user asked for fresh data (Enter) or
@@ -377,6 +426,12 @@ home_loop() {
         # engine would otherwise drop color). Capture stderr separately so a real
         # failure shows WHY rather than a bare "unavailable".
         if [ -n "$_need_render" ]; then
+            # Cold-path reconcile BEFORE rendering, so the grid reflects any hard-
+            # killed job's true fate (OOM/timeout/...) instead of a phantom "?".
+            # Reached only on launch and explicit Enter refresh (the only times
+            # _need_render is set) -- never on a passive redraw.
+            _reconcile_vanished "$logFolder"
+            _last_refresh_hms="$(date '+%H:%M:%S')"   # data-as-of stamp (trust: shows freshness)
             grid=$("$_bindir/checkRunGrid" --render --no-hint --color --log "$logFolder" 2>"$_errf")
             if [ $? -ne 0 ]; then
                 _clear
@@ -403,7 +458,7 @@ home_loop() {
 
         # ---- location band on top: which run is on screen (full path) ----------
         _rule
-        pln "${BOLD}Showing run:${NC} ${abspath}"
+        pln "${BOLD}Showing run:${NC} ${abspath}${_last_refresh_hms:+   ${GREY}data as of ${_last_refresh_hms} · Enter to refresh${NC}}"
         _rule
         [ "$others" -gt 0 ] && pln "${GREY}--> ${others} other run(s) available — press ${NC}${BOLD}o${NC}${GREY} to switch${NC}"
         pln ""
