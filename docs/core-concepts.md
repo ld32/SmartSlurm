@@ -338,7 +338,6 @@ rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,17198310
 > jrRepair.sh --check    # health report only (schema + row census); writes nothing
 > ```
 > It backs the original up to `jobRecord.back.<timestamp>.txt` (your rollback) before rewriting. Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own.
-> <!-- REVIEW: jrRepair.sh converts BOTH jobRecord.txt AND jobRecord.oom.oot.over.txt (the README previously said only jobRecord.txt), and supports --check in addition to --dry-run (bin/jrRepair.sh header). Confirm the user-facing summary is accurate. -->
 
 ## Notifications (emails)
 

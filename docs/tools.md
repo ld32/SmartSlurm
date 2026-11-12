@@ -40,7 +40,6 @@ runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--pipeline NAME]
               [-v|--verbose | -q|--quiet]
 ```
 
-<!-- REVIEW: --pipeline NAME is accepted by runAsPipeline (bin/runAsPipeline usage string + arg parser, and it stamps the pipeline column of jobRecord.txt) but was missing from the README synopsis and options table. Added here and in the table below; confirm wording. -->
 
 Arguments are **named options**:
 
@@ -133,9 +132,7 @@ ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] S
 
 <sub>*Provide **either** `--wrap` **or** a script file.</sub>
 
-<!-- REVIEW: -R (reference) and -d (dependencies) are real ssbatch options (bin/ssbatch argument parser); they were absent from the README options table but are used by runAsPipeline and referenced in prose. Added here. -->
 
-<!-- REVIEW: ssbatch's built-in usage() help string is STALE — it documents a trailing [run] token ("run will submit job, empty will do a dry run"), but the code submits by default and only dry-runs when the LAST argument is literally "dryrun" (bin/ssbatch: `dryrun=${@: -1}` then `if [[ "$dryrun" != "dryrun" ]]`). The table above matches the code (dryrun as the last arg), not the stale built-in help. Per repo rules the tool itself is not modified here; the stale `usage()` string is a finding for a human to fix in bin/ssbatch. -->
 
 > [!TIP]
 > None of `-P`, `-I`, `-F` is mandatory, but supplying `-P` (and `-I` when a meaningful input exists) is what lets ssbatch build good per-program statistics. Without `-I`, estimation falls back to the distribution of that program's past run-times/memory rather than a size-based fit.
@@ -208,7 +205,6 @@ How it works:
 4. The plot redraws immediately; remaining points **keep their original indices** and the **axis scale stays fixed**, so numbering doesn't shift under you.
 5. `b` back to the program list · `s` save (a timestamped backup is written first) · `q` quit.
 
-<!-- REVIEW: reviewJobRecords.py refuses a legacy v1 jobRecord file and points you to jrRepair.sh (bin/reviewJobRecords.py header). Noted here; confirm the "program/step" wording — the tool keys on (pipeline, step, ref). -->
 
 ## cancelAllJobs
 
