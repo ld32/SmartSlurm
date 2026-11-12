@@ -27,7 +27,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
 ALL_BLOCKS="clean_2step wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes fail_exit0_empty known_broken_swallowed_done \
-loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun end_block verbosity scaling_linear \
+loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun rerun_lifecycle end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
 setup_rc_block activate_path activate_prompt deactivate_surgical conda_coexist \
@@ -88,6 +88,7 @@ ss_purpose() {
     p6_determinism)     echo "P6 (opt-in via _optin; never in the default suite): the anti-flake guarantee -- re-run the barrier-controlled TERM/USR1/no-signal cases 20x each and assert ZERO variance (one distinct outcome per case). Proves the timing harness is reproducible before any cleanUp/ssbatch edit; touches no bin/";;
     cleanup_reentrancy) echo "P6 SCAFFOLD (opt-in via _optin; never in the default suite; expected to FAIL until cleanUp gains a re-entrancy guard): invoking the REAL cleanUp twice on one job must not double-append jobRecords or double-requeue";;
     rerun)              echo "Rerun menu (failed / all / from-step:N) materializes markers and honors the reachable guard";;
+    rerun_lifecycle)    echo "Deterministic rerun LIFECYCLE over a toy 3-step pipeline (fresh -> dry-run x2 -> interactive re-issue -> re-run failed -> kill-a-step & re-run -> dry-run -> re-run all -> from-step -> cancel -> end state), asserting the up-front rerun decision's invariants: a dry run mutates nothing & shows no menu & leaves no markers; the interactive decision is made before the progress table (no orphaned row); skip/rerun is correct (kept vs reran, downstream of a rerun re-runs); cancel aborts cleanly; end state = every step .success, zero stray markers";;
     end_block)          echo "'#@ … #@end' scripts-on-disk: closure validation, --lint, legacy back-compat, and in-block multivar escaping";;
     verbosity)          echo "Stdout verbosity: default A+ per-sample rows vs -v firehose vs -q silence";;
     scaling_linear)     echo "Linear mem/time vs input size — the real gnuplot fit recovers slope/intercept and prediction tracks the line";;
@@ -1246,6 +1247,131 @@ _want rerun && {
   # --- reachable guard: cannot pick a step the run never reached ---
   reissue fromStep:9 guard.log
   assert_contains "guard.log" "not in the completed set" "guard: unreached step 9 rejected"
+  echo
+}
+
+# ===========================================================================
+# rerun LIFECYCLE. The rerun-scope decision is made UP FRONT (ssRerunDecide.sh, from
+# the generated driver, before the Stage-2 progress table) -- not lazily inside the
+# first already-completed step's ssbatch, which used to (a) prompt even in a dry run,
+# (b) interrupt the first progress row (orphaning its glyph onto a new line without a
+# label), and (c) write scope markers in dry-run. This block drives a toy 3-step
+# pipeline through a deterministic cycle, asserting those invariants throughout and a
+# defined end state.
+_want rerun_lifecycle && {
+  _begin rerun_lifecycle
+  ss_new_workspace "$WORK/rerun_lifecycle"
+  cp "$HERE"/fixtures/three_step/* .; chmod +x ./*.sh
+  OPTS="sbatch -p short -c 1 --mem 2G -t 50:0"
+  s1=smartSlurmLog/1.0.trim.1.success; s2=smartSlurmLog/2.1.count.1.success; s3=smartSlurmLog/3.2.merge.success
+  # durable-state snapshot for dry-run idempotence: .success names + mtimes only
+  # (allJobs.txt is legitimately rewritten each run; real runs legitimately leave markers)
+  _lcstate() { stat -c '%n=%Y' smartSlurmLog/*.success 2>/dev/null | sort; }
+  _nmk() { ls smartSlurmLog/*AllSuccessJobs*.txt 2>/dev/null | wc -l | tr -d ' '; }
+  # true when the run log has NO orphaned glyph-only row (the mid-render-prompt bug)
+  _no_orphan() { ! sed 's/\x1b\[[0-9;]*m//g' "$1" | awk '
+      /sample[[:space:]]+steps/ {seg=1; hdr=1; next}
+      seg && hdr && /^[[:space:]]*-+[[:space:]]*$/ {hdr=0; next}
+      seg && /Submitted [0-9]+, kept/ {seg=0}
+      seg && NF>0 { s=$0; gsub(/[[:space:]]/,"",s); if (s ~ /^[-+XH]+$/) f=1 }
+      END{ exit (f?0:1) }'; }
+  reissue() { smartSlurmRerun="$1" bash "$SMARTSLURM_ROOT/bin/runAsPipeline" --script "./pipeline.sh 9" \
+      --sbatch-options "$OPTS" --tmp noTmp </dev/null >"$2" 2>&1; }
+
+  # (1) fresh run: all three steps complete, no markers, no menu
+  ss_run_pipeline "./pipeline.sh 9" "$OPTS" >run1.log 2>&1
+  assert_file "$s1" "1: fresh - trim done"; assert_file "$s2" "1: fresh - count done"; assert_file "$s3" "1: fresh - merge done"
+  grep -q 'What would you like to re-run' run1.log && _fail "1: fresh run shows no menu" "menu present" || _pass "1: fresh run shows no menu"
+
+  # (1b) interactive re-issue (no override, detached from any tty via setsid so the
+  #      /dev/tty read returns at once): the decision/menu must precede the table, and
+  #      no sample's row is orphaned.
+  SS_WF_MODE= setsid bash "$SMARTSLURM_ROOT/bin/runAsPipeline" --script "./pipeline.sh 9" \
+      --sbatch-options "$OPTS" --tmp noTmp </dev/null >re1b.log 2>&1 || true
+  plain=$(sed 's/\x1b\[[0-9;]*m//g' re1b.log)
+  mLn=$(printf '%s\n' "$plain" | grep -n 'What would you like to re-run' | head -1 | cut -d: -f1)
+  hLn=$(printf '%s\n' "$plain" | grep -nE '^[[:space:]]*sample[[:space:]]+steps' | head -1 | cut -d: -f1)
+  { [ -n "$mLn" ] && [ -n "$hLn" ] && [ "$mLn" -lt "$hLn" ]; } && _pass "1b: interactive decision is up-front (menu before table)" || _fail "1b: interactive decision up-front" "menu=$mLn hdr=$hLn"
+  _no_orphan re1b.log && _pass "1b: no orphaned glyph row" || _fail "1b: no orphaned glyph row" "row split"
+
+  # (2) dry run x2: mutates NO completed work, shows no menu, leaves no markers
+  before=$(_lcstate)
+  ss_run_pipeline "./pipeline.sh 9" "$OPTS" --dryrun >dry1.log 2>&1
+  ss_run_pipeline "./pipeline.sh 9" "$OPTS" --dryrun >dry2.log 2>&1
+  [ "$before" = "$(_lcstate)" ] && _pass "2: dry run does not touch .success (idempotent)" || _fail "2: dry run idempotent" "state changed"
+  grep -qs 'What would you like to re-run' dry1.log dry2.log && _fail "2: dry run shows no menu" "menu present" || _pass "2: dry run shows no menu"
+  [ "$(_nmk)" -eq 0 ] && _pass "2: dry run leaves no scope markers" || _fail "2: dry run leaves no markers" "$(_nmk) present"
+
+  # (3) re-run failed, all complete: every step kept (nothing reran)
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue failed re3.log
+  { [ "$(stat -c '%Y' "$s1")" = "$a1" ] && [ "$(stat -c '%Y' "$s2")" = "$a2" ] && [ "$(stat -c '%Y' "$s3")" = "$a3" ]; } \
+     && _pass "3: re-run failed with all complete keeps every step" || _fail "3: re-run failed keeps all" "an mtime changed"
+
+  # (4) kill count (step 2); re-run failed -> count + downstream merge rerun, trim kept
+  rm -f "$s2"; a1=$(stat -c '%Y' "$s1"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue failed re4.log
+  assert_file "$s2" "4: killed count reran (has .success again)"
+  [ "$(stat -c '%Y' "$s1")" = "$a1" ] && _pass "4: upstream trim KEPT" || _fail "4: upstream trim KEPT" "trim reran"
+  [ "$(stat -c '%Y' "$s3")" != "$a3" ] && _pass "4: downstream merge RERAN" || _fail "4: downstream merge RERAN" "merge not rerun"
+
+  # (5) dry run again mid-cycle: still touches nothing
+  before=$(_lcstate); ss_run_pipeline "./pipeline.sh 9" "$OPTS" --dryrun >dry3.log 2>&1
+  [ "$before" = "$(_lcstate)" ] && _pass "5: mid-cycle dry run touches nothing" || _fail "5: mid-cycle dry run touches nothing" "state changed"
+
+  # (6) re-run all: every step reruns
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue all re6.log
+  { [ "$(stat -c '%Y' "$s1")" != "$a1" ] && [ "$(stat -c '%Y' "$s2")" != "$a2" ] && [ "$(stat -c '%Y' "$s3")" != "$a3" ]; } \
+     && _pass "6: re-run all reruns every step" || _fail "6: re-run all reruns every step" "a step was kept"
+
+  # (7) from-step 2: trim kept, count+merge rerun; correct per-step markers
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); sleep 1.1
+  reissue fromStep:2 re7.log
+  [ "$(stat -c '%Y' "$s1")" = "$a1" ] && _pass "7: from-step2 keeps step1" || _fail "7: from-step2 keeps step1" "step1 reran"
+  [ "$(stat -c '%Y' "$s2")" != "$a2" ] && _pass "7: from-step2 reruns step2" || _fail "7: from-step2 reruns step2" "step2 kept"
+  assert_file "smartSlurmLog/skipAllSuccessJobs1.txt"  "7: step1 marked keep"
+  assert_file "smartSlurmLog/reRunAllSuccessJobs2.txt" "7: step2 marked rerun"
+
+  # (7b) invalid from-step: rejected with a message, keeps all, does not abort / warn
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue fromStep:99 re7b.log
+  assert_contains re7b.log "not in the completed set" "7b: invalid from-step rejected"
+  { [ "$(stat -c '%Y' "$s1")" = "$a1" ] && [ "$(stat -c '%Y' "$s2")" = "$a2" ] && [ "$(stat -c '%Y' "$s3")" = "$a3" ]; } \
+     && _pass "7b: invalid from-step keeps every step" || _fail "7b: invalid from-step keeps all" "a step reran"
+  grep -q 'exited early' re7b.log && _fail "7b: no spurious early-exit warning" "warning present" || _pass "7b: no spurious early-exit warning"
+
+  # (7c) unrecognized override: keep successful (re-run failures only), with a message
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue bogusChoice re7c.log
+  assert_contains re7c.log "Unrecognized choice" "7c: unrecognized override -> keep successful"
+  { [ "$(stat -c '%Y' "$s1")" = "$a1" ] && [ "$(stat -c '%Y' "$s2")" = "$a2" ] && [ "$(stat -c '%Y' "$s3")" = "$a3" ]; } \
+     && _pass "7c: unrecognized override keeps every step" || _fail "7c: unrecognized keeps all" "a step reran"
+
+  # (8) cancel: aborts, nothing reran
+  a1=$(stat -c '%Y' "$s1"); a2=$(stat -c '%Y' "$s2"); a3=$(stat -c '%Y' "$s3"); sleep 1.1
+  reissue cancel re8.log
+  assert_contains re8.log "Cancelled" "8: cancel is acknowledged"
+  { [ "$(stat -c '%Y' "$s1")" = "$a1" ] && [ "$(stat -c '%Y' "$s2")" = "$a2" ] && [ "$(stat -c '%Y' "$s3")" = "$a3" ]; } \
+     && _pass "8: cancel reran nothing" || _fail "8: cancel reran nothing" "a step changed"
+
+  # end state: every step .success, and a final dry run leaves zero stray markers
+  assert_file "$s1" "end: trim complete"; assert_file "$s2" "end: count complete"; assert_file "$s3" "end: merge complete"
+  ss_run_pipeline "./pipeline.sh 9" "$OPTS" --dryrun >dryEnd.log 2>&1
+  [ "$(_nmk)" -eq 0 ] && _pass "end: no stray scope markers" || _fail "end: no stray scope markers" "$(_nmk) present"
+
+  # (fanout) multi-job-per-step: a step-level scope decision must re-run ALL jobs of the
+  # targeted step, not just one. clean_2step has two jobs at step 1 (findNumber.1/.2).
+  ss_new_workspace "$WORK/rerun_lifecycle_fanout"
+  cp "$HERE"/fixtures/clean_2step/* .; chmod +x ./*.sh 2>/dev/null || true
+  ss_run_pipeline "./pipeline.sh 777" "$OPTS" >/dev/null 2>&1
+  f1=smartSlurmLog/1.0.findNumber.1.success; f2=smartSlurmLog/1.0.findNumber.2.success
+  assert_file "$f1" "fanout: setup - step-1 job .1 done"; assert_file "$f2" "fanout: setup - step-1 job .2 done"
+  b1=$(stat -c '%Y' "$f1"); b2=$(stat -c '%Y' "$f2"); sleep 1.1
+  smartSlurmRerun=fromStep:1 bash "$SMARTSLURM_ROOT/bin/runAsPipeline" --script "./pipeline.sh 777" \
+      --sbatch-options "$OPTS" --tmp noTmp </dev/null >fo.log 2>&1
+  { [ "$(stat -c '%Y' "$f1")" != "$b1" ] && [ "$(stat -c '%Y' "$f2")" != "$b2" ]; } \
+     && _pass "fanout: fromStep:1 reruns BOTH jobs of the fan-out step" || _fail "fanout: fromStep:1 reruns both fan-out jobs" "a job was kept"
   echo
 }
 

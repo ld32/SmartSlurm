@@ -258,6 +258,11 @@ checkSum=`md5sum "$PIPELINE_SCRIPT" | cut -d' ' -f 1`
 run=$smartSlurmLogDir/slurmPipeLine.$checkSum.sh
 [ -z "$RUN_MODE" ] || run=$smartSlurmLogDir/slurmPipeLine.$checkSum.dryrun.sh
  
+# Driver-reuse shortcut. NOTE: it is currently inert -- the stored last line carries a
+# "#cmd: " prefix while $thisCmd does not, so they never match and the driver is always
+# regenerated (with the current ssRerunDecide.sh call). ssbatch's no-scope-marker
+# fallback is safe only because of that; if reuse is ever revived, a stale driver
+# predating ssRerunDecide.sh could be reused -- ssbatch warns loudly in that case.
 if [ -f "$run" ]; then
     #thisCmd="#cmd: $0 $@"
     lastCmd=`tail -n 1 $run`
@@ -364,6 +369,13 @@ echo "[ ! -f \$smartSlurmLogDir/keepRunningJobs.txt ] && printf \"%-10s   %-20s 
 echo "[ \"\$ssV\" = verbose ] && echo ---------------------------------------------------------" >> $run
 
 [ "$TMP_MODE" == "useTmp" ] && echo ". $(dirname $0)/utils.sh" >> $run
+
+# Decide the re-run SCOPE once, up front -- BEFORE the progress table is drawn -- so
+# the prompt can't fire mid-row inside the first already-completed step's ssbatch, and
+# a dry run stays non-interactive. Writes the skip*/reRun* markers ssbatch reads; on
+# 'cancel' it returns 2 and we abort cleanly. (${RUN_MODE:+dryrun} passes "dryrun" only
+# on a dry run.)
+echo "ssRerunDecide.sh ${RUN_MODE:+dryrun}; _ssRerunRC=\$?; [ \"\$_ssRerunRC\" = 2 ] && { early_exit=false; exit 0; }" >> $run
 
 # get slurm account from command line
 slurmAccount=""
@@ -924,6 +936,9 @@ echo "ssSummary" >> $run
 echo "if [ \"\$ssV\" = verbose ]; then echo 'All submitted jobs: '; awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt; echo ---------------------------------------------------------; else awk '{print substr(\$0, 1, 155)}' \$smartSlurmLogDir/allJobs.txt >> .smartSlurm.log; fi" >> $run
 
 [[ "$RUN_MODE" == "dryrun" ]] && echo "[ \"\$ssV\" != quiet ] && echo Note: This is a dry run, so no job was actually submitted." >> $run
+
+# A dry run previews the plan using the scope markers, but must not LEAVE them behind.
+[[ "$RUN_MODE" == "dryrun" ]] && echo "rm -f \$smartSlurmLogDir/skipAllSuccessJobs*.txt \$smartSlurmLogDir/reRunAllSuccessJobs*.txt 2>/dev/null" >> $run
 
 
 echo "early_exit=false" >> $run
