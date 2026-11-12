@@ -1,0 +1,19 @@
+{
+  "name": "slurmless",
+  "displayName": "Slurmless + Migration Assistant",
+  "description": "Slurm-free SmartSlurm test harness, plus a Migration Assistant skill that converts hand-rolled SLURM workflows or loose scripts to SmartSlurm's runAsPipeline and proves them off-cluster in the sandbox.",
+  "version": "0.1.0",
+  "author": { "name": "slurmless / SmartSlurm contributors" },
+  "homepage": "https://github.com/ntc-agnt/slurmless_smartSlurm_testing",
+  "repository": "https://github.com/ntc-agnt/slurmless_smartSlurm_testing",
+  "license": "MIT",
+  "keywords": ["slurm", "smartslurm", "runaspipeline", "hpc", "pipeline", "migration", "bioinformatics"],
+  "userConfig": {
+    "smartslurm_path": {
+      "type": "directory",
+      "title": "SmartSlurm checkout",
+      "description": "Absolute path to a SmartSlurm clone (the one whose bin/runAsPipeline the harness runs). Optional: if left blank, the harness auto-resolves a vendored or sibling checkout, or clones upstream master on first bootstrap.",
+      "required": false
+    }
+  }
+}

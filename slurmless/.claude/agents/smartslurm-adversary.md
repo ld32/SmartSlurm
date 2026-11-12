@@ -1,0 +1,1 @@
+../../agents/smartslurm-adversary.md

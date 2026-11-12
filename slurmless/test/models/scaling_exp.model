@@ -1,0 +1,14 @@
+# Exponential: mem = 300*exp(0.00025*size) (M). SmartSlurm fits a STRAIGHT line,
+# so a fit over a modest size range under-predicts at large sizes -> emergent OOM.
+MODEL_PROGRAM=scaleExp
+MODEL_REF=none
+MEM_FORM=exp
+MEM_A=0.00025
+MEM_B=300
+TIME_FORM=linear
+TIME_A=0.01
+TIME_B=10
+MAXRSS_FACTOR=1.0
+NOISE_MEM=0
+NOISE_TIME=0
+SEED=42

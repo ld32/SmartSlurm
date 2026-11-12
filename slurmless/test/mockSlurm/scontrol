@@ -1,0 +1,3 @@
+#!/bin/bash
+# mock scontrol: accept 'requeue', 'hold', 'release', 'update job=…' as no-ops.
+exit 0

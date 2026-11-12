@@ -1,0 +1,207 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# wfdrain -- execute the registered user-workflow DAG (Migration Assistant).
+#
+# Operates on $MOCK_SLURM_STATE/wf, where the workflow-mode mock sbatch records
+# each job: <id>.run (payload), <id>.deps, <id>.name, <id>.out, <id>.err,
+# <id>.kill, and <id>.array (space-separated task indices) for array jobs.
+#
+# Runs every READY job (an array job runs all its tasks) honoring the full
+# --dependency grammar, and marks an unsatisfiable job cancelled/held per its
+# --kill-on-invalid-dep. Idempotent: a job that already has <id>.rc is skipped,
+# so this is safe to call repeatedly (e.g. from `sbatch --wait`). Appends an
+# execution log to $wf/.order: "<id>\tRAN|RAN[array:N]|CANCELLED|HELD".
+#
+# This is the single drain engine shared by the harness (ss_wf_drain) and the
+# mock sbatch's --wait path.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+wf="${MOCK_SLURM_STATE:?MOCK_SLURM_STATE unset}/wf"
+[ -d "$wf" ] || exit 0
+
+# _dep_state <depid> -> OK | FAIL | HELD | NOTDONE (from its aggregate .rc)
+_dep_state() {
+  local rc; [ -f "$wf/$1.rc" ] || { echo NOTDONE; return; }
+  rc="$(cat "$wf/$1.rc")"
+  case "$rc" in 0) echo OK;; held) echo HELD;; *) echo FAIL;; esac   # cancelled/nonzero = FAIL
+}
+
+# _eval_term <id> <term> -> SATISFIED | PENDING | INVALID
+_eval_term() {
+  local id="$1" term="$2" type="${term%%:*}" d st s allSat=1 anyInvalid="" j myname
+  if [ "$type" = singleton ]; then
+    myname="$(cat "$wf/$id.name" 2>/dev/null)"
+    for j in $(ls "$wf"/*.name 2>/dev/null | sed 's#.*/##; s/\.name$//' | sort -n); do
+      [ "$j" -lt "$id" ] 2>/dev/null || continue
+      [ "$(cat "$wf/$j.name" 2>/dev/null)" = "$myname" ] || continue
+      [ -f "$wf/$j.rc" ] || { echo PENDING; return; }
+    done
+    echo SATISFIED; return
+  fi
+  for d in $(echo "${term#*:}" | tr ':' ' '); do
+    d="${d%%+*}"                                           # strip +time offset (no-op here)
+    [[ "$d" =~ ^[0-9]+$ ]] || continue
+    st="$(_dep_state "$d")"
+    case "$type" in
+      afterok)                                    case "$st" in OK) s=SAT;; NOTDONE) s=PEND;; *) s=INV;; esac;;
+      afternotok)                                 case "$st" in FAIL) s=SAT;; NOTDONE) s=PEND;; *) s=INV;; esac;;
+      after|afterany|afterburstbuffer|aftercorr)  case "$st" in OK|FAIL) s=SAT;; NOTDONE) s=PEND;; *) s=INV;; esac;;
+      *)                                          case "$st" in OK) s=SAT;; NOTDONE) s=PEND;; *) s=INV;; esac;;
+    esac
+    case "$s" in PEND) allSat="";; INV) anyInvalid=1; allSat="";; esac
+  done
+  [ -n "$anyInvalid" ] && { echo INVALID; return; }
+  [ -n "$allSat" ]     && { echo SATISFIED; return; }
+  echo PENDING
+}
+
+# _eval_dep <id> -> READY | PENDING | INVALID  (applies the AND(,) / OR(?) join)
+_eval_dep() {
+  local id="$1" deps conj term tstat anySat="" anyInvalid="" allSat=1 allInvalid=1
+  deps="$(cat "$wf/$id.deps" 2>/dev/null)"
+  [ -z "$deps" ] && { echo READY; return; }
+  local -a terms
+  if [[ "$deps" == *'?'* ]]; then conj=OR;  IFS='?' read -ra terms <<< "$deps"
+  else                            conj=AND; IFS=',' read -ra terms <<< "$deps"; fi
+  for term in "${terms[@]}"; do
+    [ -z "$term" ] && continue
+    tstat="$(_eval_term "$id" "$term")"
+    case "$tstat" in
+      SATISFIED) anySat=1; allInvalid="";;
+      INVALID)   anyInvalid=1; allSat="";;
+      PENDING)   allSat=""; allInvalid="";;
+    esac
+  done
+  if [ "$conj" = AND ]; then
+    [ -n "$anyInvalid" ] && { echo INVALID; return; }
+    [ -n "$allSat" ]     && { echo READY;   return; }
+    echo PENDING
+  else
+    [ -n "$anySat" ]     && { echo READY;   return; }
+    [ -n "$allInvalid" ] && { echo INVALID; return; }
+    echo PENDING
+  fi
+}
+
+# _run_single <id> : run a non-array job once, capture rc.
+_run_single() {
+  local id="$1" o e
+  o="$(cat "$wf/$id.out" 2>/dev/null)"; e="$(cat "$wf/$id.err" 2>/dev/null)"
+  (
+    export SLURM_JOB_ID="$id" SLURM_JOBID="$id" SLURM_SUBMIT_DIR="$PWD"
+    if   [ -n "$o" ] && [ -n "$e" ]; then bash "$wf/$id.run" >"$o" 2>"$e"
+    elif [ -n "$o" ];                then bash "$wf/$id.run" >"$o" 2>&1
+    else                                  bash "$wf/$id.run"
+    fi
+  )
+  echo $? > "$wf/$id.rc"
+  printf '%s\tRAN\n' "$id" >> "$wf/.order"
+}
+
+# _run_array <id> : run every task of an array job. aftercorr makes task N wait on
+# the dependency array's task N (run if that task succeeded, else cancel this one).
+# Aggregate <id>.rc = 0 iff every task ran and succeeded.
+_run_array() {
+  local id="$1" tasks t trc allok=1 corr o e oo ee drc
+  tasks="$(cat "$wf/$id.array")"
+  corr="$(grep -o 'aftercorr:[0-9]*' "$wf/$id.deps" 2>/dev/null | head -1 | cut -d: -f2)"
+  o="$(cat "$wf/$id.out" 2>/dev/null)"; e="$(cat "$wf/$id.err" 2>/dev/null)"
+  for t in $tasks; do
+    if [ -n "$corr" ] && [ -f "$wf/$corr.array" ]; then
+      drc="missing"; [ -f "$wf/$corr.$t.rc" ] && drc="$(cat "$wf/$corr.$t.rc")"
+      if [ "$drc" != "0" ]; then
+        echo cancelled > "$wf/$id.$t.rc"; allok=""; continue   # corresponding dep task not OK
+      fi
+    fi
+    oo="${o//%A/$id}"; oo="${oo//%a/$t}"
+    ee="${e//%A/$id}"; ee="${ee//%a/$t}"
+    (
+      export SLURM_ARRAY_JOB_ID="$id" SLURM_ARRAY_TASK_ID="$t" \
+             SLURM_JOB_ID="${id}_$t" SLURM_JOBID="${id}_$t" SLURM_SUBMIT_DIR="$PWD"
+      if   [ -n "$oo" ] && [ -n "$ee" ]; then bash "$wf/$id.run" >"$oo" 2>"$ee"
+      elif [ -n "$oo" ];                 then bash "$wf/$id.run" >"$oo" 2>&1
+      else                                    bash "$wf/$id.run"
+      fi
+    )
+    trc=$?; echo "$trc" > "$wf/$id.$t.rc"; [ "$trc" -eq 0 ] || allok=""
+  done
+  [ -n "$allok" ] && echo 0 > "$wf/$id.rc" || echo 1 > "$wf/$id.rc"
+  printf '%s\tRAN[array:%s]\n' "$id" "$(echo $tasks | wc -w)" >> "$wf/.order"
+}
+
+# _wf_should_stub <id> <name> : true if this job should run as a stub instead of
+# its real payload (tiered execution). Explicit: the name matches a glob in
+# SS_WF_STUB. Auto: SS_WF_STUB_MISSING is set and the payload's leading command is
+# not resolvable (a missing tool) -- lets a workflow's wiring validate without
+# every tool installed. (The converter/MA decides which steps to stub.)
+_wf_should_stub() {
+  local id="$1" name="$2" pat cmd lead
+  for pat in ${SS_WF_STUB:-}; do case "$name" in $pat) return 0;; esac; done
+  if [ -n "${SS_WF_STUB_MISSING:-}" ]; then
+    cmd="$(tail -1 "$wf/$id.run" 2>/dev/null)"; set -- $cmd; lead="${1:-}"
+    [ "$lead" = bash ] && lead="${2:-}"          # "bash <script>": the script is a file, not a tool
+    [ -n "$lead" ] && [ ! -f "$lead" ] && ! command -v "$lead" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+# _run_stub <id> <name> : skip the real payload, succeed, and log it. Array stubs
+# settle every task OK. (Outputs are NOT produced -- a stub validates the DAG/
+# wiring, not the data; steps whose real output is consumed should run for real.)
+_run_stub() {
+  local id="$1" name="$2" t
+  printf '[stub:%s] %s\n' "$name" "$(tail -1 "$wf/$id.run" 2>/dev/null)" >> "$wf/.stubs"
+  if [ -f "$wf/$id.array" ]; then
+    for t in $(cat "$wf/$id.array"); do echo 0 > "$wf/$id.$t.rc"; done
+    echo 0 > "$wf/$id.rc"; printf '%s\tSTUB[array]\n' "$id" >> "$wf/.order"
+  else
+    echo 0 > "$wf/$id.rc"; printf '%s\tSTUB\n' "$id" >> "$wf/.order"
+  fi
+}
+
+ids=$(ls "$wf"/*.run 2>/dev/null | sed 's#.*/##; s/\.run$//' | sort -n)
+[ -n "$ids" ] || exit 0
+[ -f "$wf/.order" ] || : > "$wf/.order"
+dflt="${SS_WF_KILL_INVALID_DEP:-yes}"
+
+progress=1
+while [ -n "$progress" ]; do
+  progress=""
+  for id in $ids; do
+    [ -f "$wf/$id.rc" ] && continue
+    verdict="$(_eval_dep "$id")"
+    [ "$verdict" = PENDING ] && continue
+    progress=1
+    if [ "$verdict" = INVALID ]; then
+      kill="$(cat "$wf/$id.kill" 2>/dev/null)"; [ -n "$kill" ] || kill="$dflt"
+      if [ "$kill" = no ]; then
+        echo held > "$wf/$id.rc";      printf '%s\tHELD\n'      "$id" >> "$wf/.order"
+      else
+        echo cancelled > "$wf/$id.rc"; printf '%s\tCANCELLED\n' "$id" >> "$wf/.order"
+      fi
+      continue
+    fi
+    # fault injection (resource-sim): force a matching job to fail, so the DAG's
+    # failure handling (afternotok cleanup, orphaned afterok downstream, a rAP
+    # port's retry/escalation) can be exercised. The payload is not run.
+    name="$(cat "$wf/$id.name" 2>/dev/null)"; inj=""
+    if [ -n "${MOCK_FAIL_MODE:-}" ] && { [ -z "${MOCK_FAIL_JOB:-}" ] || [[ "$name" == *"${MOCK_FAIL_JOB}"* ]]; }; then
+      inj="$MOCK_FAIL_MODE"
+    fi
+    if [ -n "$inj" ]; then
+      [ -f "$wf/$id.array" ] && for t in $(cat "$wf/$id.array"); do echo 1 > "$wf/$id.$t.rc"; done
+      echo 1 > "$wf/$id.rc"; echo "$inj" > "$wf/$id.failmode"
+      printf '%s\tFAILED(%s)\n' "$id" "$inj" >> "$wf/.order"; continue
+    fi
+    # tiered execution: real payload, or a stub when the tool/input is unavailable
+    if   _wf_should_stub "$id" "$name"; then _run_stub   "$id" "$name"
+    elif [ -f "$wf/$id.array" ];        then _run_array  "$id"
+    else                                     _run_single "$id"; fi
+  done
+done
+
+for id in $ids; do                                         # anything still stuck -> held
+  [ -f "$wf/$id.rc" ] && continue
+  echo held > "$wf/$id.rc"; printf '%s\tHELD\n' "$id" >> "$wf/.order"
+done
+exit 0

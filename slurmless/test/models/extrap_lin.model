@@ -1,0 +1,15 @@
+# Linear truth with ~6% noise, used to study EXTRAPOLATION: train on small sizes
+# (100..1000), then predict at 2x..50x. Because the truth is linear, the linear
+# fit should extrapolate reasonably. mem = 0.5*size + 200 (M); time = 0.02*size+10.
+MODEL_PROGRAM=extraLin
+MODEL_REF=none
+MEM_FORM=linear
+MEM_A=0.5
+MEM_B=200
+TIME_FORM=linear
+TIME_A=0.02
+TIME_B=10
+MAXRSS_FACTOR=0.95
+NOISE_MEM=0.06
+NOISE_TIME=0.06
+SEED=42

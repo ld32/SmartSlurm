@@ -1,0 +1,300 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# mock sbatch  --  Slurm-free stand-in for the real sbatch.
+#
+# Purpose: let unmodified runAsPipeline / ssbatch run in a sandbox with no
+# scheduler, while STILL executing the real job payload so that failure
+# attribution (exit codes, empty outputs, .success/.failed) behaves realistically.
+#
+# Contract this models (what ssbatch actually calls):
+#   sbatch [slurm opts] --parsable -o <out> -e <err> -J <name> \
+#          [-d afterok:IDS] [-H] <jobScript>
+#   - with --parsable, print ONLY the numeric job id on stdout (ssbatch parses it)
+#   - execute <jobScript> so the trap/cleanUp.sh + payload run for real
+#   - record state under $MOCK_SLURM_STATE/jobs/<id>.* for sacct to replay
+#
+# Because we execute synchronously in submission order, afterok dependencies are
+# naturally satisfied by the time a dependent job runs, so -H/-d need no special
+# handling beyond being recorded.
+#
+# Failure injection (env, read by this shim AND by mock sacct):
+#   MOCK_FAIL_JOB=<jobName-substring>   only inject for jobs whose -J matches
+#   MOCK_FAIL_MODE=nonzero|oom|timeout  force the payload / reported state
+#   (exit0-empty is modeled by the *fixture's tool*, not here.)
+# ---------------------------------------------------------------------------
+set -uo pipefail
+state="${MOCK_SLURM_STATE:-/tmp/mockslurm}"; mkdir -p "$state/jobs"
+
+# expand an --array spec to a space-separated index list (drops the %N concurrency
+# cap, which does not affect which tasks run). "1-5:2,8" -> "1 3 5 8".
+_mock_expand_array() {
+  local spec="${1%%"%"*}" part lo hi st i out=""
+  local IFS=,
+  for part in $spec; do
+    case "$part" in
+      *-*:*) lo=${part%%-*}; part=${part#*-}; hi=${part%%:*}; st=${part#*:}
+             i=$lo; while [ "$i" -le "$hi" ]; do out="$out $i"; i=$((i+st)); done;;
+      *-*)   lo=${part%%-*}; hi=${part#*-}
+             i=$lo; while [ "$i" -le "$hi" ]; do out="$out $i"; i=$((i+1)); done;;
+      *)     out="$out $part";;
+    esac
+  done
+  printf '%s' "${out# }"
+}
+
+out=""; err=""; script=""; parsable=""; hold=""; deps=""; name=""; wrap=""; posargs=(); killinvalid=""; arrspec=""; wait=""
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  # Real sbatch is `sbatch [sbatch-opts...] <script> [script-args...]`: once the job
+  # script has been seen, every following token is a SCRIPT argument, passed through
+  # verbatim -- INCLUDING --flags. Without this, a hand-rolled worker call like
+  # `sbatch ... worker.sh --read1 X --mode full` had its --read1/--mode dropped and
+  # the values collapsed to positionals, so user-workflow (wf-mode) DAG recovery
+  # recorded `bash worker.sh X full`. Default mode ignores posargs (it runs
+  # `bash "$script"` with no args), so only wf-mode's serialized payload changes.
+  if [ -n "$script" ]; then posargs+=("$a"); i=$((i+1)); continue; fi
+  case "$a" in
+    -o|--output)     out="${args[i+1]:-}";  i=$((i+2)); continue;;
+    --output=*)      out="${a#--output=}";;
+    -e|--error)      err="${args[i+1]:-}";  i=$((i+2)); continue;;
+    --error=*)       err="${a#--error=}";;
+    -J|--job-name)   name="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --job-name=*)    name="${a#--job-name=}";;
+    -d|--dependency) deps="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --dependency=*)  deps="${a#--dependency=}";;
+    -H|--hold)       hold=1;;
+    --parsable)      parsable=1;;
+    # Capture the ACTUAL requested mem/time: on an auto-requeue cleanUp.sh changes
+    # --mem/-t (the real cgroup limit / time limit) but NOT the job script's trap
+    # line, so the emergent-OOM/OOT check must use these, not the stale trap values.
+    --mem)           memCli="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --mem=*)         memCli="${a#--mem=}";;
+    -t|--time)       timeCli="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --time=*)        timeCli="${a#--time=}";;
+    # --wrap: an inline command instead of a job script (common in hand-rolled
+    # SLURM workflows). Captured for user-workflow mode (register-don't-run).
+    --wrap)          wrap="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --wrap=*)        wrap="${a#--wrap=}";;
+    # what to do with a job whose dependency can never be satisfied (user-workflow
+    # mode): yes -> cancel it, no -> hold it pending. Recorded for ss_wf_drain.
+    --kill-on-invalid-dep)   killinvalid="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --kill-on-invalid-dep=*) killinvalid="${a#--kill-on-invalid-dep=}";;
+    # job array + blocking submit (user-workflow mode)
+    -a|--array)      arrspec="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --array=*)       arrspec="${a#--array=}";;
+    -W|--wait)       wait=1;;
+    # options that consume a value we don't need -> skip both tokens
+    -p|-c|-A|-D|-w|-x|-n|-N|--mail-user|--qos|--open-mode)
+                     i=$((i+2)); continue;;
+    --*)             ;;   # standalone long option (e.g. --requeue, --mail-type=FAIL)
+    -*)              ;;   # unknown short option
+    *)               posargs+=("$a"); [ -z "$script" ] && [ -f "$a" ] && script="$a";;
+  esac
+  i=$((i+1))
+done
+
+# Monotonic, collision-free job ids from a per-state counter. Submissions within a
+# single run are sequential, but a differential test may drive two arms against one
+# MOCK_SLURM_STATE, where CONCURRENT submissions would race a plain
+# read-modify-write and collide on an id -- overwriting another job's
+# .meta/.rc/.inject/.resource/.run and corrupting attribution. So guard the
+# increment with an atomic lock: flock where available, else an atomic-mkdir
+# spinlock (both released promptly, before the payload runs).
+seqf="$state/.jobseq"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$state/.jobseq.lock"; flock 9
+  id=$(( $(cat "$seqf" 2>/dev/null || echo 10000) + 1 )); printf '%s' "$id" > "$seqf"
+  flock -u 9; exec 9>&-
+else
+  until mkdir "$state/.jobseq.lck" 2>/dev/null; do sleep 0.01; done
+  id=$(( $(cat "$seqf" 2>/dev/null || echo 10000) + 1 )); printf '%s' "$id" > "$seqf"
+  rmdir "$state/.jobseq.lck"
+fi
+printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$deps" "$hold" > "$state/jobs/$id.meta"
+
+# announce the id in the format ssbatch expects
+if [ -n "$parsable" ]; then echo "$id"; else echo "Submitted batch job $id"; fi
+
+# ---- user-workflow mode (Migration Assistant): register, don't run ----------
+# When SS_WF_MODE is set the mock schedules an ARBITRARY user script that knows
+# nothing about SmartSlurm. Unlike the default path below (which runs the payload
+# synchronously at submit time), here we only RECORD the job -- its command, deps,
+# and redirects -- and return immediately. That lets the user's own
+# `jid=$(sbatch ...)` capture + `--dependency=afterok:$jid` build a real DAG that
+# ss_wf_drain then executes in topological order. The script is never modified;
+# the mock is invisible to it. (Thin slice: afterok honored at drain time.)
+if [ -n "${SS_WF_MODE:-}" ]; then
+  wf="$state/wf"; mkdir -p "$wf"
+  printf '%s' "$name" > "$wf/$id.name"
+  printf '%s' "$deps" > "$wf/$id.deps"
+  printf '%s' "$out"  > "$wf/$id.out"
+  printf '%s' "$err"  > "$wf/$id.err"
+  printf '%s' "$killinvalid" > "$wf/$id.kill"
+  [ -n "$arrspec" ] && printf '%s' "$(_mock_expand_array "$arrspec")" > "$wf/$id.array"
+  # Serialize the exact payload into a runnable script (printf %q keeps quoting
+  # intact). A batch job runs in its submit directory, so cd there first.
+  {
+    printf 'cd %q || exit 127\n' "$PWD"
+    if [ -n "$wrap" ]; then
+      printf '%s\n' "$wrap"                               # --wrap: inline command
+    else
+      printf 'bash'                                       # <script> [args...]
+      for p in ${posargs[@]+"${posargs[@]}"}; do printf ' %q' "$p"; done
+      printf '\n'
+    fi
+  } > "$wf/$id.run"
+  # --wait: block until this job finishes. Run the shared drain engine (it runs
+  # this job and its prerequisite deps), then exit with the job's status, like
+  # real `sbatch --wait`.
+  if [ -n "$wait" ]; then
+    wfd="$(command -v wfdrain || true)"
+    [ -n "$wfd" ] || wfd="$(dirname "$(readlink -f "$0")")/wfdrain"
+    MOCK_SLURM_STATE="$state" bash "$wfd" >/dev/null 2>&1 || true
+    jrc="$(cat "$wf/$id.rc" 2>/dev/null)"
+    case "$jrc" in ''|*[!0-9]*) exit 1;; *) exit "$jrc";; esac
+  fi
+  exit 0
+fi
+
+[ -z "$script" ] && exit 0
+
+# Honor afterok: if any upstream dependency failed (recorded rc != 0 or injected),
+# this job is cancelled by the scheduler and never runs -> leaves no flags, so
+# checkRun sees it as an orphaned downstream job. deps look like "afterok:ID:ID".
+if [ -n "$deps" ]; then
+  depfailed=""
+  IFS=':' read -ra dparts <<< "$deps"
+  for d in "${dparts[@]}"; do
+    [[ "$d" =~ ^[0-9]+$ ]] || continue          # skip the "afterok" keyword
+    drc="0"; [ -f "$state/jobs/$d.rc" ] && drc="$(cat "$state/jobs/$d.rc")"
+    dinj=""; [ -f "$state/jobs/$d.inject" ] && dinj="$(cat "$state/jobs/$d.inject")"
+    { [ "$drc" != "0" ] || [ -n "$dinj" ]; } && depfailed=1
+  done
+  if [ -n "$depfailed" ]; then
+    echo "cancelled" > "$state/jobs/$id.rc"
+    echo "dependency" > "$state/jobs/$id.inject"
+    exit 0     # do NOT run the payload; dependent is orphaned
+  fi
+fi
+
+# decide whether this job is targeted for EXPLICIT failure injection
+inject=""
+if [ -n "${MOCK_FAIL_MODE:-}" ]; then
+  if [ -z "${MOCK_FAIL_JOB:-}" ] || [[ "$name" == *"${MOCK_FAIL_JOB}"* ]]; then
+    inject="$MOCK_FAIL_MODE"
+  fi
+fi
+
+# ---- resource model (optional) -------------------------------------------
+# When SS_MODEL names a model file, synthesize this job's "measured" resources
+# from its input size, cache them under $id.resource for the mock memCpuMonitor
+# (time + peak) and mock sacct (MaxRSS + State) to replay, so the UNMODIFIED
+# cleanUp.sh writes a realistic jobRecord.txt row. The job's program/ref/inputSize
+# and the ALLOCATED mem/time are read from the cleanUp.sh trap line the job script
+# carries (fixed positions set by ssbatch): cleanUp.sh <flag> <program> <ref>
+# <inputSize> <core> <memO> <minO> <allocMem> <allocMin> <partition> ...
+if [ -n "${SS_MODEL:-}" ] && [ -f "$SS_MODEL" ]; then
+  trapline="$(grep -o 'cleanUp\.sh [^"]*' "$script" 2>/dev/null | head -1)"
+  if [ -n "$trapline" ]; then
+    read -r _cu mflag mprog mref msize mcore mmemO mminO mAllocMem mAllocMin _rest <<<"$trapline"
+    # Guard the positional contract with ssbatch's generated trap line:
+    #   cleanUp.sh <flag> <program> <ref> <inputSize> <core> <memO> <minO> \
+    #              <allocMem> <allocMin> <partition> ...
+    # If the shape is unexpected (ssbatch changed cleanUp.sh's arg order/count),
+    # warn LOUDLY and skip modeling rather than silently feeding a wrong size /
+    # allocation into jobRecord.txt — the hardest kind of drift to notice.
+    badtrap=""
+    if [ -z "$mprog" ] || [ -z "$mAllocMin" ]; then
+      badtrap=1
+      echo "mock sbatch: WARNING: unexpected cleanUp.sh trap-line shape; resource" \
+           "model skipped (ssbatch arg order may have changed): $trapline" >&2
+    fi
+    # only model jobs that match this model's program/ref (blank = match any)
+    mpOK=1; mrOK=1
+    mp="$(sed -n 's/^MODEL_PROGRAM=//p' "$SS_MODEL" | head -1)"
+    mr="$(sed -n 's/^MODEL_REF=//p'     "$SS_MODEL" | head -1)"
+    [ -n "$mp" ] && [ "$mp" != "$mprog" ] && mpOK=""
+    [ -n "$mr" ] && [ "$mr" != "$mref" ]  && mrOK=""
+    if [ -n "$mpOK" ] && [ -n "$mrOK" ] && [ -z "$badtrap" ]; then
+      # per-submission reproducible seed: a monotonic counter. Keep it in the
+      # (shared, not-per-workspace) record dir so a sweep's points each get a
+      # distinct seed -> independent noise draws, even though each point runs in
+      # its own workspace/mock-state subdir.
+      seqf="${smartSlurmJobRecordDir:-$state}/model.seq"
+      mkdir -p "$(dirname "$seqf")"
+      seq=0; [ -f "$seqf" ] && seq="$(cat "$seqf")"; echo $((seq+1)) > "$seqf"
+      read -r trueMem trueTime trueRSS < <(resourceModel.sh "$SS_MODEL" "${msize:-0}" "$seq")
+      memUsed="$trueMem"; timeUsed="$trueTime"; maxRSS="$trueRSS"
+      # Prefer the ACTUAL --mem/-t from this submission (so an auto-requeue's raised
+      # limits take effect) over the job script's stale trap-line values.
+      allocMem="$mAllocMem"; allocMin="$mAllocMin"
+      if [ -n "${memCli:-}" ]; then
+        case "$memCli" in
+          *G|*g) allocMem=$(( ${memCli%[Gg]} * 1024 ));;
+          *M|*m) allocMem=${memCli%[Mm]};;
+          *)     allocMem=$memCli;;
+        esac
+      fi
+      if [ -n "${timeCli:-}" ]; then
+        case "$timeCli" in
+          *-*) d=${timeCli%%-*}; hms=${timeCli#*-}; allocMin=$(( d*1440 + ${hms%%:*}*60 + $(echo "$hms" | cut -d: -f2) ));;
+          *:*:*) allocMin=$(( ${timeCli%%:*}*60 + $(echo "$timeCli" | cut -d: -f2) ));;
+          *:*) allocMin=${timeCli%%:*};;         # MM:SS  (slurm "min:sec")
+          *)   allocMin=$timeCli;;
+        esac
+      fi
+      # Emergent errors: a too-small allocation (from a bad fit) kills the job,
+      # exactly like the cluster. Explicit MOCK_FAIL_MODE still wins.
+      if [ -z "$inject" ] && [ "${allocMem:-0}" -gt 0 ] 2>/dev/null && [ "$trueMem" -gt "$allocMem" ]; then
+        inject="oom";     memUsed="$allocMem"; maxRSS="$allocMem"   # killed at the cap
+      elif [ -z "$inject" ] && [ "${allocMin:-0}" -gt 0 ] 2>/dev/null && [ "$trueTime" -gt "$allocMin" ]; then
+        inject="timeout"; timeUsed="$allocMin"
+      fi
+      printf '%s %s %s %s\n' "$memUsed" "$timeUsed" "$maxRSS" "$inject" > "$state/jobs/$id.resource"
+    fi
+  fi
+fi
+
+# The sacct STATE a hard-kill mode reports differs from its srun BEHAVIOR: a
+# SIGKILL models a cgroup OOM (sacct OUT_OF_MEMORY); a SIGTERM models the grace
+# signal before a timeout kill (sacct TIMEOUT). Other modes pass through unchanged.
+sacct_state="$inject"
+case "$inject" in sigkill) sacct_state=oom;; sigterm) sacct_state=timeout;; esac
+echo "${sacct_state:-}" > "$state/jobs/$id.inject"   # sacct reads this to report state
+
+if [ "$inject" = sigkill ] || [ "$inject" = sigterm ]; then
+  # HARD-KILL path (model a cgroup OOM / node kill / the SIGKILL after a timeout
+  # grace). Run the job in its OWN session (setsid) so its process group is
+  # isolated from the harness; the payload (mock srun under MOCK_INJECT) reports
+  # that pgid + a .killready sentinel and blocks; we then signal the whole group,
+  # so the script + its EXIT trap + the memCpuMonitor child die together. We write
+  # NO .success/.failed -- whether cleanUp runs is decided ENTIRELY by the real
+  # EXIT/signal trap in the job script (the whole point of this model: with SIGKILL
+  # the trap never runs -> a vanished job; with SIGTERM it runs only if trapped).
+  rm -f "$state/jobs/$id.killready" "$state/jobs/$id.pgid"
+  sig=KILL; [ "$inject" = sigterm ] && sig=TERM
+  mypgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
+  (
+    export SLURM_JOBID="$id" SLURM_JOB_ID="$id" MOCK_INJECT="$inject"
+    if [ -n "$out" ]; then setsid bash "$script" >"$out" 2>&1 & else setsid bash "$script" & fi
+    jpid=$!; pgid=""
+    for _ in $(seq 1 200); do                    # bounded (<=10s) wait for payload to go live
+      [ -f "$state/jobs/$id.killready" ] && { pgid="$(tr -d ' ' < "$state/jobs/$id.pgid" 2>/dev/null)"; break; }
+      kill -0 "$jpid" 2>/dev/null || break       # job exited before reaching the payload
+      sleep 0.05
+    done
+    # SAFETY: only ever signal an isolated group -- never our own/the harness group.
+    if [ -n "$pgid" ] && [ "$pgid" != "$mypgid" ]; then kill -"$sig" "-$pgid" 2>/dev/null; fi
+    wait "$jpid" 2>/dev/null; echo "${?:-137}" > "$state/jobs/$id.rc"
+  )
+else
+  # Normal path: run synchronously so the EXIT trap fires and cleanUp consults
+  # sacct -- models "payload failed but the script survived" (oom/timeout/nonzero).
+  (
+    export SLURM_JOBID="$id" SLURM_JOB_ID="$id" MOCK_INJECT="$inject"
+    if [ -n "$out" ]; then bash "$script" >"$out" 2>&1; else bash "$script"; fi
+    echo $? > "$state/jobs/$id.rc"
+  )
+fi
+exit 0

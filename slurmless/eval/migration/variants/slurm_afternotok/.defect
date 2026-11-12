@@ -1,0 +1,1 @@
+mapping-gap (afternotok): recover_5 runs on fetch_5 FAILURE (afternotok) and assemble depends on it; rAP has no direct afternotok form. REF == golden (original recovers correctly). A faithful port must reproduce the full quote; dropping/mis-porting the afternotok garbles it or orphans assemble.

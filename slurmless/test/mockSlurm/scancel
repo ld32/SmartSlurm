@@ -1,0 +1,23 @@
+#!/bin/bash
+# mock scancel.
+#   default mode (SmartSlurm's own suite): mark the job cancelled via its .inject.
+#   user-workflow mode (SS_WF_MODE): settle the registered job as cancelled so the
+#     drain skips it and its afterok downstream is orphaned. A still-pending job
+#     only (a job that already ran is left alone, like the real scheduler). An
+#     array id cancels all of its tasks too.
+state="${MOCK_SLURM_STATE:-/tmp/mockslurm}"
+wf="$state/wf"
+for id in "$@"; do
+  [[ "$id" =~ ^[0-9]+$ ]] || continue                 # ignore flags / id_task forms
+  if [ -n "${SS_WF_MODE:-}" ] && [ -e "$wf/$id.run" ]; then
+    [ -f "$wf/$id.rc" ] && continue                   # already settled: no-op
+    echo cancelled > "$wf/$id.rc"
+    if [ -f "$wf/$id.array" ]; then
+      for t in $(cat "$wf/$id.array"); do echo cancelled > "$wf/$id.$t.rc"; done
+    fi
+    printf '%s\tCANCELLED(scancel)\n' "$id" >> "$wf/.order" 2>/dev/null || true
+  else
+    echo cancelled > "$state/jobs/$id.inject" 2>/dev/null
+  fi
+done
+exit 0

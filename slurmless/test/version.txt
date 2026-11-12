@@ -1,0 +1,43 @@
+slurmless — SmartSlurm test harness: validated baseline
+=======================================================
+Last validated : 2026-10-23
+Upstream origin : github.com/ld32/smartSlurm   (branch: master)
+Prep base       : ntc-agnt/SmartSlurm @ e753dc8  (fork of master)
+
+Target behavior : master WITH the estimator/jobRecords hardening patches
+  (robust numerics, per-dimension model selection, failure floor, service-level
+  margin, conservative fail-pruning) that are submitted upstream to ld32 as a PR.
+  Several blocks assert that hardened behavior and pass only once the PR is in
+  master; they are red on unpatched master by design, flagging the gap.
+
+How drift is controlled
+-----------------------
+- VENDORED (SmartSlurm/slurmless/): the harness and the tools it tests share one
+  commit, so they cannot drift apart. Run the harness before pushing a tool change
+  (./slurmless/bootstrap.sh, then the relevant blocks) — that is the regression
+  net. No checksum pin is needed there. (No automated CI is shipped; a workflow
+  can be added later if keeping the two copies in sync by hand proves error-prone.)
+- STANDALONE (this repo run against an external SmartSlurm checkout): the tools
+  can be any version, so the checksums below record the tree this harness was
+  last validated against. A mismatch is not necessarily a problem — SmartSlurm's
+  bin/ is a moving target — it just means re-validate and update this file.
+
+Validated tool checksums (bin/, sha256 first 16), target = master + estimator PR:
+  runAsPipeline       1e21d31b2742c3de
+  ssbatch             02dafc4babd83622
+  cleanUp.sh          d21dfd0e4a6dfdbd
+  checkRun            6f7a7312a318c0cb
+  checkRunGrid        1af49f16dee0edcb
+  diagnose.sh         da62de20346c0a40
+  calculateMemTime.sh 3bfcb8bc5a3c5f8e
+  estimateResource.sh 7b8da151c7d52bd2
+
+Drift check (run from a SmartSlurm checkout)
+--------------------------------------------
+  for f in runAsPipeline ssbatch cleanUp.sh checkRun checkRunGrid diagnose.sh \
+           calculateMemTime.sh estimateResource.sh; do
+    printf '%-20s %s\n' "$f" "$(sha256sum bin/$f | cut -c1-16)"
+  done
+
+If a tool changed, re-run the affected block(s) and update the fixtures/asserts
+to match the new intended behavior before relying on them as a regression net.
