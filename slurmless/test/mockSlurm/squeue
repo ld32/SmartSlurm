@@ -1,0 +1,35 @@
+#!/bin/bash
+# mock squeue.
+#   default mode: nothing is ever pending/running (synchronous execution model).
+#   user-workflow mode (SS_WF_MODE): report the registered jobs' live state from
+#     the wf store. Like real squeue, only ACTIVE jobs are listed (pending/held);
+#     completed and cancelled jobs are omitted. Supports -h (no header) and
+#     -j <id> (filter). NOTE: jobs run at drain (or at `sbatch --wait`), so a
+#     submit-script that *polls* squeue in a loop will not see progress — use
+#     --wait or afterok dependencies instead (what the converter emits).
+state="${MOCK_SLURM_STATE:-/tmp/mockslurm}"
+wf="$state/wf"
+[ -n "${SS_WF_MODE:-}" ] && [ -d "$wf" ] || exit 0
+
+noheader=""; filter=""
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  case "$a" in
+    -h|--noheader) noheader=1;;
+    -j|--jobs)     filter="${args[i+1]:-}"; i=$((i+2)); continue;;
+    --jobs=*)      filter="${a#--jobs=}";;
+    -j*)           filter="${a#-j}";;
+  esac
+  i=$((i+1))
+done
+
+[ -n "$noheader" ] || printf '%8s %-11s %s\n' "JOBID" "NAME" "ST"
+for f in $(ls "$wf"/*.run 2>/dev/null | sed 's#.*/##; s/\.run$//' | sort -n); do
+  [ -n "$filter" ] && [ "$f" != "$filter" ] && continue
+  if [ -f "$wf/$f.rc" ]; then
+    case "$(cat "$wf/$f.rc")" in held) ;; *) continue;; esac   # only active jobs listed
+  fi
+  printf '%8s %-11s %s\n' "$f" "$(cat "$wf/$f.name" 2>/dev/null)" "PD"
+done
+exit 0

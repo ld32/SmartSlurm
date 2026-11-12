@@ -1,0 +1,12 @@
+# Logical plan for the wf_pipeline, as the Migration Assistant would author it from
+# the extracted DAG: per-sample normalize->wordcount, fan-in merge, tail report.
+SAMPLES $(cut -d' ' -f1 phrases.txt)
+SBATCH  sbatch -p short -c 1 --mem 100M -t 5:00
+STEP norm   dep=-     fanout=yes in=none
+    normalize.sh $s
+STEP wc     dep=norm  fanout=yes in=none
+    wordcount.sh $s
+STEP merge  dep=wc    fanout=no  in=none
+    merge.sh
+STEP report dep=merge fanout=no  in=none
+    report.sh

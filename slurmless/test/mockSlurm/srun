@@ -1,0 +1,55 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# mock srun  --  run a task locally.
+#
+# Real invocation shape:  srun [SRUN_OPTS...] <executable> [EXEC_ARGS...]
+# Only srun's OWN options appear before the executable. Once we reach the first
+# non-option token (the executable), everything from there on belongs to the
+# command and must be passed through UNTOUCHED -- otherwise flags like the
+# `-e -o pipefail -c` in `sh -e -o pipefail -c '...'` get eaten and the payload
+# breaks (e.g. "sh: pipefail: No such file or directory").
+# ---------------------------------------------------------------------------
+set -uo pipefail
+args=("$@"); i=0
+while [ $i -lt ${#args[@]} ]; do
+  a="${args[i]}"
+  case "$a" in
+    -n|--ntasks|-c|--cpus-per-task|-N|--nodes|--mem|--mem-per-cpu|\
+    -A|--account|-p|--partition|-t|--time|-J|--job-name|-w|--nodelist|\
+    -x|--exclude|--gres|--cpu-bind|--distribution)
+        i=$((i+2)); continue;;
+    --exclusive|--overlap|--pty|-l|--label|-u|--unbuffered|-Q|--quiet|-v|--verbose|-K|--kill-on-bad-exit)
+        i=$((i+1)); continue;;
+    --*=*) i=$((i+1)); continue;;
+    -*)    i=$((i+1)); continue;;
+    *)     break;;
+  esac
+done
+cmd=("${args[@]:$i}")
+[ ${#cmd[@]} -eq 0 ] && exit 0
+
+# Failure injection: if MOCK_INJECT is set (by mock sbatch), simulate the job
+# being killed / failing BEFORE the payload runs, so the `&& touch .success` in
+# the job body never fires and cleanUp.sh falls through to the sacct state.
+case "${MOCK_INJECT:-}" in
+  oom)     printf 'slurmstepd: error: Detected 1 oom_kill event in StepId=%s. Some of your processes may have been killed by the cgroup out-of-memory handler.\nsrun: error: node01: task 0: Out Of Memory\n' "${SLURM_JOBID:-0}" >&2; exit 137;;
+  timeout) printf 'slurmstepd: error: *** STEP %s ON node01 CANCELLED AT 2024-01-01T00:50:00 DUE TO TIME LIMIT ***\n' "${SLURM_JOBID:-0}" >&2; exit 143;;
+  oomoot)  printf 'slurmstepd: error: *** STEP %s ON node01 CANCELLED AT 2024-01-01T00:50:00 DUE TO TIME LIMIT ***\nslurmstepd: error: Detected 1 oom_kill event in StepId=%s.\nsrun: error: node01: task 0: Out Of Memory\n' "${SLURM_JOBID:-0}" "${SLURM_JOBID:-0}" >&2; exit 137;;
+  nonzero) printf 'srun: error: node01: task 0: Exited with exit code 1\n' >&2; exit 1;;
+  sigkill|sigterm)
+    # Model a HARD kill of the whole job (cgroup OOM, the SIGKILL after a timeout
+    # grace, node failure) -- the case the oom/timeout modes above do NOT model,
+    # because there the script survives and cleanUp's EXIT trap still runs. Report
+    # this job's process group (mock sbatch launched the script via setsid, so this
+    # group is isolated from the harness) and signal we are live, then block. mock
+    # sbatch sends the kill to the group, so the job script + its EXIT trap + the
+    # memCpuMonitor child all die at once: with SIGKILL the trap never runs (no
+    # .success/.failed/report -- a vanished job); with SIGTERM it runs only if the
+    # script traps TERM (so this also tests a trap-hardening change).
+    _sd="${MOCK_SLURM_STATE:-/tmp/mockslurm}/jobs"; _j="${SLURM_JOBID:-0}"
+    ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' > "$_sd/$_j.pgid"
+    : > "$_sd/$_j.killready"
+    while :; do sleep 0.2; done ;;
+esac
+
+exec "${cmd[@]}"

@@ -1,0 +1,12 @@
+{
+  "name": "slurmless-marketplace",
+  "description": "Off-cluster SmartSlurm tooling: the slurmless Slurm-free test harness and the Migration Assistant skill for porting pipelines to runAsPipeline.",
+  "owner": { "name": "ntc-agnt" },
+  "plugins": [
+    {
+      "name": "slurmless",
+      "source": "./",
+      "description": "Slurm-free SmartSlurm test harness + Migration Assistant skill (convert pipelines to runAsPipeline and validate off-cluster)."
+    }
+  ]
+}

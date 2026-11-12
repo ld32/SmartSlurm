@@ -1,0 +1,1 @@
+logic: lower.sh omits the lower-case transform, so the phrase is all-caps, not the golden quote.

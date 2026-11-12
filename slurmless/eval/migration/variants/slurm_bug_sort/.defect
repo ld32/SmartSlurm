@@ -1,0 +1,1 @@
+ordering: assemble.sh sorts words alphabetically instead of by position; expected garble, not the golden quote. A faithful conversion preserves this; an agent that "fixes" it has silently changed behavior.
