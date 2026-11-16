@@ -124,7 +124,8 @@ regression if `master` is green on it.
 ## Running it
 
 ```bash
-# one block, verbose; run one at a time (suite is slow). Run from $SL with
+# one block, serial + live (the focused loop); a bare run_tests.sh is the whole suite
+# in PARALLEL (watch peak procs when attacking the runner). Run from $SL with
 # SMARTSLURM_ROOT exported (see "First moves").
 cd "$SL" && ./test/run_tests.sh <block>
 

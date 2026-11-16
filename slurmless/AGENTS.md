@@ -32,9 +32,11 @@ repo is archived; the re-snapshot workflow is retired.
 3. **Prove the baseline before anything else:** `./bootstrap.sh` (runs the
    `clean_2step` block). If that is red, stop and diagnose — the environment is
    not set up.
-4. **Run one block at a time.** The mock scheduler sleeps through SmartSlurm's
-   cleanup counters, so the full suite is slow; a single block is usually quick.
-   Curve-fit blocks (`scaling_*`, `noise_fit`, `contaminate_*`) need `gnuplot`.
+4. **Develop against one block** (`./test/run_tests.sh <block>` — serial, live output).
+   A bare `./test/run_tests.sh` runs the whole suite **in parallel** (one worker per
+   core, capped at 8) on RAM-backed scratch; `-j1` forces serial. Each worker runs
+   exactly its one block. Curve-fit blocks (`scaling_*`, `noise_fit`, `contaminate_*`)
+   need `gnuplot`.
 
 ## Golden-path commands
 
