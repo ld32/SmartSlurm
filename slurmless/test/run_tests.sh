@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every block, in run order, and a one-line functional description of what it
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
-ALL_BLOCKS="clean_2step wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
+ALL_BLOCKS="clean_2step rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
 loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
@@ -56,6 +56,7 @@ ss_group() {
 ss_purpose() {
   case "$1" in
     clean_2step)        echo "Baseline: convert a 2-step pipeline, submit under mock Slurm, and wire afterok dependencies end-to-end";;
+    rap_self_location)  echo "rAP self-location contract: in submit scope \$bashScriptPath is the pipeline script's OWN dir (dirname of --script) so a driver finds its repo/sibling assets, while \$0 / BASH_SOURCE point at the generated copy under smartSlurmLog/ (so self-locating via those silently resolves to the wrong dir)";;
     wf_afterok)         echo "Migration Assistant: an UNMODIFIED hand-rolled SLURM afterok script runs invisibly end-to-end via register-don't-run + topological drain";;
     wf_scriptargs)      echo "Migration Assistant: a worker invoked as 'sbatch [opts] worker.sh --flag value …' keeps its --flag args verbatim (real sbatch passes everything after the script to the script) — registration + drained worker both receive them";;
     wf_depgrammar)      echo "Migration Assistant: the full sbatch --dependency grammar — after/afterany/afterok/afternotok/singleton, AND(,)/OR(?), +time, and kill-vs-hold on an unsatisfiable dep";;
@@ -237,6 +238,60 @@ _want clean_2step && {
   assert_contains "smartSlurmLog/allJobs.txt" "mergeNumber"  "allJobs.txt records the DAG"
   # dependency wiring: merge job lists both producers as afterok deps
   assert_contains "smartSlurmLog/allJobs.txt" ":"            "merge depends on upstream job ids"
+  echo
+}
+
+# ===========================================================================
+# rAP self-location contract. A driver often needs to find its OWN repo in submit
+# scope (to source a sibling config / helper script). runAsPipeline copies submit-
+# scope lines VERBATIM into a generated copy at smartSlurmLog/slurmPipeLine.<md5>.sh
+# and runs THAT, so `$0` / `BASH_SOURCE[0]` resolve to the generated copy, NOT the
+# repo -- a driver self-locating via those lands in smartSlurmLog/ and can't find its
+# siblings. rAP instead EXPORTS `bashScriptPath` = dirname of the --script (bin/
+# runAsPipeline), which IS the repo dir. This block locks that contract so it can't
+# silently regress. (It is also the fix for the proseq_submit.sh BASH_SOURCE bug.)
+_want rap_self_location && {
+  _begin rap_self_location
+  ss_new_workspace "$WORK/rap_self_location"              # cwd = the "run from" dir
+  # Put the driver in a SEPARATE "repo" dir (with a sibling asset) so its own dir is
+  # distinguishable from cwd and from smartSlurmLog/.
+  repo="$WORK/rap_self_location_repo"; rm -rf "$repo"; mkdir -p "$repo"
+  echo "SENTINEL-ASSET" > "$repo/sibling.conf"
+  cat > "$repo/driver.sh" <<'DRV'
+#!/bin/sh
+# --- submit scope (runs on the submit host during Phase 2, before any job) ---
+echo "$bashScriptPath" > bsp.txt          # rAP's exported self-location var
+echo "$0"              > dollar0.txt       # what a $0 / BASH_SOURCE self-locate would use
+# the sanctioned idiom must find the sibling asset relative to the repo, not cwd
+cat "$bashScriptPath/sibling.conf" > found_asset.txt 2>/dev/null || echo MISSING > found_asset.txt
+#@1,0,step,,,sbatch -p short -c 1 --mem 100M -t 5:0
+echo hi > out.txt
+#@end
+DRV
+  chmod +x "$repo/driver.sh"
+  # Absolute --script path, so bashScriptPath = $repo. Dry run is enough: submit scope
+  # still executes, and no node job is needed to probe the contract.
+  ss_run_pipeline "$repo/driver.sh" "sbatch -p short -c 1 --mem 100M -t 5:0" --dryrun >/dev/null 2>&1
+  bsp=$(cat bsp.txt 2>/dev/null); d0=$(cat dollar0.txt 2>/dev/null)
+
+  # 1. bashScriptPath resolves to the pipeline script's OWN dir (the repo).
+  if [ "$bsp" = "$repo" ]; then
+    _pass "bashScriptPath = the pipeline script's own dir ($repo)"
+  else _fail "bashScriptPath should be dirname(--script)" "got [$bsp] want [$repo]"; fi
+
+  # 2. The sanctioned idiom finds a sibling asset relative to the repo (not cwd).
+  assert_contains found_asset.txt "SENTINEL-ASSET" "sibling asset found via \$bashScriptPath"
+
+  # 3. $0 in submit scope is the GENERATED copy under smartSlurmLog/, NOT the repo --
+  #    i.e. a driver self-locating via $0 / BASH_SOURCE would miss its repo.
+  case "$d0" in
+    */smartSlurmLog/slurmPipeLine.*.sh) _pass "\$0 = the generated copy under smartSlurmLog/ (why BASH_SOURCE self-location fails)";;
+    *) _fail "\$0 should be the generated copy under smartSlurmLog/" "got [$d0]";;
+  esac
+  case "$d0" in
+    "$repo"/*|"$repo") _fail "\$0 must NOT be the repo dir -- contract changed" "$d0";;
+    *) _pass "\$0 is not the repo dir, so bashScriptPath (not \$0) is the way to self-locate";;
+  esac
   echo
 }
 
