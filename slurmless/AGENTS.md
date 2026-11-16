@@ -14,15 +14,17 @@ Slurm commands (`sbatch`, `sacct`, `srun`, …) on `$PATH`. The mocks actually r
 each job's payload, so real `.success`/`.failed` flags and logs are produced —
 failure attribution behaves as on a cluster.
 
-It is vendored into SmartSlurm at `SmartSlurm/slurmless/` as a plain subdirectory
-(a point-in-time snapshot of this standalone repo, **not** a `git subtree`). Until
-the jobRecords-v2 migration lands, develop here and re-snapshot into SmartSlurm;
-afterward, development moves into `SmartSlurm/slurmless/` and this repo is archived.
+It lives in SmartSlurm at `SmartSlurm/slurmless/` as a plain subdirectory and is
+**the source of truth** — develop there directly, versioned with the engine (one
+commit, so the harness can't drift from the tools it tests). The former standalone
+repo is archived; the re-snapshot workflow is retired.
 
 ## Session startup (do this first)
 
-1. **Confirm the SmartSlurm checkout.** Vendored (`SmartSlurm/slurmless/`):
-   `SMARTSLURM_ROOT` auto-resolves. Standalone: `export SMARTSLURM_ROOT=/path/to/SmartSlurm`.
+1. **Confirm the SmartSlurm checkout.** In-tree (`SmartSlurm/slurmless/`):
+   `SMARTSLURM_ROOT` auto-resolves — the normal case. (Legacy aside: a separate
+   checkout needs `export SMARTSLURM_ROOT=/path/to/SmartSlurm`; the former standalone
+   repo is archived.)
 2. **Do not modify SmartSlurm's `bin/` to make a test pass.** The harness tests
    the *unmodified* tools. If a test reveals a tool bug, report it; change a tool
    only when the task explicitly is to change that tool (then update the affected
@@ -153,7 +155,7 @@ to keep in sync between them.
 
 - **Tools vs harness:** vendored, they share one commit (can't drift); run the
   harness before pushing a tool change (`./bootstrap.sh`, then the relevant
-  blocks). `test/version.txt` records the validated baseline for standalone runs.
+  blocks). `test/version.txt` records the validated baseline for the in-tree harness.
 - **sacct format** is pinned to production Slurm (25.11.7); it is the most
   version-sensitive file. If a Slurm upgrade changes `sacct` output, run
   `test/mockSlurm/check_sacct_format.sh` on the cluster and update
@@ -167,6 +169,14 @@ to keep in sync between them.
 - Never edit SmartSlurm `bin/` to force a green test (see startup #2).
 - Never point the harness at a real `~/.smartSlurm` or a real cluster; scratch
   only (`$SS_SCRATCH`, default `/tmp/ss-scratch`).
-- The vendored copy in SmartSlurm is a plain-subdirectory snapshot of this repo
-  (not a `git subtree`): until the v2 migration lands, develop here and re-snapshot
-  into `SmartSlurm/slurmless/`; afterward, develop there directly.
+- **A change to the runner needs an out-of-band check.** When you touch the parallel
+  dispatch, `ss_parallel_run`, scratch/RAM selection, or `ss_activate`, prove it with
+  something the runner can't fake: a bounded **process-count ceiling** under a real
+  `-jN` run (`pgrep -fc run_tests.sh` peak stays small), plus a self-test block (see
+  `parallel_worker_isolation`). A `-jN` worker must run **exactly its one block**,
+  serially — block names stay isolated even when one is a substring of another.
+- **Don't trust a green you didn't just produce.** A pass reported by a previous
+  session or a context summary is not a gate — re-run it on the *actual* branch tip
+  before merging, and for any fan-out change watch the process tree while it runs.
+- Develop slurmless **in-tree at `SmartSlurm/slurmless/`** — that is the source of
+  truth. The standalone repo is archived; there is no re-snapshot step.

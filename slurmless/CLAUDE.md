@@ -19,13 +19,20 @@ to trip you up.
   slow by design.
 - **Scratch only.** Never aim the harness at a real `~/.smartSlurm` or a real
   cluster.
-- **Vendoring into SmartSlurm:** slurmless is copied into `SmartSlurm/slurmless/`
-  as a plain subdirectory (a point-in-time snapshot), **not** a `git subtree`.
-  Until the jobRecords-v2 migration lands, this standalone repo is the source of
-  truth: develop here, then re-snapshot into SmartSlurm
-  (`git -C <smartslurm> ... ; git archive main | tar -x -C slurmless/`). Once the
-  migration is complete, development moves into `SmartSlurm/slurmless/` directly
-  and this standalone repo is archived.
+- **The harness is code too — self-test it; don't trust its own green.** A change to
+  the test *runner* or its orchestration (the `-jN` dispatcher, `ss_parallel_run`,
+  scratch/RAM selection, `ss_activate`) is **not** validated by "the suite still
+  passes" — that signal is produced *by* the thing you changed. It needs its own
+  block asserting its invariants **and** its own adversary pass, and you watch the
+  **process tree**, not just the `RESULT:` line. (The parallel default once shipped a
+  fork-recursion that "passed" exactly this way.) See AGENTS.md → *Hard rules* and the
+  adversary skill's third bug class.
+- **Source of truth: `SmartSlurm/slurmless/` (in-tree).** slurmless now lives in
+  SmartSlurm as a plain subdirectory and is developed there directly, versioned with
+  the engine — one commit, so the harness can't drift from the tools it tests. The
+  former standalone repo (`slurmless_smartSlurm_testing`) is **archived**, and the old
+  "develop standalone, then re-snapshot into SmartSlurm" workflow is **retired** — do
+  not re-snapshot.
 
 ## Working with the SmartSlurm upstream (ld32 directives)
 

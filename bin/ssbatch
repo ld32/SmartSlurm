@@ -455,69 +455,19 @@ resAjust="#Depend on: $depsID\n"
             [[ "$x" == "y" ]] || { echo skipThisJob; exit; }
 
         elif [ -z "$deps" ]; then
-            # Pipeline re-issue, no scope chosen yet: ask ONCE, up front, and
-            # materialize markers for the whole run (no per-job walk). yall/nall
-            # keep their meaning; "from a step" replaces the ystep/nstep walk and
-            # only offers steps that actually completed, so you cannot target a
-            # step the previous run never reached.
-            stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
-            reachable=`ls $smartSlurmLogDir/*.success 2>/dev/null | sed 's#.*/##' | cut -d. -f1 | sort -un | tr '\n' ' '`
-            reachable=`echo $reachable`   # trim
-
-            # non-interactive override (scripts/CI/tests): all | failed | fromStep:N
-            if [ -n "$smartSlurmRerun" ]; then
-                x="$smartSlurmRerun"
-            else
-                echoerr -e "\n!!! Some jobs already completed. What would you like to re-run?\n"
-                echoerr -e "all      re-run ALL successful jobs (redo completed work).\n"
-                echoerr -e "failed   re-run only failed/incomplete jobs, keep successful ones. [default]\n"
-                echoerr -e "step     re-run from a step onward (pick from completed steps: $reachable).\n"
-                echoerr -e "cancel   abort without submitting.\n"
-                read -p "Choice [failed]: " x </dev/tty
-                echoerr You typed: \"$x\"
-            fi
-            x=${x:-failed}
-
-            case "$x" in
-                all|yall)
-                    touch $smartSlurmLogDir/reRunAllSuccessJobs.txt ;;
-                failed|nall)
-                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
-                cancel|q|quit)
-                    echoerr "Cancelled -- no jobs submitted."; echo skipThisJob; exit ;;
-                step|ystep|from|fromStep|fromStep:*|from:*)
-                    fromStep=""
-                    case "$x" in fromStep:*|from:*) fromStep=${x#*:};; esac
-                    if [ -z "$fromStep" ]; then
-                        echoerr "Completed steps you can re-run from:"
-                        for s in $reachable; do
-                            nm=`awk -v s=$s 'NR>1 && $3 ~ ("^"s"\\.") {split($3,f,"."); print f[3]; exit}' $smartSlurmLogDir/allJobs.txt 2>/dev/null`
-                            echoerr "    $s  $nm"
-                        done
-                        read -p "Re-run from which step? " fromStep </dev/tty
-                        echoerr You typed: \"$fromStep\"
-                    fi
-                    if [[ " $reachable " != *" $fromStep "* ]]; then
-                        echoerr "Step '$fromStep' is not in the completed set ($reachable); nothing to re-run there."
-                        echo skipThisJob; exit
-                    fi
-                    # keep steps below the chosen one, re-run it and everything above
-                    # (downstream then propagates through the live dependencies).
-                    for s in $reachable; do
-                        if [ "$s" -ge "$fromStep" ]; then touch $smartSlurmLogDir/reRunAllSuccessJobs$s.txt
-                        else touch $smartSlurmLogDir/skipAllSuccessJobs$s.txt; fi
-                    done ;;
-                *)
-                    echoerr "Unrecognized choice; keeping successful jobs (re-running failures only)."
-                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
-            esac
-
-            # apply the freshly-set scope to THIS job
-            if ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]); then
-                echo skipThisJob
-                exit
-            fi
-            # else a re-run marker applies -> fall through and resubmit
+            # The pipeline re-run SCOPE is decided UP FRONT by ssRerunDecide.sh (called
+            # from the generated driver before the progress table), which materializes
+            # the skip*/reRun* markers the two branches above read -- so in a normal run
+            # this branch is never reached. Reaching it means an already-successful leaf
+            # job for which no scope marker exists (e.g. a cached driver from an older
+            # runAsPipeline that predates ssRerunDecide.sh): keep it. The conservative
+            # default is to never redo completed work -- but say so LOUDLY, because a
+            # silent skip here would also silently ignore an all/fromStep re-run request
+            # and hide a broken setup. The warning goes to stderr; stdout carries only
+            # the skipThisJob signal the driver reads.
+            echoerr "Warning: ssbatch hit the no-scope-marker fallback for already-successful $flag -- keeping it. Under runAsPipeline the re-run scope is decided up front by ssRerunDecide.sh; seeing this means a stale generated driver (predating ssRerunDecide.sh) is likely in use -- re-run runAsPipeline to regenerate it."
+            echo skipThisJob
+            exit
         fi
     fi
 

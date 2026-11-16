@@ -18,18 +18,18 @@ decision. Your methods are assumed intentional; novel approaches are respected.
 
 ## Install
 
-The fastest way to get the skill **and** the sandbox it needs is to install the
-`slurmless` plugin (Claude Code 2.1.275+):
+The fastest way to get the skill **and** the sandbox it needs is the `slurmless`
+plugin, which ships inside SmartSlurm at `slurmless/`. Install it from a SmartSlurm
+checkout (Claude Code 2.1.275+):
 
 ```text
-/plugin install slurmless --marketplace ntc-agnt/slurmless_smartSlurm_testing
+/plugin marketplace add ./SmartSlurm/slurmless
+/plugin install slurmless@slurmless-marketplace
 ```
 
-(or `/plugin marketplace add ntc-agnt/slurmless_smartSlurm_testing` then
-`/plugin install slurmless@slurmless-marketplace`). The plugin bundles the harness,
-so once installed you can be in **your own pipeline's directory** — you do not need
-to clone this repo. Optionally set the **SmartSlurm checkout** path at install time;
-leave it blank to auto-resolve or clone upstream on first run.
+The plugin bundles the harness, so once installed you can work in **your own
+pipeline's directory**. Optionally set the **SmartSlurm checkout** path at install
+time; leave it blank to auto-resolve or clone upstream on first run.
 
 You can also use it without installing, by working inside a checkout of this repo
 (or `SmartSlurm/slurmless/`) as your agent's working directory — the skill is
