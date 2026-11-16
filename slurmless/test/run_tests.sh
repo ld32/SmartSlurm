@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every block, in run order, and a one-line functional description of what it
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
-ALL_BLOCKS="clean_2step rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
+ALL_BLOCKS="clean_2step parallel_worker_isolation rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
 loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
@@ -151,6 +151,12 @@ set -- ${_rtargs[@]+"${_rtargs[@]}"}
 if [ "$PARJOBS" -eq 0 ]; then
   PARJOBS=$(nproc 2>/dev/null || echo 1); [ "$PARJOBS" -gt 8 ] && PARJOBS=8
 fi
+# A parallel worker (ss_parallel_run exports SS_ONLY) runs EXACTLY its one block,
+# SERIALLY -- it must never re-enter the parallel dispatcher. This is the guard
+# against infinite fork-recursion: with substring filtering, a worker handed a
+# name that is a substring of another block (e.g. 'rerun' vs 'manual_rerun_floor')
+# would otherwise re-select >1 block and fan out again, forever.
+[ -n "${SS_ONLY:-}" ] && PARJOBS=1
 
 # --list / --groups / --help short-circuit before any setup
 case "${1:-}" in
@@ -179,6 +185,9 @@ FAILS=0; CHECKS=0
 
 # A block runs when the filter list is empty, or its name contains ANY filter.
 _want() {
+  # A parallel worker (SS_ONLY set) matches ONLY its exact block -- never by
+  # substring -- so it runs that one block and cannot re-select colliding names.
+  [ -n "${SS_ONLY:-}" ] && { [ "$1" = "$SS_ONLY" ]; return; }
   [ -z "${FILTERS// /}" ] && return 0
   local b="$1" f
   for f in $FILTERS; do [[ "$b" == *"$f"* ]] && return 0; done
@@ -193,6 +202,9 @@ _want() {
 # (serial OR -jN, since opt-in blocks are also absent from ALL_BLOCKS) stays green.
 # Run them during P6 dev with `./run_tests.sh p6` or a single block name.
 _optin() {
+  # Under SS_ONLY (a parallel worker) match only the exact block, same as _want --
+  # a worker never fans an opt-in block in by substring.
+  [ -n "${SS_ONLY:-}" ] && { [ "$1" = "$SS_ONLY" ]; return; }
   [ -z "${FILTERS// /}" ] && return 1
   local b="$1" f
   for f in $FILTERS; do [[ "$b" == *"$f"* ]] && return 0; done
@@ -204,10 +216,14 @@ _optin() {
 # before the inline blocks below. Block-level only; each block stays internally
 # sequential. ss_activate above did the one-time global setup (gnuplot,
 # /bin/sh->bash); the workers skip it via SS_NO_INSTALL/SS_NO_SH_REPOINT.
-if [ "${PARJOBS:-1}" -gt 1 ]; then
+if [ "${PARJOBS:-1}" -gt 1 ] || [ -n "${SS_DUMP_SELECTION:-}" ]; then
   _sel=""
   for _b in $ALL_BLOCKS; do _want "$_b" && _sel="$_sel $_b"; done
   _nsel=$(echo $_sel | wc -w)
+  # Test hook: print the resolved selection + effective PARJOBS and exit, so the
+  # dispatcher's selection and worker serial-forcing can be asserted cheaply without
+  # running any block (see the parallel_worker_isolation regression block).
+  [ -n "${SS_DUMP_SELECTION:-}" ] && { echo "SEL:[$(echo $_sel)] PARJOBS:$PARJOBS"; exit 0; }
   # Parallelize only when MORE THAN ONE block is actually selected. A single block --
   # bootstrap's clean_2step, or `run_tests.sh <one-block>` while debugging -- and any
   # opt-in block (absent from ALL_BLOCKS, so _sel is empty) fall through to the inline
@@ -238,6 +254,55 @@ _want clean_2step && {
   assert_contains "smartSlurmLog/allJobs.txt" "mergeNumber"  "allJobs.txt records the DAG"
   # dependency wiring: merge job lists both producers as afterok deps
   assert_contains "smartSlurmLog/allJobs.txt" ":"            "merge depends on upstream job ids"
+  echo
+}
+
+# ===========================================================================
+# Parallel-dispatch self-test. The -jN runner fans each SELECTED block out to its
+# own worker process. A worker MUST run exactly its one block, serially, and never
+# re-enter the dispatcher -- otherwise a block name that is a substring of another
+# (e.g. 'rerun' in 'manual_rerun_floor') makes the worker's substring filter re-select
+# >1 block and fork-recurse without bound. This block asserts that invariant cheaply
+# via the SS_DUMP_SELECTION hook (no heavy blocks run), and auto-covers any future
+# colliding names. Guards the fix for the fork-recursion that shipped with the
+# parallel default and escaped review because nothing tested the runner itself.
+_want parallel_worker_isolation && {
+  _begin parallel_worker_isolation
+  rt="$HERE/$(basename "$0")"
+  # grep the SEL: line out of the dump (ss_activate also prints an "activated:" line)
+  _dump() { SS_ONLY="$1" SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 SS_DUMP_SELECTION=1 bash "$rt" "$1" 2>/dev/null | grep '^SEL:'; }
+
+  # (1) the concrete, known substring collision in ALL_BLOCKS
+  o=$(_dump rerun)
+  [ "$o" = "SEL:[rerun] PARJOBS:1" ] \
+     && _pass "worker 'rerun' selects ONLY itself, serial (pre-fix: +manual_rerun_floor -> recursion)" \
+     || _fail "worker 'rerun' isolated" "got: $o"
+  o=$(_dump manual_rerun_floor)
+  [ "$o" = "SEL:[manual_rerun_floor] PARJOBS:1" ] \
+     && _pass "worker 'manual_rerun_floor' selects ONLY itself, serial" \
+     || _fail "worker 'manual_rerun_floor' isolated" "got: $o"
+
+  # (2) EVERY substring-colliding worker is isolated (auto-covers names added later)
+  _bad=0
+  for _a in $ALL_BLOCKS; do for _b in $ALL_BLOCKS; do
+    [ "$_a" = "$_b" ] && continue
+    case "$_b" in *"$_a"*)
+      o=$(_dump "$_a")
+      [ "$o" = "SEL:[$_a] PARJOBS:1" ] || { _bad=1; echo "       collision '$_a' in '$_b' NOT isolated: $o" >&2; } ;;
+    esac
+  done; done
+  [ "$_bad" = 0 ] \
+     && _pass "every substring-colliding worker is isolated to its own block" \
+     || _fail "all colliding workers isolated" "see stderr above"
+
+  # (3) top-level substring filtering is PRESERVED for interactive use (no SS_ONLY).
+  # SS_ONLY= clears any value inherited from THIS block's own worker env, so the
+  # child resolves the filter the way a human typing `run_tests.sh rerun` would.
+  o=$(SS_ONLY= SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 SS_DUMP_SELECTION=1 bash "$rt" rerun 2>/dev/null | grep '^SEL:')
+  case "$o" in
+    *rerun*manual_rerun_floor*) _pass "top-level 'rerun' filter still expands to the family (substring preserved)" ;;
+    *) _fail "top-level substring filter preserved" "got: $o" ;;
+  esac
   echo
 }
 
