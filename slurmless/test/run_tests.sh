@@ -131,9 +131,12 @@ ss_purpose() {
 
 source "$HERE/lib/harness.sh"
 
-# Extract -jN / -j N (parallel block count; default 1 = serial) from the args;
-# everything else is left as block-name / group filters.
-PARJOBS=1; _rtargs=()
+# Parallel block count. DEFAULT is auto (0 here) = one worker per core: blocks are
+# fully isolated (own workspace + SS_SCRATCH/HOME/mock-state, and the mock reaps each
+# job's strays), so running them concurrently is safe and much faster than serial. An
+# explicit -jN overrides, and -j1 forces the serial path (handy for streaming output
+# while debugging).
+PARJOBS=0; _rtargs=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -j)  if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PARJOBS="$2"; shift 2; else PARJOBS=4; shift; fi;;
@@ -142,6 +145,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 set -- ${_rtargs[@]+"${_rtargs[@]}"}
+# Resolve the auto default to the core count (capped) when no -j was given.
+if [ "$PARJOBS" -eq 0 ]; then
+  PARJOBS=$(nproc 2>/dev/null || echo 1); [ "$PARJOBS" -gt 8 ] && PARJOBS=8
+fi
 
 # --list / --groups / --help short-circuit before any setup
 case "${1:-}" in
@@ -198,9 +205,15 @@ _optin() {
 if [ "${PARJOBS:-1}" -gt 1 ]; then
   _sel=""
   for _b in $ALL_BLOCKS; do _want "$_b" && _sel="$_sel $_b"; done
-  [ -n "${_sel// /}" ] || { echo "no blocks match the given filter"; exit 0; }
-  ss_parallel_run "$PARJOBS" "$HERE/$(basename "$0")" $_sel
-  exit $?
+  _nsel=$(echo $_sel | wc -w)
+  # Parallelize only when MORE THAN ONE block is actually selected. A single block --
+  # bootstrap's clean_2step, or `run_tests.sh <one-block>` while debugging -- and any
+  # opt-in block (absent from ALL_BLOCKS, so _sel is empty) fall through to the inline
+  # serial path below, which streams output live instead of buffering per worker.
+  if [ "${_nsel:-0}" -gt 1 ]; then
+    ss_parallel_run "$PARJOBS" "$HERE/$(basename "$0")" $_sel
+    exit $?
+  fi
 fi
 
 # ===========================================================================

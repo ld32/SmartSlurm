@@ -58,6 +58,27 @@ export SMARTSLURM_ROOT
 # first "N COMPLETED records" assertion. Keep this a plain pipeline name.
 export SS_PIPELINE=estim
 
+# _ss_tmpbase: pick a writable base dir for the disposable scratch tree, PREFERRING
+# RAM (tmpfs, e.g. /dev/shm) so the harness's heavy per-workspace file churn
+# (rm -rf + mkdir + many tiny flag/jobRecord writes per job) avoids disk I/O. This
+# is safe because the scratch is already ephemeral (ss_new_workspace rm -rf's it and
+# nothing is reused across runs), and tmpfs is a full POSIX filesystem -- every op the
+# flag-folder / jobRecord "disk database" uses (rename, flock, mkdir-locks, mtime,
+# append) behaves identically. It only relocates the harness's throwaway scratch; it
+# changes NO bin/ code and does not affect real-cluster runAsPipeline paths.
+# Falls back to $TMPDIR then /tmp when no tmpfs is writable with >=256MB free, so a
+# manual run on any server (incl. one with a tiny/absent/cgroup-capped /dev/shm) still
+# works. An explicit SS_SCRATCH always overrides this choice.
+_ss_tmpbase() {
+  local c av
+  for c in /dev/shm "${TMPDIR:-}" /tmp; do
+    [ -n "$c" ] && [ -d "$c" ] && [ -w "$c" ] || continue
+    av=$(df -Pk "$c" 2>/dev/null | awk 'NR==2{print $4+0}')
+    [ "${av:-0}" -ge 262144 ] && { printf '%s' "$c"; return 0; }
+  done
+  printf '/tmp'
+}
+
 # ss_activate: prepare a Slurm-free environment. It has two environment-mutating
 # side effects appropriate for a disposable sandbox or CI runner but surprising on
 # a shared workstation; each can be opted out of (the harness then expects the
@@ -67,6 +88,14 @@ export SS_PIPELINE=estim
 # A one-line summary of what it changed is printed at the end.
 ss_activate() {
   local _gp="present" _sh="already-bash"
+
+  # Default the disposable scratch root to RAM (tmpfs) when possible; an explicit
+  # SS_SCRATCH always overrides. Parallel workers receive SS_SCRATCH from
+  # ss_parallel_run, so this only fires for a serial run or the parallel dispatcher.
+  export SS_SCRATCH="${SS_SCRATCH:-$(_ss_tmpbase)/ss-scratch}"
+  mkdir -p "$SS_SCRATCH"
+  local _scr_kind; case "$(df -PT "$SS_SCRATCH" 2>/dev/null | awk 'NR==2{print $2}')" in
+    tmpfs|ramfs) _scr_kind=RAM;; *) _scr_kind=disk;; esac
 
   # 0) gnuplot is required by estimateResource.sh for curve fitting. Install it
   #    if missing (sandbox images lose apt packages on reset). Non-fatal: the
@@ -152,7 +181,7 @@ ss_activate() {
 
   # Concise summary of what was set up / changed, so a human running this
   # interactively can see exactly what the harness touched.
-  echo "[harness] activated: SMARTSLURM_ROOT=$SMARTSLURM_ROOT | /bin/sh=$_sh | gnuplot=$_gp | HOME=$HOME (scratch)"
+  echo "[harness] activated: SMARTSLURM_ROOT=$SMARTSLURM_ROOT | /bin/sh=$_sh | gnuplot=$_gp | scratch=$SS_SCRATCH ($_scr_kind; set SS_SCRATCH to override)"
 }
 
 # create (or reset) a clean workspace and cd into it
@@ -412,7 +441,9 @@ _fail() { CHECKS=$((CHECKS+1)); FAILS=$((FAILS+1)); printf 'C\t%s\tFAIL\t%s\n' "
 ss_parallel_run() {
   local jobs="$1" self="$2"; shift 2
   local blocks="$*" to="${SS_BLOCK_TIMEOUT:-600}" b
-  local pardir; pardir="$(mktemp -d)"
+  # Keep each worker's scratch (SS_SCRATCH="$pardir/s_$b", below) on RAM too when
+  # possible; fall back to the system default if the tmpfs mktemp fails.
+  local pardir; pardir="$(mktemp -d "$(_ss_tmpbase)/ss-par.XXXXXX" 2>/dev/null || mktemp -d)"
   echo "== running $(echo $blocks | wc -w) blocks, up to $jobs in parallel (per-block cap ${to}s) =="
   for b in $blocks; do
     while [ "$(jobs -rp 2>/dev/null | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || sleep 0.3; done
