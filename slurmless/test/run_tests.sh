@@ -26,12 +26,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every block, in run order, and a one-line functional description of what it
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
-ALL_BLOCKS="clean_2step wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes fail_exit0_empty known_broken_swallowed_done \
+ALL_BLOCKS="clean_2step parallel_worker_isolation rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
 loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun rerun_lifecycle end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
 setup_rc_block activate_path activate_prompt deactivate_surgical conda_coexist \
-uninstall_precise unexport_deprecated config_overlay config_guided config_migrate \
+uninstall_precise unexport_deprecated \
 firstpass_fullpath extrapolate_linear extrapolate_superlinear extrapolate_lowdata \
 resubmit_convergence manual_resubmit_sequence \
 efficiency_file checkrun_efficiency email_consolidation fitqc migrate_v1 jr_drift_guard cross_pipeline legacy_pooling"
@@ -56,6 +56,8 @@ ss_group() {
 ss_purpose() {
   case "$1" in
     clean_2step)        echo "Baseline: convert a 2-step pipeline, submit under mock Slurm, and wire afterok dependencies end-to-end";;
+    parallel_worker_isolation) echo "Parallel-dispatch self-test: a -jN worker runs EXACTLY its one block, serially, never re-entering the dispatcher, so a block name that is a substring of another (rerun vs manual_rerun_floor) cannot fork-recurse; drives the REAL ss_parallel_run to confirm it exports SS_ONLY per worker, and checks top-level substring filtering is preserved";;
+    rap_self_location)  echo "rAP self-location contract: in submit scope \$bashScriptPath is the pipeline script's OWN dir (dirname of --script) so a driver finds its repo/sibling assets, while \$0 / BASH_SOURCE point at the generated copy under smartSlurmLog/ (so self-locating via those silently resolves to the wrong dir)";;
     wf_afterok)         echo "Migration Assistant: an UNMODIFIED hand-rolled SLURM afterok script runs invisibly end-to-end via register-don't-run + topological drain";;
     wf_scriptargs)      echo "Migration Assistant: a worker invoked as 'sbatch [opts] worker.sh --flag value …' keeps its --flag args verbatim (real sbatch passes everything after the script to the script) — registration + drained worker both receive them";;
     wf_depgrammar)      echo "Migration Assistant: the full sbatch --dependency grammar — after/afterany/afterok/afternotok/singleton, AND(,)/OR(?), +time, and kill-vs-hold on an unsatisfiable dep";;
@@ -75,6 +77,7 @@ ss_purpose() {
     ma_differential)    echo "Migration Assistant skill: full Scenario-2 — run the ORIGINAL (wf-mode) and its rAP PORT in isolated workspaces and confirm identical authoritative outputs under a contract";;
     nested_fanout)      echo "Nested per-sample/per-chrom loops — a fan-out step (one grid cell backs multiple jobs) converts to valid bash and every job completes";;
     ragged_axes)        echo "Two steps whose loop axes are disjoint (sample ids vs group ids) — ragged addressing converts and runs end-to-end";;
+    rap_shapes)         echo "One pipeline exercising ALL three rAP DAG shapes in a single run — a linear chain, a fan-out/fan-in pair (3 chunk jobs per sample -> merge), and an if/else that submits one of two alternative terminal steps chosen at submit time (long input -> detailed, short -> brief). The comprehensive integration test across shapes, incl. the if/else-branch conversion the focused fixtures don't cover";;
     loop_detection)     echo "Documents the textual for*/done* loop foot-gun: a one-line for...done and a for-prefixed command corrupt the next step's flag";;
     fail_exit0_empty)   echo "Producer exits 0 but writes nothing and the consumer fails — documents the current symptom-vs-cause misattribution";;
     known_broken_swallowed_done) echo "A blank-line block right before a loop 'done' makes the converter emit invalid bash (the M4 block-closure foot-gun)";;
@@ -110,9 +113,9 @@ ss_purpose() {
     conda_coexist)      echo "smartSlurm and a conda-style '(env) ' prompt + PATH entry coexist: activating/deactivating either in any order never clobbers the other";;
     uninstall_precise)  echo "'smartslurm uninstall' deletes exactly the initialize block from the rc file, leaving surrounding user lines byte-identical, with a backup";;
     unexport_deprecated) echo "the deprecated 'unExport' warns and delegates to 'smartslurm deactivate' (no longer strips the system sbatch dir)";;
-    config_overlay)     echo "smartslurm config: overlay model — set/get/unset write only ~/.smartSlurm/config/user.conf (never the repo file, Q1); non-overridden repo defaults still load (Q2); schema validation rejects bad types; unknown keys flagged custom";;
-    config_guided)      echo "smartslurm config: guided editors drive real behavior — refgroup add changes what jrRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
-    config_migrate)     echo "smartslurm config migrate: a legacy full ~/.smartSlurm/config/config.txt is converted to the overlay — only keys differing from repo defaults are kept in user.conf, the legacy file is backed up";;
+    config_overlay)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: overlay model — set/get/unset write only ~/.smartSlurm/config/user.conf (never the repo file, Q1); non-overridden repo defaults still load (Q2); schema validation rejects bad types; unknown keys flagged custom";;
+    config_guided)      echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: guided editors drive real behavior — refgroup add changes what jrRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
+    config_migrate)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config migrate: a legacy full ~/.smartSlurm/config/config.txt is converted to the overlay — only keys differing from repo defaults are kept in user.conf, the legacy file is backed up";;
     firstpass_fullpath) echo "First-pass coverage through the FULL estimateResource path (extraMem + failure floor), for mem AND time (not just the calculateMemTime margin)";;
     extrapolate_linear) echo "[Phase 1 baseline] Linear truth trained on small sizes, predicted at 2x-50x: with SCount>9 it extrapolates the line (not outOfRange); reports first-pass per scale";;
     extrapolate_superlinear) echo "[Phase 1 baseline] Quadratic truth trained on small sizes: the straight-line fit UNDER-provisions at 10x-50x; records the shortfall ratio (the problem to fix)";;
@@ -132,17 +135,31 @@ ss_purpose() {
 
 source "$HERE/lib/harness.sh"
 
-# Extract -jN / -j N (parallel block count; default 1 = serial) from the args;
-# everything else is left as block-name / group filters.
-PARJOBS=1; _rtargs=()
+# Parallel block count. DEFAULT is auto (0 here) = one worker per core: blocks are
+# fully isolated (own workspace + SS_SCRATCH/HOME/mock-state, and the mock reaps each
+# job's strays), so running them concurrently is safe and much faster than serial. An
+# explicit -jN overrides, and -j1 forces the serial path (handy for streaming output
+# while debugging).
+PARJOBS=0; _rtargs=(); _dumpsel=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -j)  if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PARJOBS="$2"; shift 2; else PARJOBS=4; shift; fi;;
     -j*) _v="${1#-j}"; [[ "$_v" =~ ^[0-9]+$ ]] && PARJOBS="$_v"; shift;;
+    --dump-selection) _dumpsel=1; shift;;   # internal test hook (see parallel_worker_isolation) — a flag, not an env var, so it can't leak and silently no-op the suite
     *)   _rtargs+=("$1"); shift;;
   esac
 done
 set -- ${_rtargs[@]+"${_rtargs[@]}"}
+# Resolve the auto default to the core count (capped) when no -j was given.
+if [ "$PARJOBS" -eq 0 ]; then
+  PARJOBS=$(nproc 2>/dev/null || echo 1); [ "$PARJOBS" -gt 8 ] && PARJOBS=8
+fi
+# A parallel worker (ss_parallel_run exports SS_ONLY) runs EXACTLY its one block,
+# SERIALLY -- it must never re-enter the parallel dispatcher. This is the guard
+# against infinite fork-recursion: with substring filtering, a worker handed a
+# name that is a substring of another block (e.g. 'rerun' vs 'manual_rerun_floor')
+# would otherwise re-select >1 block and fan out again, forever.
+[ -n "${SS_ONLY:-}" ] && PARJOBS=1
 
 # --list / --groups / --help short-circuit before any setup
 case "${1:-}" in
@@ -171,6 +188,9 @@ FAILS=0; CHECKS=0
 
 # A block runs when the filter list is empty, or its name contains ANY filter.
 _want() {
+  # A parallel worker (SS_ONLY set) matches ONLY its exact block -- never by
+  # substring -- so it runs that one block and cannot re-select colliding names.
+  [ -n "${SS_ONLY:-}" ] && { [ "$1" = "$SS_ONLY" ]; return; }
   [ -z "${FILTERS// /}" ] && return 0
   local b="$1" f
   for f in $FILTERS; do [[ "$b" == *"$f"* ]] && return 0; done
@@ -185,6 +205,9 @@ _want() {
 # (serial OR -jN, since opt-in blocks are also absent from ALL_BLOCKS) stays green.
 # Run them during P6 dev with `./run_tests.sh p6` or a single block name.
 _optin() {
+  # Under SS_ONLY (a parallel worker) match only the exact block, same as _want --
+  # a worker never fans an opt-in block in by substring.
+  [ -n "${SS_ONLY:-}" ] && { [ "$1" = "$SS_ONLY" ]; return; }
   [ -z "${FILTERS// /}" ] && return 1
   local b="$1" f
   for f in $FILTERS; do [[ "$b" == *"$f"* ]] && return 0; done
@@ -196,12 +219,22 @@ _optin() {
 # before the inline blocks below. Block-level only; each block stays internally
 # sequential. ss_activate above did the one-time global setup (gnuplot,
 # /bin/sh->bash); the workers skip it via SS_NO_INSTALL/SS_NO_SH_REPOINT.
-if [ "${PARJOBS:-1}" -gt 1 ]; then
+if [ "${PARJOBS:-1}" -gt 1 ] || [ -n "${_dumpsel:-}" ]; then
   _sel=""
   for _b in $ALL_BLOCKS; do _want "$_b" && _sel="$_sel $_b"; done
-  [ -n "${_sel// /}" ] || { echo "no blocks match the given filter"; exit 0; }
-  ss_parallel_run "$PARJOBS" "$HERE/$(basename "$0")" $_sel
-  exit $?
+  _nsel=$(echo $_sel | wc -w)
+  # Test hook: print the resolved selection + effective PARJOBS and exit, so the
+  # dispatcher's selection and worker serial-forcing can be asserted cheaply without
+  # running any block (see the parallel_worker_isolation regression block).
+  [ -n "${_dumpsel:-}" ] && { echo "SEL:[$(echo $_sel)] PARJOBS:$PARJOBS"; exit 0; }
+  # Parallelize only when MORE THAN ONE block is actually selected. A single block --
+  # bootstrap's clean_2step, or `run_tests.sh <one-block>` while debugging -- and any
+  # opt-in block (absent from ALL_BLOCKS, so _sel is empty) fall through to the inline
+  # serial path below, which streams output live instead of buffering per worker.
+  if [ "${_nsel:-0}" -gt 1 ]; then
+    ss_parallel_run "$PARJOBS" "$HERE/$(basename "$0")" $_sel
+    exit $?
+  fi
 fi
 
 # ===========================================================================
@@ -224,6 +257,138 @@ _want clean_2step && {
   assert_contains "smartSlurmLog/allJobs.txt" "mergeNumber"  "allJobs.txt records the DAG"
   # dependency wiring: merge job lists both producers as afterok deps
   assert_contains "smartSlurmLog/allJobs.txt" ":"            "merge depends on upstream job ids"
+  echo
+}
+
+# ===========================================================================
+# Parallel-dispatch self-test. The -jN runner fans each SELECTED block out to its
+# own worker process. A worker MUST run exactly its one block, serially, and never
+# re-enter the dispatcher -- otherwise a block name that is a substring of another
+# (e.g. 'rerun' in 'manual_rerun_floor') makes the worker's substring filter re-select
+# >1 block and fork-recurse without bound. This block asserts that invariant cheaply
+# via the --dump-selection hook (no heavy blocks run), and auto-covers any future
+# colliding names. Guards the fix for the fork-recursion that shipped with the
+# parallel default and escaped review because nothing tested the runner itself.
+_want parallel_worker_isolation && {
+  _begin parallel_worker_isolation
+  rt="$HERE/$(basename "$0")"
+  # grep the SEL: line out of the dump (ss_activate also prints an "activated:" line)
+  _dump() { SS_ONLY="$1" SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 bash "$rt" --dump-selection "$1" 2>/dev/null | grep '^SEL:'; }
+
+  # (1) the concrete, known substring collision in ALL_BLOCKS
+  o=$(_dump rerun)
+  [ "$o" = "SEL:[rerun] PARJOBS:1" ] \
+     && _pass "worker 'rerun' selects ONLY itself, serial (pre-fix: +manual_rerun_floor -> recursion)" \
+     || _fail "worker 'rerun' isolated" "got: $o"
+  o=$(_dump manual_rerun_floor)
+  [ "$o" = "SEL:[manual_rerun_floor] PARJOBS:1" ] \
+     && _pass "worker 'manual_rerun_floor' selects ONLY itself, serial" \
+     || _fail "worker 'manual_rerun_floor' isolated" "got: $o"
+
+  # (2) EVERY substring-colliding worker is isolated (auto-covers names added later)
+  _bad=0
+  for _a in $ALL_BLOCKS; do for _b in $ALL_BLOCKS; do
+    [ "$_a" = "$_b" ] && continue
+    case "$_b" in *"$_a"*)
+      o=$(_dump "$_a")
+      [ "$o" = "SEL:[$_a] PARJOBS:1" ] || { _bad=1; echo "       collision '$_a' in '$_b' NOT isolated: $o" >&2; } ;;
+    esac
+  done; done
+  [ "$_bad" = 0 ] \
+     && _pass "every substring-colliding worker is isolated to its own block" \
+     || _fail "all colliding workers isolated" "see stderr above"
+
+  # (3) top-level substring filtering is PRESERVED for interactive use (no SS_ONLY).
+  # SS_ONLY= clears any value inherited from THIS block's own worker env, so the
+  # child resolves the filter the way a human typing `run_tests.sh rerun` would.
+  o=$(SS_ONLY= SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 bash "$rt" --dump-selection rerun 2>/dev/null | grep '^SEL:')
+  case "$o" in
+    *rerun*manual_rerun_floor*) _pass "top-level 'rerun' filter still expands to the family (substring preserved)" ;;
+    *) _fail "top-level substring filter preserved" "got: $o" ;;
+  esac
+
+  # (4) Exercise the REAL dispatcher (ss_parallel_run), not just the selection proxy.
+  # Checks (1)-(3) assert run_tests.sh's SS_ONLY handling, but the fork-bomb is only
+  # actually prevented because ss_parallel_run (lib/harness.sh) EXPORTS SS_ONLY=<block>
+  # into each worker. If that export is dropped, (1)-(3) still pass (they set SS_ONLY
+  # themselves) yet a real -jN run fork-recurses. So drive ss_parallel_run with a stub
+  # worker that records the SS_ONLY and arg count it was handed, and assert each worker
+  # got SS_ONLY == its one block + exactly one positional arg.
+  _probe="$(mktemp -d)"
+  cat > "$_probe/self.sh" <<'STUB'
+#!/bin/bash
+# stub worker: record how the dispatcher invoked us, emit a minimal green report.
+printf '%s|%s|%s\n' "${SS_ONLY-<unset>}" "$#" "$*" >> "$PROBE_REC"
+printf 'B\t%s\tstub\n'        "$1" >> "$SS_REPORT"
+printf 'C\t%s\tPASS\tstub\n'  "$1" >> "$SS_REPORT"
+echo "RESULT: stub"
+STUB
+  export PROBE_REC="$_probe/rec.txt"; : > "$PROBE_REC"
+  ( ss_parallel_run 2 "$_probe/self.sh" rerun manual_rerun_floor ) >/dev/null 2>&1
+  _pg=1
+  while IFS='|' read -r _so _argc _args; do
+    { [ "$_so" = "$_args" ] && [ "$_argc" = "1" ]; } \
+      || { _pg=0; echo "       dispatcher handed worker SS_ONLY='$_so' argc=$_argc args='$_args'" >&2; }
+  done < "$PROBE_REC"
+  _nrec=$(wc -l < "$PROBE_REC" 2>/dev/null); _nrec="${_nrec//[^0-9]/}"
+  { [ "$_pg" = 1 ] && [ "${_nrec:-0}" = 2 ]; } \
+     && _pass "ss_parallel_run exports SS_ONLY=<block> + one arg to each worker (real dispatch, not proxy)" \
+     || _fail "ss_parallel_run worker export" "recs=${_nrec:-0}: $(tr '\n' ';' < "$PROBE_REC")"
+  unset PROBE_REC; rm -rf "$_probe"
+  echo
+}
+
+# ===========================================================================
+# rAP self-location contract. A driver often needs to find its OWN repo in submit
+# scope (to source a sibling config / helper script). runAsPipeline copies submit-
+# scope lines VERBATIM into a generated copy at smartSlurmLog/slurmPipeLine.<md5>.sh
+# and runs THAT, so `$0` / `BASH_SOURCE[0]` resolve to the generated copy, NOT the
+# repo -- a driver self-locating via those lands in smartSlurmLog/ and can't find its
+# siblings. rAP instead EXPORTS `bashScriptPath` = dirname of the --script (bin/
+# runAsPipeline), which IS the repo dir. This block locks that contract so it can't
+# silently regress. (It is also the fix for the proseq_submit.sh BASH_SOURCE bug.)
+_want rap_self_location && {
+  _begin rap_self_location
+  ss_new_workspace "$WORK/rap_self_location"              # cwd = the "run from" dir
+  # Put the driver in a SEPARATE "repo" dir (with a sibling asset) so its own dir is
+  # distinguishable from cwd and from smartSlurmLog/.
+  repo="$WORK/rap_self_location_repo"; rm -rf "$repo"; mkdir -p "$repo"
+  echo "SENTINEL-ASSET" > "$repo/sibling.conf"
+  cat > "$repo/driver.sh" <<'DRV'
+#!/bin/sh
+# --- submit scope (runs on the submit host during Phase 2, before any job) ---
+echo "$bashScriptPath" > bsp.txt          # rAP's exported self-location var
+echo "$0"              > dollar0.txt       # what a $0 / BASH_SOURCE self-locate would use
+# the sanctioned idiom must find the sibling asset relative to the repo, not cwd
+cat "$bashScriptPath/sibling.conf" > found_asset.txt 2>/dev/null || echo MISSING > found_asset.txt
+#@1,0,step,,,sbatch -p short -c 1 --mem 100M -t 5:0
+echo hi > out.txt
+#@end
+DRV
+  chmod +x "$repo/driver.sh"
+  # Absolute --script path, so bashScriptPath = $repo. Dry run is enough: submit scope
+  # still executes, and no node job is needed to probe the contract.
+  ss_run_pipeline "$repo/driver.sh" "sbatch -p short -c 1 --mem 100M -t 5:0" --dryrun >/dev/null 2>&1
+  bsp=$(cat bsp.txt 2>/dev/null); d0=$(cat dollar0.txt 2>/dev/null)
+
+  # 1. bashScriptPath resolves to the pipeline script's OWN dir (the repo).
+  if [ "$bsp" = "$repo" ]; then
+    _pass "bashScriptPath = the pipeline script's own dir ($repo)"
+  else _fail "bashScriptPath should be dirname(--script)" "got [$bsp] want [$repo]"; fi
+
+  # 2. The sanctioned idiom finds a sibling asset relative to the repo (not cwd).
+  assert_contains found_asset.txt "SENTINEL-ASSET" "sibling asset found via \$bashScriptPath"
+
+  # 3. $0 in submit scope is the GENERATED copy under smartSlurmLog/, NOT the repo --
+  #    i.e. a driver self-locating via $0 / BASH_SOURCE would miss its repo.
+  case "$d0" in
+    */smartSlurmLog/slurmPipeLine.*.sh) _pass "\$0 = the generated copy under smartSlurmLog/ (why BASH_SOURCE self-location fails)";;
+    *) _fail "\$0 should be the generated copy under smartSlurmLog/" "got [$d0]";;
+  esac
+  case "$d0" in
+    "$repo"/*|"$repo") _fail "\$0 must NOT be the repo dir -- contract changed" "$d0";;
+    *) _pass "\$0 is not the repo dir, so bashScriptPath (not \$0) is the way to self-locate";;
+  esac
   echo
 }
 
@@ -515,13 +680,17 @@ _want wf_isolation && {
   # Arm 1: an ORIGINAL user workflow in wf-mode (register-don't-run), workspace A.
   ss_new_workspace "$WORK/wf_iso_orig"
   cp "$HERE"/fixtures/wf_afterok/* .; chmod +x ./*.sh 2>/dev/null || true
-  ss_wf_activate                      # sets SS_WF_MODE=1 and leaves it set
+  ss_wf_activate                      # sets SS_WF_MODE=1 (register-don't-run)
   bash ./submit.sh > wf.log 2>&1
   ss_wf_drain
   assert_file "marker.txt"            "wf arm: original afterok workflow ran"
   assert_file "fromB.txt"             "wf arm: downstream step ran"
-  # Arm 2: an rAP pipeline in a SEPARATE workspace, with SS_WF_MODE STILL set.
+  # Arm 2: an rAP pipeline in a SEPARATE workspace, with SS_WF_MODE set. The
+  # workspace boundary (ss_new_workspace) now clears steering state, so set
+  # SS_WF_MODE back EXPLICITLY here to genuinely exercise ss_run_pipeline's inline
+  # guard, rather than rely on the mode leaking across the block boundary.
   ss_new_workspace "$WORK/wf_iso_rap"
+  export SS_WF_MODE=1
   cp "$HERE"/fixtures/clean_2step/* .
   ss_run_pipeline "./pipeline.sh 777" "sbatch -p short -c 1 --mem 4G -t 50:0"; rc=$?
   assert_rc "$rc" 0 "rAP arm runs despite SS_WF_MODE being set by the wf arm"
@@ -757,6 +926,41 @@ _want ragged_axes && {
   assert_file "smartSlurmLog/2.1.perGroup.7.success"   "group axis: group 7 succeeded (disjoint id)"
   assert_file "smartSlurmLog/2.1.perGroup.8.success"   "group axis: group 8 succeeded (disjoint id)"
   assert_nonempty "group7.txt"                         "group-axis step produced output"
+  echo
+}
+
+# ===========================================================================
+# One pipeline, all three rAP DAG shapes in a single run: a LINEAR chain
+# (normalize->tokenize), a FAN-OUT/FAN-IN pair (nested loop -> 3 chunk jobs per sample
+# -> merge), and an IF/ELSE that submits one of TWO alternative terminal steps (distinct
+# step numbers), chosen at SUBMIT time from the input. The manifest carries a long
+# sample (>=5 words -> detailed branch) and a short one (-> brief branch) so both arms
+# fire. The comprehensive integration counterpart to the focused shape fixtures above.
+_want rap_shapes && {
+  _begin rap_shapes
+  ss_new_workspace "$WORK/rap_shapes"
+  cp "$HERE"/fixtures/rap_shapes/* .; chmod +x ./*.sh 2>/dev/null || true
+  ss_run_pipeline "./pipeline.sh manifest.txt" "sbatch -p short -c 1 --mem 100M -t 5:00"; rc=$?
+  assert_rc "$rc" 0 "runAsPipeline exits 0"
+  driver=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | grep -v dryrun | head -1)
+  assert_valid_bash "$driver" "converted driver is valid bash"
+  # LINEAR chain (normalize -> tokenize), per sample
+  assert_file "smartSlurmLog/1.0.normalize.longsample.success" "linear: normalize ran"
+  assert_file "smartSlurmLog/2.1.tokenize.longsample.success"  "linear: tokenize ran after normalize"
+  # FAN-OUT: split -> exactly 3 countchunk jobs per sample (distinct flags), all complete
+  n=$(ls smartSlurmLog/4.3.countchunk.longsample.*.success 2>/dev/null | wc -l)
+  assert_rc 3 "$n" "fan-out: 3 countchunk jobs for longsample (one per chunk)"
+  assert_file "smartSlurmLog/4.3.countchunk.tiny.3.success" "fan-out: tiny's chunk jobs ran too"
+  # FAN-IN: merge depends on all chunk jobs; summed count correct
+  assert_file    "smartSlurmLog/5.4.merge.longsample.success" "fan-in: merge ran after all chunks"
+  assert_contains "totals.longsample.txt" "total_words=6"     "fan-in: summed chunk counts correct"
+  # IF/ELSE: distinct terminal steps, chosen per sample at submit time
+  assert_file    "smartSlurmLog/6.5.detailed.longsample.success" "branch: long input took the detailed step"
+  assert_no_file "smartSlurmLog/7.5.brief.longsample.success"    "branch: long input did NOT take brief"
+  assert_file    "smartSlurmLog/7.5.brief.tiny.success"          "branch: short input took the brief step"
+  assert_no_file "smartSlurmLog/6.5.detailed.tiny.success"       "branch: short input did NOT take detailed"
+  assert_contains "report.longsample.txt" "DETAILED" "branch: detailed report content"
+  assert_contains "report.tiny.txt"       "brief"    "branch: brief report content"
   echo
 }
 
@@ -1472,13 +1676,13 @@ _want scaling_linear && {
   # size 4000 recorded exactly per model: mem=0.5*4000+200=2200, time=0.02*4000+10=90
   # v2 columns: ...,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,...,status,...
   assert_contains "$jr" ",scaleLin,none,[^,]*,[^,]*,4000,2200,[^,]*,90,[^,]*,[^,]*,COMPLETED," "size 4000 row matches model exactly"
-  ss_fit scaleLin none >/dev/null
-  mstat="$smartSlurmJobRecordDir/stats/unknown.scaleLin.none.mem.stat"
+  ss_fit scaleLin none "$SS_PIPELINE" >/dev/null
+  mstat="$smartSlurmJobRecordDir/stats/$SS_PIPELINE.scaleLin.none.mem.stat"
   assert_near 0.5 "$(stat_val Finala "$mstat")" 0.05 "real gnuplot fit: mem slope ~0.5"
   assert_near 200 "$(stat_val Finalb "$mstat")" 0.10 "real gnuplot fit: mem intercept ~200"
   assert_rc 6 "$(stat_val SCount "$mstat")" "fit used all six points"
   # prediction at a new in-range size tracks truth + margin: 0.5*5000+200 +500extra = 3200
-  pm=$(estimateResource.sh scaleLin none ,jobSize:5000 p 4096 120 2>/dev/null | cut -d' ' -f2)
+  pm=$(estimateResource.sh scaleLin none ,jobSize:5000 p 4096 120 "" "$SS_PIPELINE" 2>/dev/null | cut -d' ' -f2)
   assert_near 3200 "$pm" 0.10 "prediction at size 5000 tracks the fitted line (+margin)"
   echo
   fi
@@ -1498,8 +1702,8 @@ _want noise_fit && {
   exact1000=$(awk -F, '$6==1000 && $2=="scaleLin"{print $7; exit}' "$jr")
   if [ "$exact1000" != "700" ]; then _pass "noise perturbs recorded mem (size 1000: $exact1000 != exact 700)"
   else _fail "noise perturbs recorded mem" "size-1000 mem is exactly 700 (no noise?)"; fi
-  ss_fit scaleLin none >/dev/null
-  mstat="$smartSlurmJobRecordDir/stats/unknown.scaleLin.none.mem.stat"
+  ss_fit scaleLin none "$SS_PIPELINE" >/dev/null
+  mstat="$smartSlurmJobRecordDir/stats/$SS_PIPELINE.scaleLin.none.mem.stat"
   assert_near 0.5 "$(stat_val Finala "$mstat")" 0.20 "noisy fit recovers slope ~0.5 (within 20%)"
   assert_rc 10 "$(stat_val SCount "$mstat")" "fit used all ten points"
   # STDFIT (residual spread) is populated and positive once there IS noise -- it
@@ -1535,10 +1739,10 @@ _want scaling_exp && {
     _pass "recorded mem is convex/exponential (d(6000->8000)=$((m8-m6)) >> d(1000->3000)=$((m3-m1)))"
   else _fail "recorded mem is convex/exponential" "jumps: $((m8-m6)) vs $((m3-m1))"; fi
   # the LINEAR fit under-predicts the exponential truth at a large size
-  ss_fit scaleExp none >/dev/null
+  ss_fit scaleExp none "$SS_PIPELINE" >/dev/null
   big=16000
   truth=$("$HERE/mockSlurm/resourceModel.sh" "$HERE/models/scaling_exp.model" "$big" | cut -d' ' -f1)
-  pred=$(estimateResource.sh scaleExp none ,jobSize:$big p 4096 120 2>/dev/null | cut -d' ' -f2)
+  pred=$(estimateResource.sh scaleExp none ,jobSize:$big p 4096 120 "" "$SS_PIPELINE" 2>/dev/null | cut -d' ' -f2)
   echo "    (info) size=$big  linear-prediction=$pred  exponential-truth=$truth"
   if [ "${pred:-0}" -lt "$(( truth / 2 ))" ]; then
     _pass "linear fit under-provisions exp truth at size $big (pred $pred < half of truth $truth)"
@@ -1611,11 +1815,14 @@ _want contaminate_prune && {
   # progA history: small legit records (survive), one BOGUS under-reporter at a
   # large size (tiny mem -- the exit-0-empty kind), one legit HIGH-mem large
   # record (survives). Plus an UNRELATED progB, and 5 recent OOM fails for progA.
-  ss_seed_record progA none 1000 700    15  COMPLETED 3     # legit small
-  ss_seed_record progA none 12000 50    30  COMPLETED 1     # BOGUS: huge input, ~0 mem
-  ss_seed_record progA none 15000 100000 200 COMPLETED 1    # legit: huge input, huge mem
-  ss_seed_record progB none 1000 900    20  COMPLETED 4     # unrelated program
-  ss_seed_record progA none 9000 8000   120 OOM 6           # proven-insufficient allocs (>threshold)
+  # Seed under $SS_PIPELINE (a VALID name) -- the triggering OOM job below runs under
+  # the same name so cleanUp's pipeline-scoped fail-prune applies to this history.
+  # (--pipeline unknown would be rejected; the prune only needs seed and job to match.)
+  ss_seed_record progA none 1000 700    15  COMPLETED 3 "" "$SS_PIPELINE"   # legit small
+  ss_seed_record progA none 12000 50    30  COMPLETED 1 "" "$SS_PIPELINE"   # BOGUS: huge input, ~0 mem
+  ss_seed_record progA none 15000 100000 200 COMPLETED 1 "" "$SS_PIPELINE"  # legit: huge input, huge mem
+  ss_seed_record progB none 1000 900    20  COMPLETED 4 "" "$SS_PIPELINE"   # unrelated program
+  ss_seed_record progA none 9000 8000   120 OOM 6 "" "$SS_PIPELINE"         # proven-insufficient allocs (>threshold)
   assert_rc 4 "$(awk -F, '$2=="progB"{c++}END{print c+0}' "$jr")" "progB starts with 4 unrelated records"
   # one more real emergent-OOM progA job (size 9000) tips recentFails over threshold
   # True need (80000) sits ABOVE what the smarter estimator will predict for size
@@ -1636,13 +1843,12 @@ EOF
     export MOCK_SLURM_STATE="$pd/.mockstate"
     truncate -s 9000K in.dat
     printf '#!/bin/sh\ninput=$1\n#@1,0,progA,,input,sbatch -p short -c 1 --mem 4G -t 60:0\ncat $input >/dev/null\n\n' > pipeline.sh
-    # --pipeline unknown: the seeded history (ss_seed_record) lands in pipeline
-    # 'unknown', so the triggering job must run in the SAME pipeline for its
-    # fail-prune to apply to that history. (cleanUp now scopes the prune by
-    # pipeline; a script-derived pipeline name would correctly NOT touch the
-    # 'unknown' rows.)
+    # The triggering job runs under $SS_PIPELINE -- the SAME pipeline the history was
+    # seeded under above -- so cleanUp's pipeline-scoped fail-prune applies to it.
+    # (cleanUp scopes the prune by pipeline; a job under a different name would
+    # correctly NOT touch these rows -- see the cross_pipeline block.)
     MOCK_FAIL_MODE=oom timeout 115 bash "$SMARTSLURM_ROOT/bin/runAsPipeline" \
-      --script "./pipeline.sh in.dat" --pipeline unknown --sbatch-options "sbatch -p short -c 1 --mem 4G -t 60:0" \
+      --script "./pipeline.sh in.dat" --pipeline "$SS_PIPELINE" --sbatch-options "sbatch -p short -c 1 --mem 4G -t 60:0" \
       --tmp noTmp >rap.log 2>&1 )
   rm -f "$HERE/models/_prune.model"
   qa() { awk -F, -v p="$1" -v s="$2" '$2==p && $6==s && $12=="COMPLETED"{c++}END{print c+0}' "$jr"; }
@@ -1831,7 +2037,10 @@ _want firstpass_rate && {
     ss_seed_record bigJob none "$size" "$tm" "$tt" COMPLETED 1
     i=$((i+1))
   done
-  ss_fit bigJob none >/dev/null
+  # history was SEEDED (ss_seed_record marker "unknown"), and it is read back below via
+  # a bare calculateMemTime/estimateResource (which default to "unknown") -- so fit
+  # under "unknown", not the swept-record default $SS_PIPELINE.
+  ss_fit bigJob none unknown >/dev/null
   # Simulate "future" jobs (fresh noise draws = unseen seeds). A job passes first
   # try when the estimate at targetPct >= its realized need.
   measure() { # <targetPct> -> integer success percentage over the sample
@@ -1924,7 +2133,7 @@ EOF
   # The estimate a manual rerun would use (exactly what ssbatch calls) for the same
   # step/size must exceed the proven-insufficient 4096 -- the escalation persists
   # across runs via the failure floor, not just within the auto-requeue.
-  est=$(estimateResource.sh mrf none ,jobSize:5000 f 4096 120 2>/dev/null | cut -d' ' -f2)
+  est=$(estimateResource.sh mrf none ,jobSize:5000 f 4096 120 "" "$SS_PIPELINE" 2>/dev/null | cut -d' ' -f2)
   echo "    (info) manual-rerun estimate for size 5000 = $est M (initial 4096 OOM'd)"
   if [ "${est:-0}" -gt 4096 ]; then _pass "manual rerun estimate ($est) > proven-insufficient 4096"
   else _fail "manual rerun estimate > 4096" "got $est"; fi
@@ -1940,11 +2149,11 @@ _want constant_model && {
   else
   ss_new_workspace "$WORK/constant_model" >/dev/null
   ss_run_sweep scaling_const_mem "1000 2000 3000 4000 6000 8000 10000" "sbatch -p short -c 1 --mem 16G -t 1200:0"
-  ss_fit constMem none >/dev/null
+  ss_fit constMem none "$SS_PIPELINE" >/dev/null
   # mem prediction must be ~constant across sizes (constant model), NOT negative-
   # sloped and NOT floored to 100. time prediction must scale up with size.
-  ms=$(estimateResource.sh constMem none ,jobSize:1000 p 4096 120 2>/dev/null)
-  ml=$(estimateResource.sh constMem none ,jobSize:9000 p 4096 120 2>/dev/null)
+  ms=$(estimateResource.sh constMem none ,jobSize:1000 p 4096 120 "" "$SS_PIPELINE" 2>/dev/null)
+  ml=$(estimateResource.sh constMem none ,jobSize:9000 p 4096 120 "" "$SS_PIPELINE" 2>/dev/null)
   mem_s=$(echo "$ms" | cut -d' ' -f2); mem_l=$(echo "$ml" | cut -d' ' -f2)
   time_s=$(echo "$ms" | cut -d' ' -f3); time_l=$(echo "$ml" | cut -d' ' -f3)
   echo "    (info) mem: size1000=$mem_s size9000=$mem_l | time: size1000=$time_s size9000=$time_l"
@@ -2158,7 +2367,15 @@ SCN
 # ~/.smartSlurm/config/user.conf (never git-tracked), sourced LAST by the repo
 # config.txt, so changes win, never clobber the repo file (Q1), and new repo
 # defaults still load because the repo file is sourced too, not replaced (Q2).
-_want config_overlay && {
+#
+# PARKED: the `smartslurm config` feature is parked, so its CLI (bin/smartSlurmConfig.sh
+# + the `config)` case in bin/smartslurm.sh) is NOT in this tree. These three blocks are
+# gated by _optin and removed from ALL_BLOCKS, so they NEVER run in the default suite
+# (serial, bootstrap, or -jN) and cannot redden it. They still run on demand
+# (`./test/run_tests.sh config_overlay config_guided config_migrate`) for config dev.
+# To un-park: restore the feature's bin/ files, flip these three _optin -> _want, and
+# add them back to ALL_BLOCKS (line ~34).
+_optin config_overlay && {
   _begin config_overlay
   h="$WORK/config_overlay_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
@@ -2188,7 +2405,7 @@ SCN
 # ===========================================================================
 # `smartslurm config` guided editors drive real behavior: refgroup -> jrRefClass,
 # partition -> the partition<N>TimeLimit the scheduler reads.
-_want config_guided && {
+_optin config_guided && {
   _begin config_guided
   h="$WORK/config_guided_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
@@ -2210,7 +2427,7 @@ SCN
 # `smartslurm config migrate` converts a legacy FULL ~/.smartSlurm/config/config.txt
 # into the overlay: keep only the keys that differ from the repo defaults, back up
 # the legacy file.
-_want config_migrate && {
+_optin config_migrate && {
   _begin config_migrate
   h="$WORK/config_migrate_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
@@ -2254,7 +2471,10 @@ _want firstpass_fullpath && {
     ss_seed_record bigJob none "$size" "$tm" "$tt" COMPLETED 1
     i=$((i+1))
   done
-  ss_fit bigJob none >/dev/null
+  # history was SEEDED (ss_seed_record marker "unknown"), and it is read back below via
+  # a bare calculateMemTime/estimateResource (which default to "unknown") -- so fit
+  # under "unknown", not the swept-record default $SS_PIPELINE.
+  ss_fit bigJob none unknown >/dev/null
   szs="1500 3500 5500 7500 9500"; sds="$(seq 201 216)"
   fm=$(ss_firstpass_rate bigJob none "$mdl" 93 mem  full "$szs" "$sds")
   ft=$(ss_firstpass_rate bigJob none "$mdl" 93 time full "$szs" "$sds")

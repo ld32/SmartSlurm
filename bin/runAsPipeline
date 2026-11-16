@@ -172,6 +172,12 @@ if [ "$PIPELINE_SRC" = basename ]; then
     esac
 fi
 
+# Sanctioned self-location variable for drivers: the directory of the --script,
+# exported into submit scope so a driver can find its own repo / sibling assets
+# (a config or helper that ships next to it). Submit-scope lines run from a generated
+# copy under smartSlurmLog/, so $0 / BASH_SOURCE point THERE, not at the script's dir
+# -- drivers must use $bashScriptPath, never $0/BASH_SOURCE, to self-locate. See
+# docs/core-concepts.md ("Finding the pipeline script's own directory").
 export bashScriptPath=`dirname "$PIPELINE_SCRIPT"`
 
 if [ -z "$SBATCH_OPTIONS" ]; then 

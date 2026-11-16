@@ -202,6 +202,28 @@ do_something.sh $nReads                        # $nReads is empty/garbage
 ```
 Fix: move the `samtools view -c` **inside** step 2's block, where it runs on a node after step 1 completes.
 
+### Finding the pipeline script's own directory (`bashScriptPath`)
+
+A driver often needs to locate its **own** repository in submit scope — to source a sibling config file or call a helper script that ships next to it. **Do not use `$0` or `${BASH_SOURCE[0]}` for this.** In [Phase 1](#how-a-pipeline-runs-convert-and-submit-two-phases), `runAsPipeline` copies your submit-scope lines **verbatim** into a generated copy at `smartSlurmLog/slurmPipeLine.<md5>.sh` and runs *that* — so at submission time `$0` and `${BASH_SOURCE[0]}` resolve to the generated copy under `smartSlurmLog/`, **not** your script's directory. Self-locating that way silently finds the wrong place (or fails to find a sibling file).
+
+Instead use the variable `runAsPipeline` exports for exactly this: **`bashScriptPath`** — the directory of the script you passed to `--script` (its `dirname`). It is available to every plain line in submit scope.
+
+```bash
+# At the top of your driver, in submit scope:
+pipeDir="$bashScriptPath"            # the directory this pipeline script lives in (its repo)
+. "$pipeDir/pipeline.conf"           # source a sibling config
+"$pipeDir/helpers/stats.sh" ...      # call a sibling helper
+```
+
+> [!TIP]
+> To keep the script runnable **directly** too (`bash mypipeline.sh`, outside `runAsPipeline`, where `bashScriptPath` is unset), fall back to self-location:
+> ```bash
+> pipeDir="$(cd "${bashScriptPath:-$(dirname "${BASH_SOURCE[0]}")}" && pwd)"
+> ```
+> Under `runAsPipeline` this uses `bashScriptPath` (the repo); run directly, it falls back to the script's own location.
+
+`bashScriptPath` is a **submit-scope** convenience. Code inside a `#@` block runs on a node and should receive any path it needs as a baked-in submit-scope variable (above), not by re-deriving it from `bashScriptPath`.
+
 ## Loops
 
 `runAsPipeline` preserves loop structure but extracts the `#@` blocks inside. **Every enclosing loop variable becomes part of each job's flag**, so per-iteration jobs get distinct names (e.g. `1.0.findNumber.1`, `1.0.findNumber.2`, …), and a **nested** loop (fan-out) stays collision-free (`4.3.countchunk.$sample.$chunk`).

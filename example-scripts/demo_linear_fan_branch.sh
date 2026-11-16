@@ -15,6 +15,7 @@
 #
 # MANIFEST  (one sample per line:  <id> <phrase words...>)
 # =============================================================================
+#@pipeline fanBranchDemo
 manifest=$1
 [ -z "$manifest" ] && { echo "usage: $0 <manifest>"; exit 1; }
 
