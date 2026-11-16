@@ -31,7 +31,7 @@ loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
 setup_rc_block activate_path activate_prompt deactivate_surgical conda_coexist \
-uninstall_precise unexport_deprecated config_overlay config_guided config_migrate \
+uninstall_precise unexport_deprecated \
 firstpass_fullpath extrapolate_linear extrapolate_superlinear extrapolate_lowdata \
 resubmit_convergence manual_resubmit_sequence \
 efficiency_file checkrun_efficiency email_consolidation fitqc migrate_v1 jr_drift_guard cross_pipeline legacy_pooling"
@@ -109,9 +109,9 @@ ss_purpose() {
     conda_coexist)      echo "smartSlurm and a conda-style '(env) ' prompt + PATH entry coexist: activating/deactivating either in any order never clobbers the other";;
     uninstall_precise)  echo "'smartslurm uninstall' deletes exactly the initialize block from the rc file, leaving surrounding user lines byte-identical, with a backup";;
     unexport_deprecated) echo "the deprecated 'unExport' warns and delegates to 'smartslurm deactivate' (no longer strips the system sbatch dir)";;
-    config_overlay)     echo "smartslurm config: overlay model — set/get/unset write only ~/.smartSlurm/config/user.conf (never the repo file, Q1); non-overridden repo defaults still load (Q2); schema validation rejects bad types; unknown keys flagged custom";;
-    config_guided)      echo "smartslurm config: guided editors drive real behavior — refgroup add changes what jrRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
-    config_migrate)     echo "smartslurm config migrate: a legacy full ~/.smartSlurm/config/config.txt is converted to the overlay — only keys differing from repo defaults are kept in user.conf, the legacy file is backed up";;
+    config_overlay)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: overlay model — set/get/unset write only ~/.smartSlurm/config/user.conf (never the repo file, Q1); non-overridden repo defaults still load (Q2); schema validation rejects bad types; unknown keys flagged custom";;
+    config_guided)      echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: guided editors drive real behavior — refgroup add changes what jrRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
+    config_migrate)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config migrate: a legacy full ~/.smartSlurm/config/config.txt is converted to the overlay — only keys differing from repo defaults are kept in user.conf, the legacy file is backed up";;
     firstpass_fullpath) echo "First-pass coverage through the FULL estimateResource path (extraMem + failure floor), for mem AND time (not just the calculateMemTime margin)";;
     extrapolate_linear) echo "[Phase 1 baseline] Linear truth trained on small sizes, predicted at 2x-50x: with SCount>9 it extrapolates the line (not outOfRange); reports first-pass per scale";;
     extrapolate_superlinear) echo "[Phase 1 baseline] Quadratic truth trained on small sizes: the straight-line fit UNDER-provisions at 10x-50x; records the shortfall ratio (the problem to fix)";;
@@ -2041,7 +2041,15 @@ SCN
 # ~/.smartSlurm/config/user.conf (never git-tracked), sourced LAST by the repo
 # config.txt, so changes win, never clobber the repo file (Q1), and new repo
 # defaults still load because the repo file is sourced too, not replaced (Q2).
-_want config_overlay && {
+#
+# PARKED: the `smartslurm config` feature is parked, so its CLI (bin/smartSlurmConfig.sh
+# + the `config)` case in bin/smartslurm.sh) is NOT in this tree. These three blocks are
+# gated by _optin and removed from ALL_BLOCKS, so they NEVER run in the default suite
+# (serial, bootstrap, or -jN) and cannot redden it. They still run on demand
+# (`./test/run_tests.sh config_overlay config_guided config_migrate`) for config dev.
+# To un-park: restore the feature's bin/ files, flip these three _optin -> _want, and
+# add them back to ALL_BLOCKS (line ~34).
+_optin config_overlay && {
   _begin config_overlay
   h="$WORK/config_overlay_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
@@ -2071,7 +2079,7 @@ SCN
 # ===========================================================================
 # `smartslurm config` guided editors drive real behavior: refgroup -> jrRefClass,
 # partition -> the partition<N>TimeLimit the scheduler reads.
-_want config_guided && {
+_optin config_guided && {
   _begin config_guided
   h="$WORK/config_guided_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
@@ -2093,7 +2101,7 @@ SCN
 # `smartslurm config migrate` converts a legacy FULL ~/.smartSlurm/config/config.txt
 # into the overlay: keep only the keys that differ from the repo defaults, back up
 # the legacy file.
-_want config_migrate && {
+_optin config_migrate && {
   _begin config_migrate
   h="$WORK/config_migrate_home"; rm -rf "$h"; mkdir -p "$h"; o="$h/out.txt"
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
