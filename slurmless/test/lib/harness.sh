@@ -46,11 +46,38 @@ export SMARTSLURM_ROOT
 
 # v2 stats key the fit as (pipeline, step, refGroup). Pin the pipeline name used by
 # the estimator blocks to ONE value, shared by the records we write (ss_run_sweep
-# passes --pipeline) and the fits we read (ss_fit), so they land on the same stat
-# key. Without this, runAsPipeline derives the pipeline from the script name
-# ("pipeline"), while ss_fit queries the estimator's default ("unknown") -> the fit
-# input is empty and every estimator block silently fails.
-export SS_PIPELINE=unknown
+# passes --pipeline) and the fits we read (ss_fit passes the same name), so they land
+# on the same stat key. Without this, runAsPipeline derives the pipeline from the
+# script name ("pipeline") while ss_fit would query a different key -> the fit input
+# is empty and every estimator block silently fails.
+# MUST be a VALID, non-reserved name: runAsPipeline (and jrCurate) now REJECT
+# 'unknown' and 'legacy' as --pipeline values -- they are reserved jobRecord markers
+# (unknown = the estimator's standalone default; legacy = migrated jR1 rows). The
+# harness once used 'unknown' here; once the tool added that validation, --pipeline
+# unknown errored out, no jobs were recorded, and every estimator block failed at its
+# first "N COMPLETED records" assertion. Keep this a plain pipeline name.
+export SS_PIPELINE=estim
+
+# _ss_tmpbase: pick a writable base dir for the disposable scratch tree, PREFERRING
+# RAM (tmpfs, e.g. /dev/shm) so the harness's heavy per-workspace file churn
+# (rm -rf + mkdir + many tiny flag/jobRecord writes per job) avoids disk I/O. This
+# is safe because the scratch is already ephemeral (ss_new_workspace rm -rf's it and
+# nothing is reused across runs), and tmpfs is a full POSIX filesystem -- every op the
+# flag-folder / jobRecord "disk database" uses (rename, flock, mkdir-locks, mtime,
+# append) behaves identically. It only relocates the harness's throwaway scratch; it
+# changes NO bin/ code and does not affect real-cluster runAsPipeline paths.
+# Falls back to $TMPDIR then /tmp when no tmpfs is writable with >=256MB free, so a
+# manual run on any server (incl. one with a tiny/absent/cgroup-capped /dev/shm) still
+# works. An explicit SS_SCRATCH always overrides this choice.
+_ss_tmpbase() {
+  local c av
+  for c in /dev/shm "${TMPDIR:-}" /tmp; do
+    [ -n "$c" ] && [ -d "$c" ] && [ -w "$c" ] || continue
+    av=$(df -Pk "$c" 2>/dev/null | awk 'NR==2{print $4+0}')
+    [ "${av:-0}" -ge 262144 ] && { printf '%s' "$c"; return 0; }
+  done
+  printf '/tmp'
+}
 
 # ss_activate: prepare a Slurm-free environment. It has two environment-mutating
 # side effects appropriate for a disposable sandbox or CI runner but surprising on
@@ -61,6 +88,14 @@ export SS_PIPELINE=unknown
 # A one-line summary of what it changed is printed at the end.
 ss_activate() {
   local _gp="present" _sh="already-bash"
+
+  # Default the disposable scratch root to RAM (tmpfs) when possible; an explicit
+  # SS_SCRATCH always overrides. Parallel workers receive SS_SCRATCH from
+  # ss_parallel_run, so this only fires for a serial run or the parallel dispatcher.
+  export SS_SCRATCH="${SS_SCRATCH:-$(_ss_tmpbase)/ss-scratch}"
+  mkdir -p "$SS_SCRATCH"
+  local _scr_kind; case "$(df -PT "$SS_SCRATCH" 2>/dev/null | awk 'NR==2{print $2}')" in
+    tmpfs|ramfs) _scr_kind=RAM;; *) _scr_kind=disk;; esac
 
   # 0) gnuplot is required by estimateResource.sh for curve fitting. Install it
   #    if missing (sandbox images lose apt packages on reset). Non-fatal: the
@@ -146,7 +181,7 @@ ss_activate() {
 
   # Concise summary of what was set up / changed, so a human running this
   # interactively can see exactly what the harness touched.
-  echo "[harness] activated: SMARTSLURM_ROOT=$SMARTSLURM_ROOT | /bin/sh=$_sh | gnuplot=$_gp | HOME=$HOME (scratch)"
+  echo "[harness] activated: SMARTSLURM_ROOT=$SMARTSLURM_ROOT | /bin/sh=$_sh | gnuplot=$_gp | scratch=$SS_SCRATCH ($_scr_kind; set SS_SCRATCH to override)"
 }
 
 # create (or reset) a clean workspace and cd into it
@@ -161,6 +196,19 @@ ss_new_workspace() {
   # workspace only -- never accumulate prior blocks' workspaces (see _SS_BASE_PATH),
   # so a serial run isolates blocks exactly as a parallel (one-process-per-block) run does.
   export PATH="$dir:${_SS_BASE_PATH:-$PATH}"
+  # Block-isolation boundary for test-only STEERING state. A real
+  # one-process-per-block run (which this serial harness emulates -- see the PATH
+  # note above) would inherit NONE of these from a prior block, so clear them here
+  # rather than trust every block to clean up after itself.
+  #   SS_WF_MODE is the dangerous one: a workflow block leaves it set
+  #   (ss_wf_activate never unsets it), and while set the mock sbatch
+  #   registers-don't-run. An rAP pipeline invoked DIRECTLY -- bypassing
+  #   ss_run_pipeline's inline `SS_WF_MODE=` guard, as rerun's reissue() and the
+  #   estimator blocks' `bash runAsPipeline` do -- is then silently NOT executed,
+  #   so its .success flags never appear and the block fails late and confusingly,
+  #   only in full-suite order. The rest are reset for the same isolation reason.
+  unset SS_WF_MODE SS_MODEL smartSlurmRerun MOCK_FAIL_MODE MOCK_FAIL_JOB
+  export JR_REF_CLASS=""
 }
 
 # --- resource model selection -------------------------------------------------
@@ -206,12 +254,17 @@ ss_run_sweep() {
   done
 }
 
-# ss_fit PROGRAM REF  : force estimateResource.sh to (re)build the fit from the
-#   current jobRecord.txt and echo the fitted mem.stat keys. Returns non-zero if
-#   gnuplot is unavailable. Use a size well within the observed range so the
-#   builder runs rather than returning outOfRange.
+# ss_fit PROGRAM REF [PIPELINE]  : force estimateResource.sh to (re)build the fit
+#   from the current jobRecord.txt and echo the fitted mem.stat keys. Returns non-zero
+#   if gnuplot is unavailable. Use a size well within the observed range so the builder
+#   runs rather than returning outOfRange.
+#   PIPELINE defaults to "unknown" -- the marker ss_seed_record writes and that a bare
+#   estimateResource/calculateMemTime reads, i.e. the harness's standalone default, so
+#   SEED-based callers need no argument. A caller whose history was built by ss_run_sweep
+#   (recorded via runAsPipeline --pipeline, which REJECTS "unknown") passes $SS_PIPELINE
+#   explicitly, so the fit lands on the same stat key those swept rows carry.
 ss_fit() {
-  local prog="$1" ref="${2:-none}"
+  local prog="$1" ref="${2:-none}" pipe="${3:-unknown}"
   command -v gnuplot >/dev/null 2>&1 || { echo "gnuplot-missing"; return 2; }
   # pick a mid-range size from the existing records to avoid the outOfRange guard
   local mid
@@ -222,13 +275,14 @@ ss_fit() {
   # Force a fresh fit from ALL current records: estimateResource.sh otherwise
   # reuses a <2-min-old stat file (staleness guard), which during a fast sweep
   # can be an early, few-point fit. Removing it makes the builder re-run.
-  # ss_fit invokes estimateResource WITHOUT --pipeline, so the key is unknown.PROG.REF
-  # (JR_REF_CLASS="" in the harness => refGroup==ref); the fallback ladder pools the
-  # actual history (seeded as pipeline=unknown, or swept under another pipeline).
-  rm -f "$smartSlurmJobRecordDir/stats/unknown.$prog.$ref.mem.stat" \
-        "$smartSlurmJobRecordDir/stats/unknown.$prog.$ref.time.stat"
-  estimateResource.sh "$prog" "$ref" ",jobSize:$mid" fitflag 4096 120 >/dev/null 2>&1
-  cat "$smartSlurmJobRecordDir/stats/unknown.$prog.$ref.mem.stat" 2>/dev/null
+  # ss_fit estimates under $SS_PIPELINE -- the SAME name ss_run_sweep recorded the
+  # rows under -- so the record and fit sides share the stat key $SS_PIPELINE.PROG.REF
+  # (JR_REF_CLASS="" in the harness => refGroup==ref). The pipeline name is passed as
+  # the 8th positional arg, exactly as ssbatch calls estimateResource in production.
+  rm -f "$smartSlurmJobRecordDir/stats/$pipe.$prog.$ref.mem.stat" \
+        "$smartSlurmJobRecordDir/stats/$pipe.$prog.$ref.time.stat"
+  estimateResource.sh "$prog" "$ref" ",jobSize:$mid" fitflag 4096 120 "" "$pipe" >/dev/null 2>&1
+  cat "$smartSlurmJobRecordDir/stats/$pipe.$prog.$ref.mem.stat" 2>/dev/null
 }
 
 # ss_firstpass_rate PROGRAM REF MODEL PCT DIM PATH "sizes" "seeds"
@@ -387,7 +441,9 @@ _fail() { CHECKS=$((CHECKS+1)); FAILS=$((FAILS+1)); printf 'C\t%s\tFAIL\t%s\n' "
 ss_parallel_run() {
   local jobs="$1" self="$2"; shift 2
   local blocks="$*" to="${SS_BLOCK_TIMEOUT:-600}" b
-  local pardir; pardir="$(mktemp -d)"
+  # Keep each worker's scratch (SS_SCRATCH="$pardir/s_$b", below) on RAM too when
+  # possible; fall back to the system default if the tmpfs mktemp fails.
+  local pardir; pardir="$(mktemp -d "$(_ss_tmpbase)/ss-par.XXXXXX" 2>/dev/null || mktemp -d)"
   echo "== running $(echo $blocks | wc -w) blocks, up to $jobs in parallel (per-block cap ${to}s) =="
   for b in $blocks; do
     while [ "$(jobs -rp 2>/dev/null | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || sleep 0.3; done

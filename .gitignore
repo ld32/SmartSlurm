@@ -5,3 +5,9 @@ test/checkrun_ui_tests.sh
 smartSlurmLog/
 gap.txt
 *.dryrun.sh
+
+# slurmless test scratch: temporary resource models the estimator blocks write and
+# remove on clean exit (committed models have plain names; temporaries are _-prefixed),
+# and gnuplot's default fit journal (tools redirect it to /dev/null; a stray run drops one).
+slurmless/test/models/_*.model
+fit.log
