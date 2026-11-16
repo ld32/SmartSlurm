@@ -47,10 +47,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/migration-assistant/examples/ma_dryrun.sh"
 
 ## Prerequisites
 
-1. The `slurmless` plugin installed (above), **or** a checkout of this repository
-   (the slurmless harness + the skill), or SmartSlurm with `slurmless/` vendored in.
+1. The `slurmless` plugin installed (above), **or** a SmartSlurm checkout — slurmless
+   lives in-tree at `SmartSlurm/slurmless/` (harness + skill included).
 2. A **SmartSlurm checkout** the harness can point at (`SMARTSLURM_ROOT`; auto-resolved
-   when vendored).
+   in-tree).
 3. Your pipeline: the scripts (and, for a SLURM workflow, the submit script).
 4. An **environment spec** so the real tools exist in the sandbox (a conda `env.yml`,
    a container, or a module list), plus either small real inputs to downsample or a

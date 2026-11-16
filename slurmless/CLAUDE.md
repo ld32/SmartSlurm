@@ -15,8 +15,9 @@ to trip you up.
   explicitly to change that tool — then update the affected fixtures/asserts.
 - **Prove the baseline first:** `./bootstrap.sh` (runs `clean_2step`). If it is
   red, the environment is not set up — stop and diagnose before other work.
-- **Run one block at a time** (`./test/run_tests.sh <block>`); the full suite is
-  slow by design.
+- **Develop against one block** (`./test/run_tests.sh <block>` runs serial with live
+  output); a bare `./test/run_tests.sh` runs the whole suite **in parallel** (one
+  worker per core, capped at 8), so it's no longer slow — use `-j1` to force serial.
 - **Scratch only.** Never aim the harness at a real `~/.smartSlurm` or a real
   cluster.
 - **The harness is code too — self-test it; don't trust its own green.** A change to
