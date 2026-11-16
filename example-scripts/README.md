@@ -5,6 +5,11 @@ converting a pipeline to SmartSlurm and as **quick smoke tests** on the cluster.
 step uses only common shell tools (`tr`, `sed`, `awk`, `sort`, `wc`, `cut`, `printf`),
 asks for trivial resources, and produces output a human can verify by eye.
 
+> **These are demos, meant to be run, read, and copied — not the test suite.** The
+> automated regression fixtures that exercise rAP live separately, in the slurmless
+> harness (`slurmless/test/fixtures/`), and are locked infrastructure. Don't repurpose
+> a demo as a fixture or vice-versa.
+
 ## How to run any of them
 
 ```bash
@@ -28,21 +33,22 @@ one directory would mix their `smartSlurmLog/` job-flag namespaces.
 | Script | Style | Patterns it teaches | Expected result |
 |---|---|---|---|
 | `demo_linear_fan_branch.sh` | `#@end` (scripts-on-disk) | the full progression: a **linear** chain (normalize→tokenize), a **fan-out/fan-in** pair (split into 3 chunks → count each → merge), and an **if/else** that submits one of two alternative terminal steps | per-sample report; `total_words` equals the token count; long inputs → `DETAILED`, short → `brief` |
-| `phrase_pipeline_end.sh` | `#@end` | a minimal linear pipeline plus an experiment-level **fan-in** `summary` — the smallest "start here" `#@end` example | `summary.tsv` with `longest=brown/dozen/vexingly/quickly` |
-| `phrase_pipeline_legacy.sh` | legacy blank-line (`--wrap`) | the older single-line-body style, and its constraint (avoid quoted-whitespace args — the `--wrap` flattener collapses them) | `all_counts.txt` (24 lines) |
+| `demo_phrase_pipeline.sh` | `#@end` | a minimal linear pipeline plus an experiment-level **fan-in** `summary` — the smallest "start here" `#@end` example | `summary.tsv` with `longest=brown/dozen/vexingly/quickly` |
 | `bashScript-tutorial/` | mixed | the original "**annotate your pipeline**" tutorial: `V1` plain → `V2` annotated (the example named in `runAsPipeline` usage), plus edge-case variants. See its own README. | — |
 | `resource-estimation/` | `#@end` | **jobRecords / resource estimation**: a `load` step whose memory + wall-time scale with input size, for testing curve-fitting and OOM/OOT auto-rerun. See its own README. | `load.<s>.txt` per sample; jobRecords across 4 sizes |
 
-`demo_*` and `phrase_*` each use their own manifest. The `bashScript-tutorial/` scripts use
-`createNumberFiles.sh` + `findNumber.sh` from `SmartSlurm/bin/`.
+`demo_linear_fan_branch.sh` uses `demo_manifest.txt`; `demo_phrase_pipeline.sh` uses
+`demo_phrase_manifest.txt`. The `bashScript-tutorial/` scripts use `createNumberFiles.sh`
++ `findNumber.sh` from `SmartSlurm/bin/`.
 
 ## `#@end` vs legacy
 
 Prefer **`#@end`** blocks for new pipelines: the body is written to a per-job script
 verbatim, so `awk`, quotes, multi-line bodies, and command substitution all survive. The
 legacy blank-line style flattens each block into a single `--wrap` string, which mangles
-quoted whitespace and multi-line bodies — `phrase_pipeline_legacy.sh` is included to show
-that style and its limits, not as the recommended default.
+quoted whitespace and multi-line bodies — so these demos use `#@end` only. The legacy
+style still works and stays regression-tested in the slurmless harness (`end_block`,
+`clean_2step`); it is just not shipped here as a demo.
 
 ## Conventions these examples follow (and why)
 
