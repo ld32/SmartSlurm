@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every block, in run order, and a one-line functional description of what it
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
-ALL_BLOCKS="clean_2step wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes fail_exit0_empty known_broken_swallowed_done \
+ALL_BLOCKS="clean_2step wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
 loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
@@ -75,6 +75,7 @@ ss_purpose() {
     ma_differential)    echo "Migration Assistant skill: full Scenario-2 — run the ORIGINAL (wf-mode) and its rAP PORT in isolated workspaces and confirm identical authoritative outputs under a contract";;
     nested_fanout)      echo "Nested per-sample/per-chrom loops — a fan-out step (one grid cell backs multiple jobs) converts to valid bash and every job completes";;
     ragged_axes)        echo "Two steps whose loop axes are disjoint (sample ids vs group ids) — ragged addressing converts and runs end-to-end";;
+    rap_shapes)         echo "One pipeline exercising ALL three rAP DAG shapes in a single run — a linear chain, a fan-out/fan-in pair (3 chunk jobs per sample -> merge), and an if/else that submits one of two alternative terminal steps chosen at submit time (long input -> detailed, short -> brief). The comprehensive integration test across shapes, incl. the if/else-branch conversion the focused fixtures don't cover";;
     loop_detection)     echo "Documents the textual for*/done* loop foot-gun: a one-line for...done and a for-prefixed command corrupt the next step's flag";;
     fail_exit0_empty)   echo "Producer exits 0 but writes nothing and the consumer fails — documents the current symptom-vs-cause misattribution";;
     known_broken_swallowed_done) echo "A blank-line block right before a loop 'done' makes the converter emit invalid bash (the M4 block-closure foot-gun)";;
@@ -773,6 +774,41 @@ _want ragged_axes && {
   assert_file "smartSlurmLog/2.1.perGroup.7.success"   "group axis: group 7 succeeded (disjoint id)"
   assert_file "smartSlurmLog/2.1.perGroup.8.success"   "group axis: group 8 succeeded (disjoint id)"
   assert_nonempty "group7.txt"                         "group-axis step produced output"
+  echo
+}
+
+# ===========================================================================
+# One pipeline, all three rAP DAG shapes in a single run: a LINEAR chain
+# (normalize->tokenize), a FAN-OUT/FAN-IN pair (nested loop -> 3 chunk jobs per sample
+# -> merge), and an IF/ELSE that submits one of TWO alternative terminal steps (distinct
+# step numbers), chosen at SUBMIT time from the input. The manifest carries a long
+# sample (>=5 words -> detailed branch) and a short one (-> brief branch) so both arms
+# fire. The comprehensive integration counterpart to the focused shape fixtures above.
+_want rap_shapes && {
+  _begin rap_shapes
+  ss_new_workspace "$WORK/rap_shapes"
+  cp "$HERE"/fixtures/rap_shapes/* .; chmod +x ./*.sh 2>/dev/null || true
+  ss_run_pipeline "./pipeline.sh manifest.txt" "sbatch -p short -c 1 --mem 100M -t 5:00"; rc=$?
+  assert_rc "$rc" 0 "runAsPipeline exits 0"
+  driver=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | grep -v dryrun | head -1)
+  assert_valid_bash "$driver" "converted driver is valid bash"
+  # LINEAR chain (normalize -> tokenize), per sample
+  assert_file "smartSlurmLog/1.0.normalize.longsample.success" "linear: normalize ran"
+  assert_file "smartSlurmLog/2.1.tokenize.longsample.success"  "linear: tokenize ran after normalize"
+  # FAN-OUT: split -> exactly 3 countchunk jobs per sample (distinct flags), all complete
+  n=$(ls smartSlurmLog/4.3.countchunk.longsample.*.success 2>/dev/null | wc -l)
+  assert_rc 3 "$n" "fan-out: 3 countchunk jobs for longsample (one per chunk)"
+  assert_file "smartSlurmLog/4.3.countchunk.tiny.3.success" "fan-out: tiny's chunk jobs ran too"
+  # FAN-IN: merge depends on all chunk jobs; summed count correct
+  assert_file    "smartSlurmLog/5.4.merge.longsample.success" "fan-in: merge ran after all chunks"
+  assert_contains "totals.longsample.txt" "total_words=6"     "fan-in: summed chunk counts correct"
+  # IF/ELSE: distinct terminal steps, chosen per sample at submit time
+  assert_file    "smartSlurmLog/6.5.detailed.longsample.success" "branch: long input took the detailed step"
+  assert_no_file "smartSlurmLog/7.5.brief.longsample.success"    "branch: long input did NOT take brief"
+  assert_file    "smartSlurmLog/7.5.brief.tiny.success"          "branch: short input took the brief step"
+  assert_no_file "smartSlurmLog/6.5.detailed.tiny.success"       "branch: short input did NOT take detailed"
+  assert_contains "report.longsample.txt" "DETAILED" "branch: detailed report content"
+  assert_contains "report.tiny.txt"       "brief"    "branch: brief report content"
   echo
 }
 
