@@ -1576,6 +1576,28 @@ _want rerun_lifecycle && {
       --sbatch-options "$OPTS" --tmp noTmp </dev/null >fo.log 2>&1
   { [ "$(stat -c '%Y' "$f1")" != "$b1" ] && [ "$(stat -c '%Y' "$f2")" != "$b2" ]; } \
      && _pass "fanout: fromStep:1 reruns BOTH jobs of the fan-out step" || _fail "fanout: fromStep:1 reruns both fan-out jobs" "a job was kept"
+
+  # (cancel-pending) The decisive half of "cancel = no submission": the block above only
+  # cancels when EVERY step is already .success (nothing to submit either way). Here a
+  # step is KILLED first, so a non-cancel re-issue WOULD submit it (+rerun its
+  # downstream). 'cancel' must still submit NOTHING -- the up-front exit 2 aborts the
+  # driver BEFORE the job loop, so the killed step is not resubmitted and no downstream
+  # re-runs. (Guards against a regression where cancel degrades to the old lazy
+  # skip-this-job-but-keep-going behavior, which DID submit the incomplete jobs.)
+  ss_new_workspace "$WORK/rerun_lifecycle_cancel_pending"
+  cp "$HERE"/fixtures/three_step/* .; chmod +x ./*.sh
+  cp1=smartSlurmLog/1.0.trim.1.success; cp2=smartSlurmLog/2.1.count.1.success; cp3=smartSlurmLog/3.2.merge.success
+  ss_run_pipeline "./pipeline.sh 9" "$OPTS" >/dev/null 2>&1
+  assert_file "$cp2" "cancel-pending: setup - count done"
+  rm -f "$cp2"                                   # step 2 now pending; step 3 downstream of it
+  c1=$(stat -c '%Y' "$cp1"); c3=$(stat -c '%Y' "$cp3"); sleep 1.1
+  smartSlurmRerun=cancel bash "$SMARTSLURM_ROOT/bin/runAsPipeline" --script "./pipeline.sh 9" \
+      --sbatch-options "$OPTS" --tmp noTmp </dev/null >recp.log 2>&1
+  assert_contains recp.log "Cancelled" "cancel-pending: cancel acknowledged"
+  [ ! -e "$cp2" ] && _pass "cancel-pending: killed step NOT resubmitted (no submission)" || _fail "cancel-pending: killed step not resubmitted" "count.success reappeared"
+  { [ "$(stat -c '%Y' "$cp1")" = "$c1" ] && [ "$(stat -c '%Y' "$cp3")" = "$c3" ]; } \
+     && _pass "cancel-pending: no other step reran" || _fail "cancel-pending: no other step reran" "an mtime changed"
+  ls smartSlurmLog/*AllSuccessJobs*.txt >/dev/null 2>&1 && _fail "cancel-pending: no scope markers left" "markers present" || _pass "cancel-pending: no scope markers left"
   echo
 }
 
