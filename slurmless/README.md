@@ -98,16 +98,12 @@ bash skills/migration-assistant/examples/ma_dryrun.sh
 
 MA is packaged as a Claude Code plugin (named `slurmless`) that bundles both the
 `migration-assistant` and `slurmless-harness` skills **and** the harness they run
-on. Install it (Claude Code 2.1.275+):
+on. It ships inside SmartSlurm at `slurmless/`; a marketplace manifest in a repo
+subdirectory is not reachable by the `owner/repo` shorthand, so add it from a local
+SmartSlurm checkout (Claude Code 2.1.275+):
 
 ```text
-/plugin install slurmless --marketplace ntc-agnt/slurmless_smartSlurm_testing
-```
-
-or in two steps on any version:
-
-```text
-/plugin marketplace add ntc-agnt/slurmless_smartSlurm_testing
+/plugin marketplace add ./SmartSlurm/slurmless
 /plugin install slurmless@slurmless-marketplace
 ```
 

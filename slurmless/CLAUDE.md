@@ -27,13 +27,12 @@ to trip you up.
   **process tree**, not just the `RESULT:` line. (The parallel default once shipped a
   fork-recursion that "passed" exactly this way.) See AGENTS.md → *Hard rules* and the
   adversary skill's third bug class.
-- **Vendoring into SmartSlurm:** slurmless is copied into `SmartSlurm/slurmless/`
-  as a plain subdirectory (a point-in-time snapshot), **not** a `git subtree`.
-  Until the jobRecords-v2 migration lands, this standalone repo is the source of
-  truth: develop here, then re-snapshot into SmartSlurm
-  (`git -C <smartslurm> ... ; git archive main | tar -x -C slurmless/`). Once the
-  migration is complete, development moves into `SmartSlurm/slurmless/` directly
-  and this standalone repo is archived.
+- **Source of truth: `SmartSlurm/slurmless/` (in-tree).** slurmless now lives in
+  SmartSlurm as a plain subdirectory and is developed there directly, versioned with
+  the engine — one commit, so the harness can't drift from the tools it tests. The
+  former standalone repo (`slurmless_smartSlurm_testing`) is **archived**, and the old
+  "develop standalone, then re-snapshot into SmartSlurm" workflow is **retired** — do
+  not re-snapshot.
 
 ## Working with the SmartSlurm upstream (ld32 directives)
 

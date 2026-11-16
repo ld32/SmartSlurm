@@ -27,10 +27,12 @@ plugin is installable on claude.ai / Cowork as well as the CLI.
 
 ## Install
 
+The plugin ships inside SmartSlurm at `slurmless/`. A marketplace manifest in a repo
+subdirectory is **not** reachable by the `owner/repo` shorthand (verified against the
+plugin docs 2026-11-12), so add it from a local SmartSlurm checkout (2.1.275+):
+
 ```text
-/plugin install slurmless --marketplace ntc-agnt/slurmless_smartSlurm_testing   # 2.1.275+
-# or
-/plugin marketplace add ntc-agnt/slurmless_smartSlurm_testing
+/plugin marketplace add ./SmartSlurm/slurmless
 /plugin install slurmless@slurmless-marketplace
 ```
 
@@ -162,3 +164,13 @@ symlink — not a repackage.
 > restriction and the `git-subdir` marketplace source come from a plugin-docs research
 > pass, not from a run in this repo. Verify both against the current Claude Code plugin
 > docs before committing to this distribution shape.
+>
+> **Verified 2026-11-12 (against the plugin docs):** the root-`bin/` claude.ai/Cowork
+> restriction holds but does **not** bite here — the plugin root is `slurmless/`, which
+> has no `bin/`. However, the **`git-subdir` *marketplace* source does not exist**:
+> `git-subdir` is a plugin-*entry* source, not a marketplace locator, and a marketplace
+> manifest in a subdirectory is **not** reachable by the `owner/repo` shorthand. So a
+> remote one-line install needs a **root-level `.claude-plugin/marketplace.json` in
+> SmartSlurm** (or an `extraKnownMarketplaces` settings entry). Until that exists,
+> install from a local checkout (see **Install** above). Setting up the remote path is
+> a distribution decision for the maintainers.
