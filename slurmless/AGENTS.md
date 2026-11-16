@@ -167,6 +167,15 @@ to keep in sync between them.
 - Never edit SmartSlurm `bin/` to force a green test (see startup #2).
 - Never point the harness at a real `~/.smartSlurm` or a real cluster; scratch
   only (`$SS_SCRATCH`, default `/tmp/ss-scratch`).
+- **A change to the runner needs an out-of-band check.** When you touch the parallel
+  dispatch, `ss_parallel_run`, scratch/RAM selection, or `ss_activate`, prove it with
+  something the runner can't fake: a bounded **process-count ceiling** under a real
+  `-jN` run (`pgrep -fc run_tests.sh` peak stays small), plus a self-test block (see
+  `parallel_worker_isolation`). A `-jN` worker must run **exactly its one block**,
+  serially — block names stay isolated even when one is a substring of another.
+- **Don't trust a green you didn't just produce.** A pass reported by a previous
+  session or a context summary is not a gate — re-run it on the *actual* branch tip
+  before merging, and for any fan-out change watch the process tree while it runs.
 - The vendored copy in SmartSlurm is a plain-subdirectory snapshot of this repo
   (not a `git subtree`): until the v2 migration lands, develop here and re-snapshot
   into `SmartSlurm/slurmless/`; afterward, develop there directly.

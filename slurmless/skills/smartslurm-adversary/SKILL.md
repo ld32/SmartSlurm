@@ -25,7 +25,7 @@ the repo root). `$SMARTSLURM_ROOT` = the tool checkout under review.
 - **Disbelieve exit 0.** The worst SmartSlurm bugs pass without erroring. "No error"
   is not "correct" — prove the *result* is correct, by invariant.
 
-## The two highest-value bug classes here (learned the hard way)
+## The three highest-value bug classes here (learned the hard way)
 
 1. **Silent data loss — rows that vanish with exit 0.** `jrEmitV2` dropping rows
    (all-digit pipeline id, header-vs-datarow collision), `cleanUp` pruning COMPLETED
@@ -37,6 +37,17 @@ the repo root). `$SMARTSLURM_ROOT` = the tool checkout under review.
    headerless, mis-ordered, and CRLF** stores: each must migrate with **zero loss +
    a backup**, round-trip every field, and **survive the real `cleanUp` prune**
    (no self-destruct). A green happy-path run on a fresh v2 store proves none of this.
+3. **Harness self-sabotage — the test *runner* breaking, not the tool.** The thing
+   that certifies correctness can itself be wrong: the `-jN` dispatcher fork-recursing
+   (a worker re-selecting >1 block because one block name is a substring of another —
+   e.g. `rerun` ⊂ `manual_rerun_floor` detonated a bare `./run_tests.sh`),
+   `ss_parallel_run` leaking `SS_*` env into a block, worker scratch collisions,
+   `ss_activate` side effects. These hide *because* "the suite passed" is circular when
+   you changed the suite. When the diff touches `run_tests.sh` dispatch, `harness.sh`,
+   or scratch/activation: run a full `-jN` and **watch peak `pgrep -fc run_tests.sh`**
+   (a fork-bomb is throttled + `timeout`-reaped, so it can still print `RESULT:` lines
+   while it churns — the process tree is the only honest signal), and feed pathological
+   block-name sets (substring-colliding, duplicate, group-alias, single, empty).
 
 ## First moves
 
@@ -105,6 +116,10 @@ regression if `master` is green on it.
   concurrent appends; trap-line coupling (the model reads `cleanUp.sh`'s trap line
   positionally — a shape change silently breaks the read).
 - **prune / isolation:** everything under *silent-failure invariants*.
+- **harness / runner (when the diff touches it):** a `-jN` worker runs exactly one
+  block and never re-enters the dispatcher; peak `pgrep -fc run_tests.sh` stays
+  bounded; no `SS_*` env leaks from `ss_parallel_run` into a block; worker scratch is
+  isolated; substring-colliding / duplicate / alias / single / empty block-name sets.
 
 ## Running it
 
@@ -148,6 +163,11 @@ mutates a tool **to validate the test, then reverts** — it does not violate th
       documented as such (not this change's).
 - [ ] Silent-failure invariants explicitly checked for any record-touching change.
 - [ ] Mutation spot-check on the changed code goes red (no coverage gap).
+- [ ] **Re-run here, now, on this tip** — a green from a prior session or a context
+      summary is not a gate.
+- [ ] **Process ceiling** (changes to parallel dispatch / `ss_parallel_run` / scratch):
+      a full `-jN` run keeps peak `pgrep -fc run_tests.sh` bounded — no unbounded
+      worker recursion.
 - [ ] Every finding triaged: fixed, or dismissed with a written reason.
 
 ## Reporting findings
