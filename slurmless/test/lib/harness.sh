@@ -448,8 +448,12 @@ ss_parallel_run() {
   for b in $blocks; do
     while [ "$(jobs -rp 2>/dev/null | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || sleep 0.3; done
     (
+      # SS_ONLY pins the worker to EXACTLY this block and forces it serial, so a
+      # worker can never re-enter the parallel dispatcher. Without it, a block name
+      # that is a substring of another (e.g. 'rerun' in 'manual_rerun_floor') makes
+      # the worker's substring filter re-select >1 block and recurse -> fork bomb.
       SS_SCRATCH="$pardir/s_$b" SS_REPORT="$pardir/r_$b.tsv" \
-      SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 \
+      SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 SS_ONLY="$b" \
         timeout "$to" bash "$self" "$b" > "$pardir/log_$b.txt" 2>&1
       r=$(grep -E 'RESULT:' "$pardir/log_$b.txt" | tail -1)
       printf '  %-28s %s\n' "$b" "${r:-<no RESULT - crash/timeout>}"
