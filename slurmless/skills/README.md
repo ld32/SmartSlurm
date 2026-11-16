@@ -7,8 +7,9 @@ usable three ways, from the same files:
 - **Claude Code plugin** — this repo installs as the `slurmless` plugin; the skills
   auto-discover and are invocable as `/slurmless-harness` and `/migration-assistant`
   (see [`../PACKAGING.md`](../PACKAGING.md)).
-- **In-repo** — working inside a checkout (or `SmartSlurm/slurmless/` once vendored),
-  Claude Code auto-discovers them via the `.claude/skills/` dev symlinks.
+- **In-repo** — working in the SmartSlurm checkout (slurmless lives in-tree at
+  `SmartSlurm/slurmless/`), Claude Code auto-discovers them via the `.claude/skills/`
+  dev symlinks.
 - **Any other agent or a human** — follow the `SKILL.md` body as plain Markdown; the
   tools are plain bash. See the *"Using the skills with any agent"* section of
   [`../AGENTS.md`](../AGENTS.md).
