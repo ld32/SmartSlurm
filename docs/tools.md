@@ -100,8 +100,7 @@ The full per-job detail is always written to `.smartSlurm.log` regardless of ver
 | Pipeline | Shows |
 |----------|-------|
 | `demo_linear_fan_branch.sh` | the full progression — a linear chain, a fan-out/fan-in pair, and an `if/else` that submits one of two alternative steps. |
-| `phrase_pipeline_end.sh` | a minimal `#@end` pipeline with an experiment-level fan-in `summary`. |
-| `phrase_pipeline_legacy.sh` | the legacy blank-line (`--wrap`) style and its constraints. |
+| `demo_phrase_pipeline.sh` | a minimal `#@end` linear pipeline with an experiment-level fan-in `summary` — the "start here" demo. |
 | `bashScript-tutorial/` | the [Quick start](quick-start.md#quick-start) tutorial (`bashScriptV1`→`V2`, plus edge-case variants). |
 | `resource-estimation/` | a size-scaled load (`sizedLoad.sh`) for exercising jobRecord fitting and OOM/OOT reruns. |
 

@@ -19,6 +19,14 @@ to trip you up.
   slow by design.
 - **Scratch only.** Never aim the harness at a real `~/.smartSlurm` or a real
   cluster.
+- **The harness is code too — self-test it; don't trust its own green.** A change to
+  the test *runner* or its orchestration (the `-jN` dispatcher, `ss_parallel_run`,
+  scratch/RAM selection, `ss_activate`) is **not** validated by "the suite still
+  passes" — that signal is produced *by* the thing you changed. It needs its own
+  block asserting its invariants **and** its own adversary pass, and you watch the
+  **process tree**, not just the `RESULT:` line. (The parallel default once shipped a
+  fork-recursion that "passed" exactly this way.) See AGENTS.md → *Hard rules* and the
+  adversary skill's third bug class.
 - **Source of truth: `SmartSlurm/slurmless/` (in-tree).** slurmless now lives in
   SmartSlurm as a plain subdirectory and is developed there directly, versioned with
   the engine — one commit, so the harness can't drift from the tools it tests. The

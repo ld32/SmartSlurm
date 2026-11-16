@@ -1,9 +1,16 @@
 #!/bin/sh
-# SmartSlurm test pipeline (explicit #@end blocks / scripts-on-disk).
-# Usage:
-#   runAsPipeline --script "phrase_pipeline_end.sh phrase_manifest.txt" \
+# SmartSlurm DEMO pipeline — a gentle "learn the #@ syntax" starting point.
+# A minimal LINEAR chain in the recommended explicit-#@end style (scripts-on-disk):
+#   normalize -> tokenize -> measure -> report   (per sample, inside the loop)
+#   summary                                       (experiment-level fan-in)
+#
+# Run it (from its own directory):
+#   runAsPipeline --script "demo_phrase_pipeline.sh demo_phrase_manifest.txt" \
 #                 --sbatch-options "sbatch -p short -c 1 --mem 100M -t 5:00" --tmp noTmp
+#   # --mode dryrun previews the conversion without submitting; --lint checks structure only.
+#
 # manifest: one sample per line ->  <sampleID> <phrase words...>
+#@pipeline phraseDemo
 manifest=$1
 [ -z "$manifest" ] && { echo "usage: $0 <manifest>"; exit 1; }
 

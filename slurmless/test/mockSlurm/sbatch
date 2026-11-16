@@ -289,12 +289,25 @@ if [ "$inject" = sigkill ] || [ "$inject" = sigterm ]; then
     wait "$jpid" 2>/dev/null; echo "${?:-137}" > "$state/jobs/$id.rc"
   )
 else
-  # Normal path: run synchronously so the EXIT trap fires and cleanUp consults
-  # sacct -- models "payload failed but the script survived" (oom/timeout/nonzero).
+  # Normal path: run so the EXIT trap fires and cleanUp consults sacct -- models
+  # "payload failed but the script survived" (oom/timeout/nonzero). The job runs in its
+  # OWN process group (bash job control: `set -m` + `&`) but stays a CHILD in THIS
+  # session -- NOT setsid-detached -- so an outer `timeout` still tears the whole tree
+  # down normally (detaching it was what orphaned trees under parallel load). After the
+  # payload + its EXIT trap finish, we reap whatever the job left in its group: notably
+  # cleanUp.sh's 200s background heartbeat (`for i in {1..200}; do sleep 1; ...; done &`).
+  # A real cluster's cgroup reaps such strays when the job ends; the mock must too, or
+  # they pile up across the suite's hundreds of jobs and the load starves other jobs'
+  # resourceModel.sh subprocess (run via `< <(...)`) -> blank .resource -> no modeled
+  # OOM -> the emergent-OOM blocks flake intermittently.
   (
+    set -m
     export SLURM_JOBID="$id" SLURM_JOB_ID="$id" MOCK_INJECT="$inject"
-    if [ -n "$out" ]; then bash "$script" >"$out" 2>&1; else bash "$script"; fi
-    echo $? > "$state/jobs/$id.rc"
-  )
+    { if [ -n "$out" ]; then bash "$script" >"$out" 2>&1; else bash "$script"; fi
+      echo $? > "$state/jobs/$id.rc"; } &
+    _jp=$!
+    wait "$_jp"
+    kill -- -"$_jp" 2>/dev/null || true   # reap strays (heartbeat) in the job's group
+  ) 2>/dev/null
 fi
 exit 0
