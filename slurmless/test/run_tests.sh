@@ -56,6 +56,7 @@ ss_group() {
 ss_purpose() {
   case "$1" in
     clean_2step)        echo "Baseline: convert a 2-step pipeline, submit under mock Slurm, and wire afterok dependencies end-to-end";;
+    parallel_worker_isolation) echo "Parallel-dispatch self-test: a -jN worker runs EXACTLY its one block, serially, never re-entering the dispatcher, so a block name that is a substring of another (rerun vs manual_rerun_floor) cannot fork-recurse; drives the REAL ss_parallel_run to confirm it exports SS_ONLY per worker, and checks top-level substring filtering is preserved";;
     rap_self_location)  echo "rAP self-location contract: in submit scope \$bashScriptPath is the pipeline script's OWN dir (dirname of --script) so a driver finds its repo/sibling assets, while \$0 / BASH_SOURCE point at the generated copy under smartSlurmLog/ (so self-locating via those silently resolves to the wrong dir)";;
     wf_afterok)         echo "Migration Assistant: an UNMODIFIED hand-rolled SLURM afterok script runs invisibly end-to-end via register-don't-run + topological drain";;
     wf_scriptargs)      echo "Migration Assistant: a worker invoked as 'sbatch [opts] worker.sh --flag value …' keeps its --flag args verbatim (real sbatch passes everything after the script to the script) — registration + drained worker both receive them";;
@@ -138,11 +139,12 @@ source "$HERE/lib/harness.sh"
 # job's strays), so running them concurrently is safe and much faster than serial. An
 # explicit -jN overrides, and -j1 forces the serial path (handy for streaming output
 # while debugging).
-PARJOBS=0; _rtargs=()
+PARJOBS=0; _rtargs=(); _dumpsel=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -j)  if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PARJOBS="$2"; shift 2; else PARJOBS=4; shift; fi;;
     -j*) _v="${1#-j}"; [[ "$_v" =~ ^[0-9]+$ ]] && PARJOBS="$_v"; shift;;
+    --dump-selection) _dumpsel=1; shift;;   # internal test hook (see parallel_worker_isolation) — a flag, not an env var, so it can't leak and silently no-op the suite
     *)   _rtargs+=("$1"); shift;;
   esac
 done
@@ -216,14 +218,14 @@ _optin() {
 # before the inline blocks below. Block-level only; each block stays internally
 # sequential. ss_activate above did the one-time global setup (gnuplot,
 # /bin/sh->bash); the workers skip it via SS_NO_INSTALL/SS_NO_SH_REPOINT.
-if [ "${PARJOBS:-1}" -gt 1 ] || [ -n "${SS_DUMP_SELECTION:-}" ]; then
+if [ "${PARJOBS:-1}" -gt 1 ] || [ -n "${_dumpsel:-}" ]; then
   _sel=""
   for _b in $ALL_BLOCKS; do _want "$_b" && _sel="$_sel $_b"; done
   _nsel=$(echo $_sel | wc -w)
   # Test hook: print the resolved selection + effective PARJOBS and exit, so the
   # dispatcher's selection and worker serial-forcing can be asserted cheaply without
   # running any block (see the parallel_worker_isolation regression block).
-  [ -n "${SS_DUMP_SELECTION:-}" ] && { echo "SEL:[$(echo $_sel)] PARJOBS:$PARJOBS"; exit 0; }
+  [ -n "${_dumpsel:-}" ] && { echo "SEL:[$(echo $_sel)] PARJOBS:$PARJOBS"; exit 0; }
   # Parallelize only when MORE THAN ONE block is actually selected. A single block --
   # bootstrap's clean_2step, or `run_tests.sh <one-block>` while debugging -- and any
   # opt-in block (absent from ALL_BLOCKS, so _sel is empty) fall through to the inline
@@ -263,14 +265,14 @@ _want clean_2step && {
 # re-enter the dispatcher -- otherwise a block name that is a substring of another
 # (e.g. 'rerun' in 'manual_rerun_floor') makes the worker's substring filter re-select
 # >1 block and fork-recurse without bound. This block asserts that invariant cheaply
-# via the SS_DUMP_SELECTION hook (no heavy blocks run), and auto-covers any future
+# via the --dump-selection hook (no heavy blocks run), and auto-covers any future
 # colliding names. Guards the fix for the fork-recursion that shipped with the
 # parallel default and escaped review because nothing tested the runner itself.
 _want parallel_worker_isolation && {
   _begin parallel_worker_isolation
   rt="$HERE/$(basename "$0")"
   # grep the SEL: line out of the dump (ss_activate also prints an "activated:" line)
-  _dump() { SS_ONLY="$1" SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 SS_DUMP_SELECTION=1 bash "$rt" "$1" 2>/dev/null | grep '^SEL:'; }
+  _dump() { SS_ONLY="$1" SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 bash "$rt" --dump-selection "$1" 2>/dev/null | grep '^SEL:'; }
 
   # (1) the concrete, known substring collision in ALL_BLOCKS
   o=$(_dump rerun)
@@ -298,11 +300,40 @@ _want parallel_worker_isolation && {
   # (3) top-level substring filtering is PRESERVED for interactive use (no SS_ONLY).
   # SS_ONLY= clears any value inherited from THIS block's own worker env, so the
   # child resolves the filter the way a human typing `run_tests.sh rerun` would.
-  o=$(SS_ONLY= SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 SS_DUMP_SELECTION=1 bash "$rt" rerun 2>/dev/null | grep '^SEL:')
+  o=$(SS_ONLY= SS_NO_INSTALL=1 SS_NO_SH_REPOINT=1 bash "$rt" --dump-selection rerun 2>/dev/null | grep '^SEL:')
   case "$o" in
     *rerun*manual_rerun_floor*) _pass "top-level 'rerun' filter still expands to the family (substring preserved)" ;;
     *) _fail "top-level substring filter preserved" "got: $o" ;;
   esac
+
+  # (4) Exercise the REAL dispatcher (ss_parallel_run), not just the selection proxy.
+  # Checks (1)-(3) assert run_tests.sh's SS_ONLY handling, but the fork-bomb is only
+  # actually prevented because ss_parallel_run (lib/harness.sh) EXPORTS SS_ONLY=<block>
+  # into each worker. If that export is dropped, (1)-(3) still pass (they set SS_ONLY
+  # themselves) yet a real -jN run fork-recurses. So drive ss_parallel_run with a stub
+  # worker that records the SS_ONLY and arg count it was handed, and assert each worker
+  # got SS_ONLY == its one block + exactly one positional arg.
+  _probe="$(mktemp -d)"
+  cat > "$_probe/self.sh" <<'STUB'
+#!/bin/bash
+# stub worker: record how the dispatcher invoked us, emit a minimal green report.
+printf '%s|%s|%s\n' "${SS_ONLY-<unset>}" "$#" "$*" >> "$PROBE_REC"
+printf 'B\t%s\tstub\n'        "$1" >> "$SS_REPORT"
+printf 'C\t%s\tPASS\tstub\n'  "$1" >> "$SS_REPORT"
+echo "RESULT: stub"
+STUB
+  export PROBE_REC="$_probe/rec.txt"; : > "$PROBE_REC"
+  ( ss_parallel_run 2 "$_probe/self.sh" rerun manual_rerun_floor ) >/dev/null 2>&1
+  _pg=1
+  while IFS='|' read -r _so _argc _args; do
+    { [ "$_so" = "$_args" ] && [ "$_argc" = "1" ]; } \
+      || { _pg=0; echo "       dispatcher handed worker SS_ONLY='$_so' argc=$_argc args='$_args'" >&2; }
+  done < "$PROBE_REC"
+  _nrec=$(wc -l < "$PROBE_REC" 2>/dev/null); _nrec="${_nrec//[^0-9]/}"
+  { [ "$_pg" = 1 ] && [ "${_nrec:-0}" = 2 ]; } \
+     && _pass "ss_parallel_run exports SS_ONLY=<block> + one arg to each worker (real dispatch, not proxy)" \
+     || _fail "ss_parallel_run worker export" "recs=${_nrec:-0}: $(tr '\n' ';' < "$PROBE_REC")"
+  unset PROBE_REC; rm -rf "$_probe"
   echo
 }
 
