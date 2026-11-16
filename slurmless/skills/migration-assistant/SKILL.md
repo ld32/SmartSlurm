@@ -96,12 +96,12 @@ into `$SL` (it is **not** the user's CWD — their CWD is their own pipeline):
 
 - **Installed as the `slurmless` plugin:** the harness root is `${CLAUDE_PLUGIN_ROOT}`
   (this expands to the plugin's absolute path). Run `export SL="${CLAUDE_PLUGIN_ROOT}"`.
-- **Working inside the standalone slurmless repo** (or `SmartSlurm/slurmless/` once
-  vendored): `$SL` is that repo's root — `export SL="$(pwd)"` from its top, or the
-  absolute path to it. *Any agent reading this file as plain Markdown (not via the
-  Claude plugin) is in this case — `${CLAUDE_PLUGIN_ROOT}` does not apply to you.*
+- **Working in the SmartSlurm checkout:** the harness lives in-tree at
+  `SmartSlurm/slurmless/` — set `$SL` to it (`export SL="$(pwd)"` from that dir, or its
+  absolute path). *Any agent reading this file as plain Markdown (not via the Claude
+  plugin) is in this case — `${CLAUDE_PLUGIN_ROOT}` does not apply to you.*
 
-The SmartSlurm checkout under test is auto-resolved by `bootstrap.sh` (vendored
+The SmartSlurm checkout under test is auto-resolved by `bootstrap.sh` (in-tree
 parent → sibling `../SmartSlurm` → clone upstream). To pin one, set
 `export SMARTSLURM_ROOT=<path>` — when installed as a plugin and the user set the
 **SmartSlurm checkout** config, use `${user_config.smartslurm_path}` for it.
