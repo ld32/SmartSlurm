@@ -17,7 +17,7 @@
 | `cleanUp.sh` | internal | Per-job EXIT-trap teardown: writes the jobRecord row, prunes/invalidates stats, decides OOM/OOT requeue, sends emails. | [Under-the-hood tools](#under-the-hood-tools) |
 | `estimateResource.sh` | internal | Computes the memory/time estimate for a (pipeline, step, ref) group. | [Under-the-hood tools](#under-the-hood-tools) |
 | `jobRecordSchema.sh` | internal | Single source of truth for the jobRecord schema; sourced by writers/readers. | [Under-the-hood tools](#under-the-hood-tools) |
-| `jrRepair.sh` | command | One-time migration of a legacy (v1) jobRecord store to the current (v2) schema. | [Under-the-hood tools](#under-the-hood-tools) |
+| `jobRecordsRepair.sh` | command | One-time migration of a legacy (v1) jobRecord store to the current (v2) schema. | [Under-the-hood tools](#under-the-hood-tools) |
 
 ## runAsPipeline
 
@@ -113,8 +113,8 @@ For most programs, memory and run-time scale with input size. ssbatch records wh
 **Usage**
 
 ```
-ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] --wrap="COMMAND" [dryrun]
-ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dryrun]
+ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] --wrap="COMMAND" [-dryrun]
+ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [-dryrun]
 ```
 
 | Option | Description | Required |
@@ -127,7 +127,7 @@ ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] S
 | `--wrap="CMD"` | Command to run. | Yes* |
 | `SCRIPT.sh [ARGS]` | A script to run instead of `--wrap`. Its first line must be a shebang. | Yes* |
 | `SBATCH_OPTIONS` | Any standard sbatch option (`-c`, `--mem`, `-t`, `-p`, `-A`, `--mail-user=`, …). Defaults exist for memory and time. | No |
-| `dryrun` | As the **last** argument: does not actually submit, only estimates and builds the job script. | No |
+| `-dryrun` | Build the job script and show the estimate and the sbatch command, without submitting. Nothing is written to `jobRecord.txt`. (`--dryrun`, or a bare `dryrun` as the last argument, also work.) | No |
 
 <sub>*Provide **either** `--wrap` **or** a script file.</sub>
 
@@ -233,8 +233,8 @@ These are invoked by SmartSlurm itself (not typed by you day-to-day), but they a
 |------|------|
 | `cleanUp.sh` | Runs from each job's **EXIT trap** (on success and failure). It emits the `========== SmartSlurm job report ==========` section, writes the job's `efficiency.tsv` row (unconditionally) and its `jobRecord.txt` row, prunes/invalidates stale stats on OOM/OOT, decides whether to requeue with doubled resources, and sends the consolidated [emails](core-concepts.md#notifications-emails). |
 | `estimateResource.sh` | The estimator. Called as `estimateResource.sh PROGRAM REF INPUTS …`; returns memory (in M) and time (in minutes) for a `(pipeline, step, ref)` group, fitting input-size→mem/time when ≥3 records exist, otherwise falling back to defaults. Writes fitted plots under `$smartSlurmJobRecordDir/stats/`. |
-| `jobRecordSchema.sh` | **Single source of truth** for the jobRecord schema. It is *sourced* (defines variables and functions, no side effects) by the writers (`ssbatch`/`cleanUp.sh`), the readers (`estimateResource.sh`, `calculateMemTime.sh`), and `jrRepair.sh`, so the column layout is defined in exactly one place. It detects version by header signature (a v2 file's header begins with `pipeline,`; a legacy v1 header began with `1jobID,`). |
-| `jrRepair.sh` | One-time, **manual** converter of a legacy (v1) jobRecord store to the v2 schema; run once per store after upgrading. It converts `jobRecord.txt` **and** `jobRecord.oom.oot.over.txt` in place after backing each up to `<base>.back.<timestamp>.txt`, and is idempotent (a v2 file is left untouched). Options: `--dry-run` (report, write nothing) and `--check` (health report only; exits non-zero if any store has unrecognized rows). Rows that are not clean 21-field v1 rows are copied to `<name>.jrRepair.skipped.<ts>` and counted, so nothing is silently lost. See [jobRecords](core-concepts.md#jobrecords). |
+| `jobRecordSchema.sh` | **Single source of truth** for the jobRecord schema. It is *sourced* (defines variables and functions, no side effects) by the writers (`ssbatch`/`cleanUp.sh`), the readers (`estimateResource.sh`, `calculateMemTime.sh`), and `jobRecordsRepair.sh`, so the column layout is defined in exactly one place. It detects version by header signature (a v2 file's header begins with `pipeline,`; a legacy v1 header began with `1jobID,`). |
+| `jobRecordsRepair.sh` | One-time, **manual** converter of a legacy (v1) jobRecord store to the v2 schema; run once per store after upgrading. It converts `jobRecord.txt` **and** `jobRecord.oom.oot.over.txt` in place after backing each up to `<base>.back.<timestamp>.txt`, and is idempotent (a v2 file is left untouched). Options: `--dry-run` (report, write nothing) and `--check` (health report only; exits non-zero if any store has unrecognized rows). Rows that are not clean 21-field v1 rows are copied to `<name>.jobRecordsRepair.skipped.<ts>` and counted, so nothing is silently lost. See [jobRecords](core-concepts.md#jobrecords). |
 
 ---
 

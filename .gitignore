@@ -2,7 +2,7 @@
 .DS_Store
 ._*
 test/checkrun_ui_tests.sh
-smartSlurmLog/
+smartSbatchLog/
 gap.txt
 *.dryrun.sh
 
@@ -11,3 +11,4 @@ gap.txt
 # and gnuplot's default fit journal (tools redirect it to /dev/null; a stray run drops one).
 slurmless/test/models/_*.model
 fit.log
+__pycache__/

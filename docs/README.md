@@ -12,6 +12,7 @@ Detailed guides for SmartSlurm. For the overview, see the
 - [Tools reference](tools.md) — `runAsPipeline`, `ssbatch`, `reviewJobRecords.py`, `cancelAllJobs`, `sbatchAndTop`, and the under-the-hood helpers.
 - [Monitoring & diagnosing runs](monitoring.md) — the `checkRun` status grid, `diagnose.sh`, the resource-efficiency view, and rerunning.
 - [Configuration](configuration.md) — `config.txt`, key settings, personal overrides.
+- [AI assistance (optional)](ai-assistance.md) — automatic program/input detection for `ssbatch`, setup and settings.
 
 ### Going further
 - [Using ssbatch with other pipeline managers](pipeline-managers.md) — Snakemake, Nextflow, Cromwell.
@@ -21,7 +22,7 @@ Detailed guides for SmartSlurm. For the overview, see the
 - [Contributing](contributing.md)
 
 ### Design notes
-- [jobRecords v2 design](jobRecords-v2-design.md) — the jobRecord schema and the v1&rarr;v2 migration.
+- [jobRecord.txt internals](jobrecord-internals.md) — rules for code that reads or writes the store, columns, version detection, v1&rarr;v2 mapping.
 
 ---
 

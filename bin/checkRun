@@ -40,10 +40,16 @@ fi
 
 #export smartSlurmLogDir=smartSlurmLog #log
 
-[ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran runAsPipeline; exit; }
+[ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran ssbatch; exit; }
 
-# Path to the setuid AI helper binary (holds the HMS AI token securely)
-_AI_CALL="/home/ld32/.smartSlurm/bin/ai_call"
+# Optional AI support (the token stays inside the setuid ai_call helper).
+# If the library or the helper is missing, checkRun works exactly as before.
+if [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || { aiEnabled() { return 1; }; aiWhyNot() { echo "AI helper library aiHelper.sh not found."; }; aiAsk() { return 1; }; }
 
 # Engine locations (siblings in the same bin/). checkRun never asks the user to
 # invoke these; it calls them itself.
@@ -158,7 +164,7 @@ diagnose_card() {   # FLAG FOLDER
 # ai_explain FLAG FOLDER -- feeds the M2 card + M1 tool region to the AI helper.
 ai_explain() {
     local flag="$1" folder="$2" logFile="$2/$1.out" region
-    if [ ! -x "$_AI_CALL" ]; then MSG="${RED}AI unavailable (ai_call not found or not executable).${NC}"; return; fi
+    if ! aiEnabled; then MSG="${RED}AI unavailable (ai_call not found or not executable).${NC}"; return; fi
     if [ ! -f "$logFile" ]; then MSG="${YELLOW}No .out log for $flag${NC}"; return; fi
     _clear
     echo -e "${BLUE}Asking AI to analyze $flag...${NC}"
@@ -175,7 +181,7 @@ ai_explain() {
         # plain tail for legacy logs that predate them.
         region=$(awk '/SmartSlurm step output:/{f=1;next} /SmartSlurm job report:/{f=0} f' "$logFile")
         if [ -n "$region" ]; then echo "$region" | tail -n 150; else tail -n 150 "$logFile"; fi
-    } | "$_AI_CALL" || {
+    } | aiAsk || {
         echo -e "${RED}AI call failed.${NC}"
         echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."
     }
@@ -353,7 +359,7 @@ list_view() {
         for k in "${!VIS[@]}"; do printf '%b %b\n' "${GREEN}$((k + 1))${NC}" "${VIS[$k]}"; done
         [ "${#VIS[@]}" -eq 0 ] && echo "  (no jobs to show — try 'p' to include pending)"
         echo "Current working folder: $logFolder"
-        if [ -x "$_AI_CALL" ]; then
+        if aiEnabled; then
             echo -e "Select a job number to view its raw files, or append ${BLUE}a${NC} for AI (e.g. ${BLUE}1a${NC}). ${RED}w${NC} workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} back, ${RED}qq${NC} quit:"
         else
             echo -e "Select a job number to view its raw files. ${RED}w${NC} workflow, ${RED}p${NC} show/hide pending, ${RED}q${NC} back, ${RED}qq${NC} quit:"
@@ -477,24 +483,24 @@ home_loop() {
         case "$grid" in *"showing linear view"*) _view=linear ;; *) _view=grid ;; esac
         if [ "$_view" = linear ]; then
             if [ -n "$compact" ]; then
-                pln "${BOLD}3${NC} view  ${BOLD}d 3${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a 3${NC} AI  ")${BOLD}r 3${NC} raw  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+                pln "${BOLD}3${NC} view  ${BOLD}d 3${NC} diagnose  $(aiEnabled && printf '%s' "${BOLD}a 3${NC} AI  ")${BOLD}r 3${NC} raw  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
             else
                 pln "${BOLD}Usage:${NC}  type a job ${BOLD}number${NC} from the list — e.g. ${BOLD}3${NC}"
                 pln "   ${BOLD}3${NC}             view log        ${GREY}(just type the number)${NC}"
                 pln "   ${BOLD}d 3${NC}           diagnose        ${GREY}(why it failed / what to do)${NC}"
-                [ -x "$_AI_CALL" ] && pln "   ${BOLD}a 3${NC}           ask AI about the job"
+                aiEnabled && pln "   ${BOLD}a 3${NC}           ask AI about the job"
                 pln "   ${BOLD}r 3${NC}           view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
                 pln "${BOLD}l${NC} list view · ${BOLD}e${NC} efficiency · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
         else
             if [ -n "$compact" ]; then
-                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $([ -x "$_AI_CALL" ] && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}e${NC} efficiency  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
+                pln "${BOLD}b2${NC} view  ${BOLD}d b2${NC} diagnose  $(aiEnabled && printf '%s' "${BOLD}a b2${NC} AI  ")${BOLD}r b2${NC} raw  ${BOLD}s${NC} samples  ${BOLD}e${NC} efficiency  ${BOLD}o${NC} other  ${BOLD}l${NC} list  ${BOLD}g${NC} workflow  ${BOLD}p${NC} pending  ${BOLD}Enter${NC} refresh  ${BOLD}q${NC} quit"
             else
                 pln "${BOLD}Usage:${NC}  a job ${BOLD}address${NC} is a row-letter + step-number — e.g. ${BOLD}b2${NC} = row b, step 2  ${GREY}(or a plain job number)${NC}"
                 pln "   ${BOLD}b2${NC}            view log        ${GREY}(just type the address)${NC}"
                 pln "   ${BOLD}d b2${NC}          diagnose        ${GREY}(why it failed / what to do)${NC}"
-                [ -x "$_AI_CALL" ] && pln "   ${BOLD}a b2${NC}          ask AI about the job"
+                aiEnabled && pln "   ${BOLD}a b2${NC}          ask AI about the job"
                 pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
                 pln "   ${BOLD}e${NC}             resource efficiency bars (time/mem used vs allocated, per sample)"

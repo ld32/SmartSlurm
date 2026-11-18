@@ -117,7 +117,7 @@ PIPELINE_SCRIPT=${PIPELINE_SPEC%% *}
 # column of every jobRecord row and the schema keys row-type detection on it:
 #   * _ssNormPipe strips a trailing CR (CRLF files), keeps only the first token, and
 #     maps any char outside [A-Za-z0-9_.-] to '_' (CSV/flag-safe);
-#   * an id must then be non-empty, contain a NON-digit (jrEmitV2 detects a v2 data
+#   * an id must then be non-empty, contain a NON-digit (jobRecordsEmitV2 detects a v2 data
 #     row by a non-numeric first field, so an all-digit id silently drops every row
 #     for that pipeline), and not be a reserved marker (legacy / unknown).
 # An explicit bad name (--pipeline or #@pipeline) is a hard error; a degenerate
@@ -254,9 +254,9 @@ mkdir -p $smartSlurmLogDir
 # first ssbatch. Migrating a legacy store emits a one-line notice; triggering it here
 # (before the per-step submission progress table is printed) keeps that notice from
 # splitting the first sample's row. Real submissions only -- a --lint / --mode dryrun
-# must not mutate the store. jrMigrateStore is idempotent and silent once v2.
+# must not mutate the store. jobRecordsMigrateStore is idempotent and silent once v2.
 if [ "$RUN_MODE" != dryrun ] && [ -n "${smartSlurmJobRecordDir:-}" ] && [ -s "$smartSlurmJobRecordDir/jobRecord.txt" ]; then
-    . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null && jrMigrateStore "$smartSlurmJobRecordDir/jobRecord.txt"
+    . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null && jobRecordsMigrateStore "$smartSlurmJobRecordDir/jobRecord.txt"
 fi
 
 checkSum=`md5sum "$PIPELINE_SCRIPT" | cut -d' ' -f 1`

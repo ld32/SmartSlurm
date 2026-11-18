@@ -195,7 +195,7 @@ for line in $lines; do
                         set +x
                     # didn't get estimate, but already have 3 successful jobs, release one job anyway
                     # because jobRecord need to be unique by programName + reference + inputSize + memory
-                    # If the first 5 jobs have same unique value, there is only one record in jobRecords.txt
+                    # If the first 5 jobs have same unique value, there is only one record in jobRecord.txt
                     else
                         unholdCounter=0; 
                         echo Fail to estimate new resource. Directly release one job anyway. 

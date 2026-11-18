@@ -114,7 +114,7 @@ ss_purpose() {
     uninstall_precise)  echo "'smartslurm uninstall' deletes exactly the initialize block from the rc file, leaving surrounding user lines byte-identical, with a backup";;
     unexport_deprecated) echo "the deprecated 'unExport' warns and delegates to 'smartslurm deactivate' (no longer strips the system sbatch dir)";;
     config_overlay)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: overlay model — set/get/unset write only ~/.smartSlurm/config/user.conf (never the repo file, Q1); non-overridden repo defaults still load (Q2); schema validation rejects bad types; unknown keys flagged custom";;
-    config_guided)      echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: guided editors drive real behavior — refgroup add changes what jrRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
+    config_guided)      echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config: guided editors drive real behavior — refgroup add changes what jobRecordsRefClass pools; partition sets the partition<N>TimeLimit, resolving a partition by name";;
     config_migrate)     echo "PARKED (opt-in via _optin; not in the default suite until bin/smartSlurmConfig.sh lands). smartslurm config migrate: a legacy full ~/.smartSlurm/config/config.txt is converted to the overlay — only keys differing from repo defaults are kept in user.conf, the legacy file is backed up";;
     firstpass_fullpath) echo "First-pass coverage through the FULL estimateResource path (extraMem + failure floor), for mem AND time (not just the calculateMemTime margin)";;
     extrapolate_linear) echo "[Phase 1 baseline] Linear truth trained on small sizes, predicted at 2x-50x: with SCount>9 it extrapolates the line (not outOfRange); reports first-pass per scale";;
@@ -125,8 +125,8 @@ ss_purpose() {
     efficiency_file)    echo "cleanUp writes one unconditional per-job row to a per-run efficiency.tsv (flag, sample, status, alloc/used mem+time) for checkRun to read";;
     checkrun_efficiency) echo "checkRunGrid --efficiency drill-down views (overview/sample/step): Overall + per-sample bars, per-step and per-sample breakdowns, eff/used/alloc columns, time/mem toggles, color";;
     email_consolidation) echo "cleanUp sends consolidated TEXT-ONLY mail (no pngs): per-sample break/complete alerts + one per-run efficiency email; no per-job spam, no hard-coded dev recipient";;
-    migrate_v1)         echo "jobRecords v1->v2 auto-migration: headerless/20-col/21-col legacy, MIXED, both HYBRID orderings (v1 appended under a v2 header) and headerless-v2 stores migrate with zero loss + backup, survive the real cleanUp prune (no self-destruct), jrRepair diverts only junk; plus a property/fuzz + concurrency harness over randomized shapes (the ld32 data-loss regression)";;
-    jr_drift_guard)     echo "Schema-drift guard: no SmartSlurm tool (outside the jobRecordSchema.sh API + jrRepair) writes a jobRecord header literal, redirects to a store, or reads it by raw column number -- so the 18-vs-21-col drift and raw-append hybrid cannot reappear";;
+    migrate_v1)         echo "jobRecords v1->v2 auto-migration: headerless/20-col/21-col legacy, MIXED, both HYBRID orderings (v1 appended under a v2 header) and headerless-v2 stores migrate with zero loss + backup, survive the real cleanUp prune (no self-destruct), jobRecordsRepair diverts only junk; plus a property/fuzz + concurrency harness over randomized shapes (the ld32 data-loss regression)";;
+    jr_drift_guard)     echo "Schema-drift guard: no SmartSlurm tool (outside the jobRecordSchema.sh API + jobRecordsRepair) writes a jobRecord header literal, redirects to a store, or reads it by raw column number -- so the 18-vs-21-col drift and raw-append hybrid cannot reappear";;
     cross_pipeline)     echo "Cross-pipeline isolation (grouping key = pipeline/step/ref): a colliding (inputSize,memUsed) row in another pipeline is NOT deduped away; a fail-prune in one pipeline does NOT delete another's COMPLETED history (and still prunes its own); standalone unknown never pools into/broadens a pipeline fit -- the ld32 cross-pipeline data-loss regression";;
     legacy_pooling)     echo "Standalone ssbatch estimation uses migrated jR1 (legacy) history: a pipeline=unknown job pools the {unknown, legacy} bucket (legacy grouped by step/ref as before the pipeline column), so old history still sizes jobs; unknown still never pools a NAMED pipeline; a fresh named pipeline still bootstraps from legacy -- the ld32 standalone-legacy regression";;
     *)                  echo "$1";;
@@ -2425,7 +2425,7 @@ SCN
 }
 
 # ===========================================================================
-# `smartslurm config` guided editors drive real behavior: refgroup -> jrRefClass,
+# `smartslurm config` guided editors drive real behavior: refgroup -> jobRecordsRefClass,
 # partition -> the partition<N>TimeLimit the scheduler reads.
 _optin config_guided && {
   _begin config_guided
@@ -2433,13 +2433,13 @@ _optin config_guided && {
   ss_scn "$h" > "$o" 2>&1 <<'SCN'
 . "$SMARTSLURM_HOME/bin/smartslurm.sh"
 smartslurm config refgroup add dm3 dm6 --group fly >/dev/null
-jrc() { . "$SMARTSLURM_HOME/config/config.txt" >/dev/null 2>&1; . "$SMARTSLURM_HOME/bin/jobRecordSchema.sh" >/dev/null 2>&1; jrRefClass "$1"; }
+jrc() { . "$SMARTSLURM_HOME/config/config.txt" >/dev/null 2>&1; . "$SMARTSLURM_HOME/bin/jobRecordSchema.sh" >/dev/null 2>&1; jobRecordsRefClass "$1"; }
 echo "JRC_DM6=$(jrc dm6)"
 echo "JRC_HG38=$(jrc hg38)"
 smartslurm config partition short --time-limit 1440 >/dev/null
 echo "PART1TL=$(smartslurm config get partition1TimeLimit)"
 SCN
-  assert_contains "$o" "JRC_DM6=fly"     "refgroup add makes jrRefClass pool dm6 under 'fly'"
+  assert_contains "$o" "JRC_DM6=fly"     "refgroup add makes jobRecordsRefClass pool dm6 under 'fly'"
   assert_contains "$o" "JRC_HG38=mammal" "an untouched ref keeps its default group (mammal)"
   assert_contains "$o" "PART1TL=1440"    "partition editor sets partition1TimeLimit (resolved from name 'short')"
   echo
@@ -3162,8 +3162,8 @@ _want email_consolidation && {
 # jobRecords v1 -> v2 auto-migration (the data-loss regression from ld32's real
 # cluster: appending v2 rows to an un-migrated v1 store produced a MIXED file
 # whose v2 rows were then deleted by the v1-positional prune and ignored by the
-# v1 reader). Guards the fix in bin/jobRecordSchema.sh (jrMigrateStore/jrEmitV2/
-# jrSchemaVersion), bin/cleanUp.sh (migrate-before-prune) and bin/jrRepair.sh.
+# v1 reader). Guards the fix in bin/jobRecordSchema.sh (jobRecordsMigrateStore/jobRecordsEmitV2/
+# jobRecordsSchemaVersion), bin/cleanUp.sh (migrate-before-prune) and bin/jobRecordsRepair.sh.
 # Uses the REAL store layouts seen in the wild: headerless, 21-col (trailing
 # epoch) and the older 20-col variant (date, no epoch).
 _want migrate_v1 && {
@@ -3174,10 +3174,10 @@ _want migrate_v1 && {
   else
   ss_new_workspace "$WORK/migrate_v1"
   jr="$smartSlurmJobRecordDir/jobRecord.txt"
-  jrver()   { ( . "$sch"; jrSchemaVersion "$1" ); }
-  jrmig()   { ( . "$sch"; jrMigrateStore "$1" ) 2>/dev/null; }
-  jremit()  { ( . "$sch"; jrEmitV2 "$1" ); }
-  jrrec()   { ( . "$sch"; jrCountRecognized "$1" ); }
+  jrver()   { ( . "$sch"; jobRecordsSchemaVersion "$1" ); }
+  jrmig()   { ( . "$sch"; jobRecordsMigrateStore "$1" ) 2>/dev/null; }
+  jremit()  { ( . "$sch"; jobRecordsEmitV2 "$1" ); }
+  jrrec()   { ( . "$sch"; jobRecordsCountRecognized "$1" ); }
   # 21-col v1 row (…,date,epoch); 20-col v1 row (…,date — NO epoch).
   v1row21() { printf '%s,%s,0,0,4096,120,%s,95,%s,tester,,%s,%s,%s,1,0,0,0,0,2026-01-01,%s\n' \
                 "$1" "$2" "$3" "${6:-COMPLETED}" "$4" "${5:-none}" "1.0.$4.$1" "$(( 1735700000 + $1 ))"; }
@@ -3228,26 +3228,26 @@ _want migrate_v1 && {
   [ "$v2keep" -eq 1 ] && _pass "appended v2 row passed through unchanged" \
                        || _fail "appended v2 row passed through unchanged" "count $v2keep"
 
-  # --- 4) jrRepair diverts ONLY genuine junk (not v1 or v2 rows) ----------------
+  # --- 4) jobRecordsRepair diverts ONLY genuine junk (not v1 or v2 rows) ----------------
   ss_new_workspace "$WORK/migrate_v1_repair"; jr="$smartSlurmJobRecordDir/jobRecord.txt"
   { v1row20 3001 5000 3800 bwa hg38
     printf 'GARBAGE,not,a,record\n'
     printf 'unknown,trim,none,,3002,900,700,800,60,90,1,COMPLETED,tester,,1735900000,2026-01-04,1.0.trim.1\n'; } > "$jr"
-  bash "$SMARTSLURM_ROOT/bin/jrRepair.sh" "$smartSlurmJobRecordDir" >/dev/null 2>&1
-  [ "$(jrver "$jr")" = 2 ] && _pass "jrRepair converts a mixed store to v2" \
-                           || _fail "jrRepair converts a mixed store to v2" "got $(jrver "$jr")"
-  sk=$(ls "$jr".jrRepair.skipped.* 2>/dev/null | head -1)
+  bash "$SMARTSLURM_ROOT/bin/jobRecordsRepair.sh" "$smartSlurmJobRecordDir" >/dev/null 2>&1
+  [ "$(jrver "$jr")" = 2 ] && _pass "jobRecordsRepair converts a mixed store to v2" \
+                           || _fail "jobRecordsRepair converts a mixed store to v2" "got $(jrver "$jr")"
+  sk=$(ls "$jr".jobRecordsRepair.skipped.* 2>/dev/null | head -1)
   if [ -n "$sk" ] && grep -q GARBAGE "$sk" && [ "$(wc -l < "$sk")" -eq 1 ]; then
-    _pass "jrRepair diverts exactly the 1 junk row to .skipped"
-  else _fail "jrRepair diverts exactly the junk row" "skipped=$(cat "$sk" 2>/dev/null)"; fi
-  assert_lacks "$sk" "3001" "jrRepair did NOT divert the 20-col v1 row"
-  assert_lacks "$sk" "3002" "jrRepair did NOT divert the already-v2 row"
+    _pass "jobRecordsRepair diverts exactly the 1 junk row to .skipped"
+  else _fail "jobRecordsRepair diverts exactly the junk row" "skipped=$(cat "$sk" 2>/dev/null)"; fi
+  assert_lacks "$sk" "3001" "jobRecordsRepair did NOT divert the 20-col v1 row"
+  assert_lacks "$sk" "3002" "jobRecordsRepair did NOT divert the already-v2 row"
 
   # --- 5) HYBRID the dangerous way: v1 rows appended UNDER a v2 header ----------
   # (an old node writing v1 into a store a new node already migrated, mid-rollout)
   # A line-1-only schema check called this "pure v2" and skipped migration, then
   # the v2 prune read the v1 rows through the wrong columns and DELETED COMPLETED
-  # history. jrSchemaVersion must treat any v1 row as "needs migration".
+  # history. jobRecordsSchemaVersion must treat any v1 row as "needs migration".
   # v2row JOBID STEP REF INPUTSIZE MEMUSED [SAMPLE] -> one canonical 17-col v2 row
   v2row() { local id=$1 st=$2 rf=$3 sz=$4 mu=$5 sm=${6:-}
     printf 'rnaseq,%s,%s,%s,%s,%s,%s,%s,95,120,1,COMPLETED,tester,n,%s,2026-01-05,1.0.%s.%s\n' \
@@ -3287,12 +3287,12 @@ _want migrate_v1 && {
   # --- 7) NON-SILENT diagnostics: malformed rows must be reported, not dropped --
   # quietly. A store with a genuinely malformed row (unknown column count) must:
   # warn on stderr naming the count, keep the row in the backup, and be surfaced
-  # by `jrRepair.sh --check` (schema + unrecognized rows, non-zero exit).
+  # by `jobRecordsRepair.sh --check` (schema + unrecognized rows, non-zero exit).
   ss_new_workspace "$WORK/migrate_v1_nonsilent"; jr="$smartSlurmJobRecordDir/jobRecord.txt"
   { v1row21 5001 5000 3800 bwa hg38
     printf '5002,5000,0,0,4096,120,3800,95,COMPLETED,u,,bwa,hg38,1.0.bwa.s2,1,0,0\n'   # 19-col: malformed
     v2row 5003 bwa hg38 6000 4000 sampC; } > "$jr"
-  warn=$( ( . "$sch"; jrMigrateStore "$jr" ) 2>&1 1>/dev/null )
+  warn=$( ( . "$sch"; jobRecordsMigrateStore "$jr" ) 2>&1 1>/dev/null )
   echo "$warn" | grep -qiE 'WARNING.*1 row.*no known schema' && _pass "migration WARNS about the dropped malformed row (not silent)" \
                                                              || _fail "migration warns about dropped row" "stderr: $warn"
   bk=$(ls "$jr".back.*.txt 2>/dev/null | head -1)
@@ -3310,21 +3310,21 @@ _want migrate_v1 && {
   v1row21 6001 5000 3800 bwa hg38 > "$jr"; v1row21 6002 6000 4000 bwa hg38 >> "$jr"
   g_before=$(md5sum "$jr" | cut -d' ' -f1)
   gerr=$( ( . "$sch"
-            jrEmitV2() { printf '%s\n' "$JR_HEADER_V2"; echo "rnaseq,bwa,hg38,,6001,5000,3800,4096,95,120,1,COMPLETED,u,n,1,2026-01-05,1.0.bwa.s"; }  # drops 6002
-            jrMigrateStore "$jr" ) 2>&1 1>/dev/null )
+            jobRecordsEmitV2() { printf '%s\n' "$JOB_RECORDS_HEADER_V2"; echo "rnaseq,bwa,hg38,,6001,5000,3800,4096,95,120,1,COMPLETED,u,n,1,2026-01-05,1.0.bwa.s"; }  # drops 6002
+            jobRecordsMigrateStore "$jr" ) 2>&1 1>/dev/null )
   if [ "$(md5sum "$jr" | cut -d' ' -f1)" = "$g_before" ] && echo "$gerr" | grep -qiE 'ERROR.*integrity.*UNTOUCHED'; then
     _pass "integrity gate: a conversion that loses a recognizable row aborts, store untouched + errors"
   else _fail "integrity gate aborts a lossy conversion" "changed=$([ "$(md5sum "$jr"|cut -d' ' -f1)" = "$g_before" ] && echo no || echo YES) err=$gerr"; fi
   [ -z "$(ls "$jr".back.*.txt 2>/dev/null)" ] && _pass "integrity gate: redundant backup removed on abort" \
                                               || _fail "integrity gate: backup removed on abort" "backup left"
-  # jrRepair --check surfaces an unrecognized store (seed a fresh junk store)
+  # jobRecordsRepair --check surfaces an unrecognized store (seed a fresh junk store)
   printf 'total,garbage\n99,bad,row,here\n' > "$smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt"
-  chk_out=$(bash "$SMARTSLURM_ROOT/bin/jrRepair.sh" --check "$smartSlurmJobRecordDir" 2>&1); chk_rc=$?
+  chk_out=$(bash "$SMARTSLURM_ROOT/bin/jobRecordsRepair.sh" --check "$smartSlurmJobRecordDir" 2>&1); chk_rc=$?
   echo "$chk_out" | grep -q 'UNRECOGNIZED' && [ "$chk_rc" -ne 0 ] \
-    && _pass "jrRepair --check reports UNRECOGNIZED rows and exits non-zero" \
-    || _fail "jrRepair --check surfaces unrecognized store" "rc=$chk_rc out=$chk_out"
-  echo "$chk_out" | grep -qE 'schema version' && _pass "jrRepair --check prints a schema/row census" \
-                                              || _fail "jrRepair --check prints a census" "out=$chk_out"
+    && _pass "jobRecordsRepair --check reports UNRECOGNIZED rows and exits non-zero" \
+    || _fail "jobRecordsRepair --check surfaces unrecognized store" "rc=$chk_rc out=$chk_out"
+  echo "$chk_out" | grep -qE 'schema version' && _pass "jobRecordsRepair --check prints a schema/row census" \
+                                              || _fail "jobRecordsRepair --check prints a census" "out=$chk_out"
 
   # --- 8) property/fuzz harness: strong invariants over randomized shapes -------
   if [ -x "$HERE/jr_conversion_stress.sh" ]; then
@@ -3363,7 +3363,7 @@ _want migrate_v1 && {
   # The v2 header was detected by $1=="pipeline" alone, but that is also the
   # generic pipeline id runAsPipeline assigns when --pipeline is omitted. So every
   # data row of a default-named pipeline looked like a header line and was dropped
-  # by jrEmitV2 / ignored by jrSchemaVersion / jrCountRecognized -- silently
+  # by jobRecordsEmitV2 / ignored by jobRecordsSchemaVersion / jobRecordsCountRecognized -- silently
   # erasing a whole pipeline's history (and blinding its resource estimation).
   # The real header's 2nd field is the literal "step"; a data row's 2nd field is
   # the step name. These must round-trip with ZERO loss.  (Pre-fix: jremit would
@@ -3381,11 +3381,11 @@ _want migrate_v1 && {
   # the crux: all 3 data rows are RECOGNIZED, not misread as header lines
   rec=$(jrrec "$jr")
   [ "$rec" -eq 3 ] && _pass "pplname: all 3 pipeline=\"pipeline\" rows counted (not skipped as header)" \
-                   || _fail "pplname: rows counted as recognized" "jrCountRecognized=$rec (pre-fix bug counts 0)"
-  # jrEmitV2 preserves every row (header + 3), not just the header line
+                   || _fail "pplname: rows counted as recognized" "jobRecordsCountRecognized=$rec (pre-fix bug counts 0)"
+  # jobRecordsEmitV2 preserves every row (header + 3), not just the header line
   em=$(jremit "$jr" | grep -c .)
-  [ "$em" -eq 4 ] && _pass "pplname: jrEmitV2 preserves header + all 3 rows (no header-collision drop)" \
-                  || _fail "pplname: jrEmitV2 preserves all rows" "emitted $em lines (pre-fix bug emits 1)"
+  [ "$em" -eq 4 ] && _pass "pplname: jobRecordsEmitV2 preserves header + all 3 rows (no header-collision drop)" \
+                  || _fail "pplname: jobRecordsEmitV2 preserves all rows" "emitted $em lines (pre-fix bug emits 1)"
   # by-column survival: each jobID present exactly once after an emit round-trip
   for id in 7101 7102 7103; do
     n=$(jremit "$jr" | awk -F, -v j="$id" '$5==j && $1=="pipeline"' | wc -l)

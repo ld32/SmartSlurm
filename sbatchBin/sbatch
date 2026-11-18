@@ -18,7 +18,7 @@
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
 
 # todo:
-# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt.
+# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecord.txt.
 
 # the logic:
 # If job does not depends on other job, and has input, estimate mem/timed and submit
@@ -87,7 +87,8 @@ fi
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
-[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefaut,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9JobStatus,10useID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18date > $smartSlurmJobRecordDir/jobRecord.txt
+. "$(dirname "$0")/../bin/jobRecordSchema.sh"
+jobRecordsEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
 
 cmd="ssbatch"
 whitespace="[[:space:]]"

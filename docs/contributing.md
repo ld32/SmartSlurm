@@ -10,7 +10,7 @@
   as templates and quick cluster smoke tests; each directory has its own README
   with the exact commands and expected output.
 - **Migrating an old store?** Convert a legacy jobRecord store once with
-  [`jrRepair.sh`](tools.md#under-the-hood-tools) (keep the timestamped backup it writes).
+  [`jobRecordsRepair.sh`](tools.md#under-the-hood-tools) (keep the timestamped backup it writes).
 
 ---
 

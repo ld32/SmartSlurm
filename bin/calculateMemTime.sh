@@ -23,9 +23,9 @@ pipeline=${4:-unknown}
 
 # v2 grouping: stats files are keyed per (pipeline, step, refGroup) -- must match
 # the key estimateResource.sh writes. refGroup applies optional ref size-class
-# pooling (jrRefClass); falls back to the ref itself.
+# pooling (jobRecordsRefClass); falls back to the ref itself.
 . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
-refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+refGroup=$(jobRecordsRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
 statKey="$pipeline.$software.$refGroup"
 
 # Target first-pass completion rate (issue B1). Used as the percentile for the
@@ -189,6 +189,17 @@ else
     time=0
 fi
 echoerr Got $time
+
+# Surface the AI review of the curve, if estimateResource.sh already produced one.
+# Deliberately no AI call here: this script runs on every submission and must stay fast.
+# stderr only, because stdout is parsed by the caller.
+aiReviewFile=$smartSlurmJobRecordDir/stats/$software.$ref.aiReview.txt
+if [ -s "$aiReviewFile" ]; then
+    echoerr
+    echoerr "AI review of the fitted curve for $software.$ref:"
+    cat "$aiReviewFile" 1>&2
+    echoerr
+fi
 
 # +1 to round up the number to integer, for example 0.8 becomes 2, 3.5 becomes 5
 # memory in M and time in minutes

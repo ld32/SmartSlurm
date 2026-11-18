@@ -27,7 +27,7 @@ the repo root). `$SMARTSLURM_ROOT` = the tool checkout under review.
 
 ## The three highest-value bug classes here (learned the hard way)
 
-1. **Silent data loss — rows that vanish with exit 0.** `jrEmitV2` dropping rows
+1. **Silent data loss — rows that vanish with exit 0.** `jobRecordsEmitV2` dropping rows
    (all-digit pipeline id, header-vs-datarow collision), `cleanUp` pruning COMPLETED
    history it should keep, migration losing records. A tool that "runs fine" and
    quietly eats history is *the* canonical SmartSlurm bug. These never show up in a
@@ -83,11 +83,11 @@ regression if `master` is green on it.
 
 ## Silent-failure invariants — assert these regardless of exit code
 
-- **Row conservation.** After any migrate/prune, `jrCountRecognized` out ≥ in minus
+- **Row conservation.** After any migrate/prune, `jobRecordsCountRecognized` out ≥ in minus
   *only* rows provably meant to drop; anything dropped is in a `.back`/`.skipped`
   file. A store never shrinks to the header alone.
 - **Round-trip fidelity.** v1→v2 preserves every field (no silent `0`/empty for
-  mem/time/size); v2→v2 is identity; `jrLint` / `jrSchemaVersion` agree before and
+  mem/time/size); v2→v2 is identity; `jobRecordsLint` / `jobRecordsSchemaVersion` agree before and
   after.
 - **Prune conservatism.** A fail-prune removes ONLY the offending program's
   disproven rows (size ≥ failing size AND mem ≤ proven-insufficient alloc). Unrelated
