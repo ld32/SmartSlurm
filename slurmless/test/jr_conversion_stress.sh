@@ -38,19 +38,19 @@ v1r20(){ local id=$1 sz=${2:-5000} m=${3:-3800} st=${4:-COMPLETED} pg=${5:-bwa} 
   : "${fl:=1.0.$pg.$id}"
   printf '%s,%s,0,0,4096,120,%s,95,%s,u,,%s,%s,%s,1,0,0,0,0,2026-01-0%s\n' \
   "$id" "$sz" "$m" "$st" "$pg" "$rf" "$fl" "$((RANDOM%9+1))"; }
-# v2 17-col via the shipped builder (the only sanctioned v2 writer)
+# v2 18-col via the shipped builder (the only sanctioned v2 writer)
 v2r(){ local id=$1 sz=${2:-5000} m=${3:-3800} st=${4:-COMPLETED} pg=${5:-bwa} rf=${6:-hg38} fl=${7:-} pp=${8:-rnaseq} sm=${9:-}
   : "${fl:=1.0.$pg.$id}"
   jobRecordsRow pipeline="$pp" step="$pg" ref="$rf" sample="$sm" \
   jobID="$id" inputSize="$sz" memUsed="$m" memAllocated="$m" \
   timeUsed=95 timeAllocated=120 cores=1 status="$st" user=u node=n \
   epoch="$((1735700000+id))" isoDate=2026-01-03 flag="$fl"; }
-H_V2="pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag"
+H_V2="pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes"
 H_V1_21="1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9status,10user,11saccMem,12program,13ref,14flag,15cores,16extraMem,17extraTime,18ratioM,19ratioT,20date,21epoch"
 H_V1_18="1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9status,10user,11program,12ref,13flag,14cores,15extraMem,16extraTime,17date"
 
 # jobIDs present (by the v2 jobID column) in a migrated file, sorted + trimmed
-v2ids(){ awk -F, '$1!="pipeline" && $1 !~ /^[0-9]+$/ && NF==17 {print $5}' "$1" | sort -n | xargs; }
+v2ids(){ awk -F, '$1!="pipeline" && $1 !~ /^[0-9]+$/ && NF==18 {print $5}' "$1" | sort -n | xargs; }
 norm(){ printf '%s\n' $1 | sort -n | xargs; }   # normalize an id list (trim/sort)
 # SAFETY-CRITICAL post-condition: NO raw v1-shaped row survives (numeric jobID,
 # 20/21 cols). A v1 row read through the v2 column map is what the prune deletes.
@@ -199,7 +199,7 @@ got=$(v2ids "$f")
 chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ]"  "concurrent-append: store is valid v2"
 chk "[ \"\$(grep -c '^pipeline,step,ref' '$f')\" = 1 ]" "concurrent-append: exactly one header line"
 chk "[ \"$got\" = \"$exp\" ]"              "concurrent-append: all $((K*M)) rows present exactly once (got $(echo $got|wc -w))"
-chk "! awk -F, 'NR>1 && NF!=17{bad=1} END{exit !bad}' '$f'" "concurrent-append: every row is well-formed 17-col (no interleave)"
+chk "! awk -F, 'NR>1 && NF!=18{bad=1} END{exit !bad}' '$f'" "concurrent-append: every row is well-formed 18-col (no interleave)"
 chk "[ ! -d '$f'.lock ]"                   "concurrent-append: lock released"
 
 echo "== chaos: concurrent appends + migrations + prunes on ONE store =="
@@ -220,7 +220,7 @@ expc=$(norm "$(for w in $(seq 1 8); do for j in $(seq 1 10); do echo $((w*1000+j
 gotc=$(v2ids "$f" | tr ' ' '\n' | awk '$1>=1000' | xargs)   # only the appended ids (legacy 500/501 may age out)
 chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ]"  "chaos: store ends valid v2"
 chk "no_v1_rows '$f'"                       "chaos: no raw v1 row survives the mixed workload"
-chk "! awk -F, 'NR>1 && NF!=17{b=1} END{exit !b}' '$f'" "chaos: no corrupt/interleaved row"
+chk "! awk -F, 'NR>1 && NF!=18{b=1} END{exit !b}' '$f'" "chaos: no corrupt/interleaved row"
 chk "[ \"$gotc\" = \"$expc\" ]"            "chaos: all 80 appended COMPLETED rows survive (got $(echo $gotc|wc -w))"
 chk "[ ! -d '$f'.lock ]"                   "chaos: lock released"
 
@@ -255,7 +255,7 @@ echo "== post-conversion integrity gate: a broken conversion ABORTS, store untou
 f="$TMP/gate.txt"
 { v1r21 8101; v1r21 8102; } > "$f"
 before=$(md5sum "$f" | cut -d' ' -f1)
-( jobRecordsEmitV2() { printf '%s\n' "$JOB_RECORDS_HEADER_V2"; echo "rnaseq,bwa,hg38,,8101,5000,3800,4096,95,120,1,COMPLETED,u,n,1,2026-01-01,1.0.bwa.s"; }   # drops 8102
+( jobRecordsEmitV2() { printf '%s\n' "$JOB_RECORDS_HEADER_V2"; echo "rnaseq,bwa,hg38,,8101,5000,3800,4096,95,120,1,COMPLETED,u,n,1,2026-01-01,1.0.bwa.s,"; }   # drops 8102
   gerr=$(jobRecordsMigrateStore "$f" 2>&1 1>/dev/null)
   [ "$(md5sum "$f" | cut -d' ' -f1)" = "$before" ] || { echo "LEAK"; exit 7; }
   echo "$gerr" | grep -qiE 'ERROR.*integrity.*UNTOUCHED' || { echo "NOWARN"; exit 8; }
@@ -265,11 +265,11 @@ chk "[ $grc -eq 0 ]" "integrity gate: broken conversion aborts, store untouched,
 chk "[ \"\$(jobRecordsSchemaVersion '$f')\" != 0 ]" "integrity gate: store is still its original valid self (not corrupted)"
 
 echo "== item B: all-digit pipeline name + header-word collision =="
-# A 17-col row with an all-digit field 1 is ambiguous: a v2 row whose pipeline name
+# An 18-col row with an all-digit field 1 is ambiguous: a v2 row whose pipeline name
 # is all-digit, OR a corrupt/truncated v1 (jobID-first) row. We disambiguate by
 # HEADER CONTEXT, never by guessing: under a v2 header it is a v2 record (and must
 # be preserved -- it used to vanish silently); headerless it stays UNRECOGNIZED.
-adr="2024,bwa,hg38,sA,55555,1000,512,1024,60,120,4,COMPLETED,u,n,1700000000,2026-01-01,1.0.bwa.c"
+adr="2024,bwa,hg38,sA,55555,1000,512,1024,60,120,4,COMPLETED,u,n,1700000000,2026-01-01,1.0.bwa.c,"
 f="$TMP/bdigit_hdr.txt"; { echo "$H_V2"; echo "$adr"; } > "$f"
 chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ]"        "itemB: headed all-digit-pipeline store is v2"
 chk "[ \"\$(jobRecordsCountRecognized '$f')\" = 1 ]"      "itemB: headed all-digit-pipeline row is RECOGNIZED (not dropped)"

@@ -3248,11 +3248,11 @@ _want migrate_v1 && {
   # A line-1-only schema check called this "pure v2" and skipped migration, then
   # the v2 prune read the v1 rows through the wrong columns and DELETED COMPLETED
   # history. jobRecordsSchemaVersion must treat any v1 row as "needs migration".
-  # v2row JOBID STEP REF INPUTSIZE MEMUSED [SAMPLE] -> one canonical 17-col v2 row
+  # v2row JOBID STEP REF INPUTSIZE MEMUSED [SAMPLE] -> one canonical 18-col v2 row
   v2row() { local id=$1 st=$2 rf=$3 sz=$4 mu=$5 sm=${6:-}
-    printf 'rnaseq,%s,%s,%s,%s,%s,%s,%s,95,120,1,COMPLETED,tester,n,%s,2026-01-05,1.0.%s.%s\n' \
+    printf 'rnaseq,%s,%s,%s,%s,%s,%s,%s,95,120,1,COMPLETED,tester,n,%s,2026-01-05,1.0.%s.%s,\n' \
       "$st" "$rf" "$sm" "$id" "$sz" "$mu" "$mu" "$(( 1735900000 + id ))" "$st" "$id"; }
-  hdr2='pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag'
+  hdr2='pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes'
   # v1-prune-sim: replicate cleanUp's EXACT branch selection, then assert no loss.
   prunesim() { local f=$1 t; t=$(date -d '7 days ago' +%s)
     if [ "$(jrver "$f")" = 2 ]; then
@@ -3267,7 +3267,7 @@ _want migrate_v1 && {
     [ "$(jrver "$jr")" = 1 ] && _pass "hybrid($order): v2-headed store with a v1 row flagged for migration" \
                              || _fail "hybrid($order): flagged for migration" "jrver=$(jrver "$jr")"
     jrmig "$jr"; prunesim "$jr"
-    n=$(awk -F, 'NR>1 && NF==17 && $1!~/^[0-9]+$/' "$jr" | wc -l)
+    n=$(awk -F, 'NR>1 && NF==18 && $1!~/^[0-9]+$/' "$jr" | wc -l)
     [ "$n" -eq 2 ] && _pass "hybrid($order): both COMPLETED rows survive migrate+prune (no self-destruct)" \
                    || _fail "hybrid($order): both rows survive" "survivors=$n"
     norawv1=$(awk -F, 'NR>1 && $1~/^[0-9]+$/ && (NF==20||NF==21)' "$jr" | wc -l)
@@ -3302,7 +3302,7 @@ _want migrate_v1 && {
   if [ -n "$uf" ] && grep -q 5002 "$uf" && [ "$(grep -c . "$uf")" -eq 1 ]; then
     _pass "dropped row also saved to a .unrecognized file (just the bad line)"
   else _fail "dropped row saved to .unrecognized file" "file=$uf"; fi
-  noraw=$(awk -F, 'NR>1 && NF!=17' "$jr" | grep -c .)
+  noraw=$(awk -F, 'NR>1 && NF!=18' "$jr" | grep -c .)
   [ "$noraw" -eq 0 ] && _pass "live store left clean v2 (malformed row not carried in)" \
                      || _fail "live store clean after migrate" "stray rows=$noraw"
   # --- integrity gate: a broken conversion aborts and leaves the store untouched -
@@ -3368,9 +3368,9 @@ _want migrate_v1 && {
   # The real header's 2nd field is the literal "step"; a data row's 2nd field is
   # the step name. These must round-trip with ZERO loss.  (Pre-fix: jremit would
   # emit only the header and jrrec would count 0; both FAIL here.)
-  # ppl ROW: a canonical 17-col v2 row whose PIPELINE is "pipeline".
+  # ppl ROW: a canonical 18-col v2 row whose PIPELINE is "pipeline".
   ppl() { local id=$1 st=$2 sz=$3 mu=$4 status=${5:-COMPLETED}
-    printf 'pipeline,%s,none,,%s,%s,%s,%s,30,60,1,%s,tester,n,%s,2026-01-06,1.0.%s\n' \
+    printf 'pipeline,%s,none,,%s,%s,%s,%s,30,60,1,%s,tester,n,%s,2026-01-06,1.0.%s,\n' \
       "$st" "$id" "$sz" "$mu" "$mu" "$status" "$(( 1735900000 + id ))" "$st"; }
   ss_new_workspace "$WORK/migrate_v1_pplname"; jr="$smartSlurmJobRecordDir/jobRecord.txt"
   { echo "$hdr2"; ppl 7101 mseq 5000 4096 OOM; ppl 7102 mseq 5000 9840 OOM
@@ -3402,7 +3402,7 @@ _want migrate_v1 && {
                            || _fail "pplname/headerless: flagged for migration" "jrver=$(jrver "$jr") (pre-fix bug says 2 -> no migrate)"
   jrmig "$jr"
   assert_contains "$jr" "pipeline,step,ref" "pplname/headerless: gets a leading v2 header on migrate"
-  dat=$(awk -F, 'NR>1 && $1=="pipeline" && NF==17' "$jr" | wc -l)
+  dat=$(awk -F, 'NR>1 && $1=="pipeline" && NF==18' "$jr" | wc -l)
   [ "$dat" -eq 2 ] && _pass "pplname/headerless: both pipeline=\"pipeline\" data rows preserved on migrate" \
                    || _fail "pplname/headerless: both rows preserved" "survivors=$dat"
 

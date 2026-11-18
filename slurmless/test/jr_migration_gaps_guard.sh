@@ -46,7 +46,7 @@ chk "echo \"\$err\" | grep -qi 'identical to the jobRecord header'" "gap1: migra
 uf=$(ls "$f".unrecognized.*.txt 2>/dev/null | head -1)
 chk "[ -n '$uf' ] && grep -q '1jobID' '$uf'"            "gap1: the extra header line is saved to a .unrecognized file"
 # the two real data rows still survive as v2
-got=$(awk -F, 'NR>1 && NF==17 && $1 !~ /^[0-9]+$/{print $5}' "$f" | sort -n | xargs)
+got=$(awk -F, 'NR>1 && NF==18 && $1 !~ /^[0-9]+$/{print $5}' "$f" | sort -n | xargs)
 chk "[ '$got' = '100 101' ]"                            "gap1: both real data rows survive (want '100 101' got '$got')"
 
 echo "== gap 2: jobRecordsMigrateStore reclaims a STALE lock (crashed holder must not wedge) =="

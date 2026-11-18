@@ -339,14 +339,14 @@ ss_seed_record() {
   local prog="$1" ref="$2" size="$3" mem="$4" tim="$5" status="$6" count="${7:-1}" sacc="${8:-$4}" pipe="${9:-unknown}"
   local jr="$smartSlurmJobRecordDir/jobRecord.txt"
   mkdir -p "$smartSlurmJobRecordDir"
-  # v2 schema (17 cols). Seed pipeline defaults to "unknown" to match ss_fit's
+  # v2 schema (18 cols). Seed pipeline defaults to "unknown" to match ss_fit's
   # query (estimateResource invoked without --pipeline), so records land in the
   # queried group directly. Ensure a v2 header so jobRecordsSchemaVersion detects v2.
-  [ -s "$jr" ] || printf 'pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag\n' > "$jr"
+  [ -s "$jr" ] || printf 'pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes\n' > "$jr"
   local i jid
   for ((i=0; i<count; i++)); do
     jid=$(( (RANDOM % 90000) + 10000 ))
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n' \
       "$pipe" "$prog" "$ref" "" "$jid" "$size" "$mem" "$mem" "$tim" "$tim" 1 \
       "$status" "${USER:-tester}" "node" "$(date +%s)" "$(date +%Y-%m-%dT%H:%M:%S)" "$prog" >> "$jr"
   done
