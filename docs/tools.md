@@ -7,6 +7,7 @@
 | Tool | Kind | What it does | Details |
 |------|------|--------------|---------|
 | `runAsPipeline` | command | Convert and run an annotated Bash script as a dependency-aware pipeline. | [runAsPipeline](#runaspipeline) |
+| `convertToPipeline` | command | Convert a hand-written sbatch submit script to a `runAsPipeline` script (with AI help), checked off-cluster. | [convertToPipeline](#converttopipeline) |
 | `ssbatch` | command | Drop-in `sbatch` wrapper with smart sizing, partition selection, and OOM/OOT resubmit. | [ssbatch](#ssbatch) |
 | `checkRun` | command | Interactive status grid + log/diagnosis/efficiency browser for a run. | [The status grid](monitoring.md#the-status-grid-checkrun) |
 | `checkRunGrid` | command | Non-interactive render/resolve engine behind `checkRun` (scriptable). | [The status grid](monitoring.md#the-status-grid-checkrun) |
@@ -105,6 +106,22 @@ The full per-job detail is always written to `.smartSlurm.log` regardless of ver
 | `resource-estimation/` | a size-scaled load (`sizedLoad.sh`) for exercising jobRecord fitting and OOM/OOT reruns. |
 
 Each directory has its own README with the exact commands and expected output.
+
+## convertToPipeline
+
+Converts a hand-written Slurm submit script (`sbatch` calls chained with `--dependency=afterok:$jid`) into a `runAsPipeline` script, and checks it off-cluster in the [slurmless](testing-off-cluster.md) sandbox before you run it for real.
+
+```bash
+convertToPipeline submit.sh [-o OUT.sh] [--sbatch "sbatch -p short -t 2:0:0"] [--compare "result/*.txt"] [-- SUBMIT_ARGS]
+```
+
+1. Runs your submit script against a fake `sbatch` that **records** each job and its dependencies but runs nothing.
+2. Asks AI (through [`aiHelper.sh`](ai-assistance.md), so you need no AI tools of your own) to group those jobs into pipeline steps, for example one looped step per sample plus a merge step.
+3. Writes the `runAsPipeline` script, then checks it with `runAsPipeline --lint` and a sandbox dry run. A failed check goes back to AI for another try (`--tries`, default 3).
+4. With `--compare "FILES"`, it also **runs** both the original and the new pipeline in the sandbox on a copy of your folder and compares those output files. This runs your real commands locally, so use it only with small test data.
+5. Shows the result and asks before writing it (default `SUBMIT.rap.sh`; `--yes` skips the question). Your folder is not changed until then.
+
+**No AI access?** It writes `SUBMIT.plan.txt`: the recorded jobs plus a plan to edit by hand (format: `slurmless/skills/migration-assistant/references/plan-format.md`). Then run `convertToPipeline submit.sh --plan submit.plan.txt`; steps 3–5 work the same.
 
 ## ssbatch
 
