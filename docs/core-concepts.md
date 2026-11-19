@@ -365,12 +365,22 @@ unknown,bwa-mem-4core,hg38,A_R1.fq.gz,46590,1339,5210,8192,42,120,4,COMPLETED,ld
 
 ## Notifications (emails)
 
-Slurm's own email is only a subject line. SmartSlurm instead sends **consolidated, text-only** notifications, so a many-sample pipeline no longer floods your inbox (and no longer litters `smartSlurmLog` with per-job plot pngs):
+Slurm's own email is only a subject line. SmartSlurm sends its own emails instead, and you choose how many with `runAsPipeline --email MODE`:
 
-- **Per sample** — one **warning** the first time a step in that sample fails (telling you to re-run the same command), and one **confirmation** when the sample's last step completes.
-- **Per run** — a single **efficiency summary** when the whole run finishes successfully, carrying the per-sample [efficiency](monitoring.md#resource-efficiency) table and pointing you to `checkRun` (press `e`) for the per-step breakdown.
+| Mode | What you get |
+|------|--------------|
+| `emailPerSample` (default) | One **warning** the first time a step in a sample fails (telling you to re-run the same command), one **confirmation** when a sample's last step completes, and one **efficiency summary** when the whole run succeeds. Text only. |
+| `allJobs` | One email **per job**, success or failure, with the job's memory/CPU plots attached, plus the efficiency summary. |
+| `successJobOnly` | Per-job emails for **successful** jobs only. |
+| `failedJobOnly` | Per-job emails for **failed** jobs only. (`noSuccEmail` still works as the old name.) |
+| `requeueOnly` | An email only when SmartSlurm **auto-resubmits** a job: after running out of memory or time, or after a bad node. |
+| `noEmail` | No email at all. |
 
-Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots (the per-job/barchart gnuplot pngs and their CSVs) are no longer generated — efficiency now lives in `efficiency.tsv` and `checkRun` (press `e`), so nothing clutters `smartSlurmLog`.
+The efficiency summary carries the per-sample [efficiency](monitoring.md#resource-efficiency) table and points you to `checkRun` (press `e`) for the per-step breakdown. It is sent only when every job in the run succeeded.
+
+Per-job memory/CPU plots are made only in the per-job modes (`allJobs`, `successJobOnly`, `failedJobOnly`); set `ssMakePlots=no` to skip them there too. In `allJobs` and `successJobOnly`, `ssEmailSkipMemPct=N` skips the success email of a job that used at least N% of its reserved memory (a well-sized job needs no attention). If outlier records were moved aside for a step, that job's email is always sent, except in `noEmail` and `requeueOnly`.
+
+For a standalone `ssbatch` job, set the mode with `export lessEmail=MODE` before submitting.
 
 ---
 

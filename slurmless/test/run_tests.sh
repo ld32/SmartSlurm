@@ -34,7 +34,7 @@ setup_rc_block activate_path activate_prompt deactivate_surgical conda_coexist \
 uninstall_precise unexport_deprecated \
 firstpass_fullpath extrapolate_linear extrapolate_superlinear extrapolate_lowdata \
 resubmit_convergence manual_resubmit_sequence \
-efficiency_file checkrun_efficiency email_consolidation fitqc migrate_v1 jr_drift_guard cross_pipeline legacy_pooling"
+efficiency_file checkrun_efficiency email_consolidation email_modes fitqc migrate_v1 jr_drift_guard cross_pipeline legacy_pooling"
 
 # Named groups: a convenience alias that expands to a block list, so related
 # blocks that do NOT share a common name substring can be run in one go (e.g.
@@ -46,7 +46,7 @@ ss_group() {
   case "$1" in
     estimator)  echo "scaling_linear noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate failure_floor manual_rerun_floor constant_model negslope_robust firstpass_fullpath extrapolate_linear extrapolate_superlinear extrapolate_lowdata resubmit_convergence manual_resubmit_sequence fitqc migrate_v1 jr_drift_guard cross_pipeline legacy_pooling";;
     activation) echo "setup_rc_block activate_path activate_prompt deactivate_surgical conda_coexist uninstall_precise unexport_deprecated";;
-    efficiency) echo "efficiency_file checkrun_efficiency email_consolidation";;
+    efficiency) echo "efficiency_file checkrun_efficiency email_consolidation email_modes";;
     workflow)   echo "wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential";;
     p6)         echo "p6_signal_sequence p6_determinism cleanup_reentrancy";;
     *)          echo "$1";;
@@ -124,6 +124,7 @@ ss_purpose() {
     manual_resubmit_sequence) echo "Multiple sequential MANUAL resubmissions (each with its own auto-requeue), bootstrapping to completion; each manual start exceeds the prior proven-insufficient alloc";;
     efficiency_file)    echo "cleanUp writes one unconditional per-job row to a per-run efficiency.tsv (flag, sample, status, alloc/used mem+time) for checkRun to read";;
     checkrun_efficiency) echo "checkRunGrid --efficiency drill-down views (overview/sample/step): Overall + per-sample bars, per-step and per-sample breakdowns, eff/used/alloc columns, time/mem toggles, color";;
+    email_modes)        echo "runAsPipeline --email MODE: allJobs/successJobOnly/failedJobOnly send per-job mail (with plots) for the right jobs, requeueOnly mails only on auto-resubmit, noEmail sends nothing, bad modes are rejected";;
     email_consolidation) echo "cleanUp sends consolidated TEXT-ONLY mail (no pngs): per-sample break/complete alerts + one per-run efficiency email; no per-job spam, no hard-coded dev recipient";;
     migrate_v1)         echo "jobRecords v1->v2 auto-migration: headerless/20-col/21-col legacy, MIXED, both HYBRID orderings (v1 appended under a v2 header) and headerless-v2 stores migrate with zero loss + backup, survive the real cleanUp prune (no self-destruct), jobRecordsRepair diverts only junk; plus a property/fuzz + concurrency harness over randomized shapes (the ld32 data-loss regression)";;
     jr_drift_guard)     echo "Schema-drift guard: no SmartSlurm tool (outside the jobRecordSchema.sh API + jobRecordsRepair) writes a jobRecord header literal, redirects to a store, or reads it by raw column number -- so the 18-vs-21-col drift and raw-append hybrid cannot reappear";;
@@ -3118,8 +3119,10 @@ _want email_consolidation && {
   else _pass "no .out.<jobid> job-id marker files written"; fi
   if grep -q 'att=1' "$mlog" 2>/dev/null; then _fail "all emails text-only (no attachments)" "found att=1"
   else _pass "all emails are text-only (no -a attachments)"; fi
-  if grep -q ' to=ld32' "$mlog" 2>/dev/null; then _fail "no hard-coded dev recipient" "found ld32"
-  else _pass "no hard-coded dev (ld32) recipient"; fi
+  # every email goes to the user running the pipeline (no hard-coded dev address)
+  others=$(grep -o ' to=[^ ]*' "$mlog" 2>/dev/null | sort -u | grep -vx " to=$USER")
+  if [ -n "$others" ]; then _fail "no hard-coded dev recipient" "found:$others"
+  else _pass "every email goes to \$USER (no hard-coded dev recipient)"; fi
   effN=$(grep -c 'run complete: resource efficiency' "$mlog" 2>/dev/null)
   if [ "${effN:-0}" -eq 1 ]; then _pass "exactly one per-run efficiency email"
   else _fail "one per-run efficiency email" "got ${effN:-0}"; fi
@@ -3146,6 +3149,73 @@ _want email_consolidation && {
   # emitted with a blank amount ("Saved  by") or leaking awk/bc errors into mail.
   if grep -qE 'Saved +(by|$)|Saved  ' "$mlog2" 2>/dev/null; then _fail "no blank savings line when plots are off" "$(grep -n 'Saved' "$mlog2")"
   else _pass "no blank/garbled per-run savings line when plots are off"; fi
+  echo
+}
+
+# ===========================================================================
+# runAsPipeline --email MODE (bin/runAsPipeline -> lessEmail -> bin/cleanUp.sh).
+# email_consolidation covers the default (emailPerSample); this covers the rest.
+_want email_modes && {
+  _begin email_modes
+  em_run() {   # <mode> [failMode] -> runs clean_2step; sets emlog, emjobs
+    ss_new_workspace "$WORK/email_modes_$1${2:+_$2}"
+    cp "$HERE"/fixtures/clean_2step/* .; chmod +x ./*.sh 2>/dev/null || true
+    if [ -n "${2:-}" ]; then
+      MOCK_FAIL_JOB=mergeNumber MOCK_FAIL_MODE=$2 SS_RAP_ARGS="--email $1" \
+        ss_run_pipeline "./pipeline.sh 777" "sbatch -p short -c 1 --mem 4G -t 50:0"
+    else
+      SS_RAP_ARGS="--email $1" ss_run_pipeline "./pipeline.sh 777" "sbatch -p short -c 1 --mem 4G -t 50:0"
+    fi
+    emlog="$MOCK_SLURM_STATE/mail.log"; [ -f "$emlog" ] || : > "$emlog"
+    emjobs=$(awk 'NR>1 && NF>=3' smartSlurmLog/allJobs.txt 2>/dev/null | wc -l)
+  }
+  emN()  { grep -c "^=== MAIL.*subj=$1" "$emlog" 2>/dev/null; }    # count by subject prefix
+  emAll(){ grep -c '^=== MAIL' "$emlog" 2>/dev/null; }
+
+  # --- fully successful run ---
+  em_run allJobs
+  [ "$(emN Succ:)" -eq "$emjobs" ] && [ "$emjobs" -ge 1 ] && _pass "allJobs: one success email per job ($emjobs)" \
+    || _fail "allJobs: one success email per job" "Succ=$(emN Succ:) jobs=$emjobs"
+  [ "$(emN 'SmartSlurm run complete')" -eq 1 ] && _pass "allJobs: one run-summary email" \
+    || _fail "allJobs: one run-summary email" "got $(emN 'SmartSlurm run complete')"
+  em_run successJobOnly
+  [ "$(emN Succ:)" -eq "$emjobs" ] && [ "$(emAll)" -eq "$emjobs" ] && _pass "successJobOnly: only per-job success emails" \
+    || _fail "successJobOnly: only per-job success emails" "Succ=$(emN Succ:) all=$(emAll) jobs=$emjobs"
+  for m in failedJobOnly requeueOnly noEmail; do
+    em_run $m
+    [ "$(emAll)" -eq 0 ] && _pass "$m: no email for a clean run" || _fail "$m: no email for a clean run" "got $(emAll)"
+  done
+
+  # --- mergeNumber runs out of memory (auto-resubmitted until the retry limit) ---
+  em_run allJobs oom
+  [ "$(emN Succ:)" -ge 1 ] && [ "$(emN OOM:)" -ge 1 ] && [ "$(emN 'SmartSlurm run complete')" -eq 0 ] \
+    && _pass "allJobs+oom: success and failure emails, no run summary" \
+    || _fail "allJobs+oom: success and failure emails, no run summary" "Succ=$(emN Succ:) OOM=$(emN OOM:)"
+  em_run failedJobOnly oom
+  [ "$(emN OOM:)" -ge 1 ] && [ "$(emN OOM:)" -eq "$(emAll)" ] && _pass "failedJobOnly+oom: only failure emails ($(emN OOM:))" \
+    || _fail "failedJobOnly+oom: only failure emails" "OOM=$(emN OOM:) all=$(emAll)"
+  assert_contains "$emlog" "Re-run the same command" "failedJobOnly: failure email tells the user to re-run"
+  em_run noSuccEmail oom
+  [ "$(emN OOM:)" -ge 1 ] && [ "$(emN OOM:)" -eq "$(emAll)" ] && _pass "noSuccEmail (old name) behaves like failedJobOnly" \
+    || _fail "noSuccEmail behaves like failedJobOnly" "OOM=$(emN OOM:) all=$(emAll)"
+  em_run successJobOnly oom
+  [ "$(emN Succ:)" -ge 1 ] && [ "$(emN Succ:)" -eq "$(emAll)" ] && _pass "successJobOnly+oom: no failure emails" \
+    || _fail "successJobOnly+oom: no failure emails" "Succ=$(emN Succ:) all=$(emAll)"
+  em_run requeueOnly oom
+  rq=$(grep -c '^=== MAIL.*subj=OOM.Requeued:' "$emlog")
+  [ "$rq" -ge 1 ] && [ "$rq" -eq "$(emAll)" ] && _pass "requeueOnly+oom: one email per auto-resubmit ($rq), nothing else" \
+    || _fail "requeueOnly+oom: only resubmit emails" "requeued=$rq all=$(emAll)"
+  assert_contains "$emlog" "resubmitted it with more resources" "requeueOnly: email says the job was resubmitted"
+  em_run noEmail oom
+  [ "$(emAll)" -eq 0 ] && _pass "noEmail+oom: no email even on failure" || _fail "noEmail+oom: no email" "got $(emAll)"
+
+  # --- an unknown mode is rejected before anything is submitted ---
+  ss_new_workspace "$WORK/email_modes_bad"
+  cp "$HERE"/fixtures/clean_2step/* .; chmod +x ./*.sh 2>/dev/null || true
+  SS_RAP_ARGS="--email everything" ss_run_pipeline "./pipeline.sh 777" "sbatch -p short -c 1 --mem 4G -t 50:0"
+  if grep -q "Unknown --email mode: everything" "$LAST_RUN_LOG" && [ ! -s smartSlurmLog/allJobs.txt ]; then
+    _pass "unknown --email mode rejected, nothing submitted"
+  else _fail "unknown --email mode rejected" "$(tail -3 "$LAST_RUN_LOG")"; fi
   echo
 }
 

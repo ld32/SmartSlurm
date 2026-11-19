@@ -297,6 +297,16 @@ effFile="$smartSlurmLogDir/efficiency.tsv"
 [ -f "$effFile" ] || printf 'epoch\tflag\tsample\tprogram\tref\tstatus\tallocMemMB\tusedMemMB\tallocTimeMin\tusedTimeMin\tinputs\tdate\n' > "$effFile"
 effSample="${inputs#,}"; effSample="${effSample%%,*}"; effSample="${effSample%% *}"; effSample=`basename "$effSample" 2>/dev/null`
 { [ -z "$effSample" ] || [ "$effSample" = none ]; } && effSample="$2"
+
+# Email mode (runAsPipeline --email, exported as lessEmail). See the
+# "Notifications" section near the end for what each mode sends.
+emailMode="${lessEmail:-emailPerSample}"
+[ "$emailMode" = noSuccEmail ] && emailMode=failedJobOnly   # old name
+# Sent at the moment SmartSlurm auto-resubmits a job (requeueOnly mode only).
+_ss_requeueMail() {   # <subject> <body>
+    [ "$emailMode" = requeueOnly ] || return 0
+    echo -e "$2" | mail -s "$1" "${userEmail:-$USER}" 2>/dev/null && echo "email sent: $1" || echo "email not sent: $1"
+}
 effEpoch=`date +%s`; effDate=`date '+%Y-%m-%dT%H:%M:%S'`
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$effEpoch" "$flag" "$effSample" "$2" "$ref" "$jobStatus" \
@@ -519,9 +529,9 @@ if [ ! -f $succFile ]; then
                         "OOMOOT") s="OOMOOT.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" ;;
                     esac
                     
-                    # Auto-requeue is silent now: it is in-progress recovery, not a
-                    # break or a completion. Outcomes are reported by the per-sample
-                    # status email, the per-run efficiency email, and checkRun.
+                    # Auto-requeue is silent except in requeueOnly mode.
+                    case "$jobStatus" in OOM) why=memory;; OOT) why=time;; *) why="memory and time";; esac
+                    _ss_requeueMail "$s" "Step $flag of sample '$effSample' ran out of $why (job $SLURM_JOBID).\nSmartSlurm resubmitted it with more resources as job $newJobID.\n\nCommand: $requeueCmd"
 
                     # (no longer touch $out.$newJobID: 0-byte job-id marker, only
                     #  read cosmetically by checkRun; requeue is recorded below.)
@@ -625,7 +635,8 @@ if [ ! -f $succFile ]; then
                         echo Re-queued successfully
                         [ -f $failFile ] && rm $failFile
 
-                        # Auto-requeue (bad node) is silent now; see note above.
+                        # Auto-requeue (bad node) is silent except in requeueOnly mode.
+                        _ss_requeueMail "BadNode.Requeued:$SLURM_JOBID-$newJobID:$SLURM_JOB_NAME" "Step $flag of sample '$effSample' failed on node $(hostname) (job $SLURM_JOBID).\nSmartSlurm resubmitted it, avoiding that node, as job $newJobID.\n\nCommand: $requeueCmd"
 
                         # (no longer touch $out.$newJobID: see note at the other
                         #  requeue site -- 0-byte cosmetic job-id marker.)
@@ -692,9 +703,11 @@ fi
 
 # Per-job memory and CPU plots over time, from memCPU.txt (written by
 # memCpuMonitor.sh: counter usedMem wastedMem savedMem cpu%). On by default;
-# set ssMakePlots=no to turn them off. They are attached to the job email.
+# set ssMakePlots=no to turn them off. They are attached to the job email, so they
+# are made only in the allJobs, successJobOnly and failedJobOnly email modes.
 memPng=$smartSlurmLogDir/job_$SLURM_JOBID.mem.png
 cpuPng=$smartSlurmLogDir/job_$SLURM_JOBID.cpu.png
+case "$emailMode" in allJobs|successJobOnly|failedJobOnly) ;; *) ssMakePlots=no ;; esac   # plots only go in per-job emails
 if [ "${ssMakePlots:-yes}" != no ] && command -v gnuplot >/dev/null 2>&1 && [ -s $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt ]; then
     plotData=$smartSlurmLogDir/job_$SLURM_JOBID.plot.txt
     # keep only numeric sample rows (drops the "jobID:... time:..." start marker)
@@ -813,87 +826,120 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Notifications:
-#   per-JOB     -> one email per job (success or failure) with mem/cpu plots
-#                  attached; ssEmailSkipMemPct can drop well-sized successes
-#   efficiency  -> one per-RUN email carrying the per-sample efficiency table,
-#                  pointing at `checkRun` (press e) for the per-step breakdown
-# Honors lessEmail=noEmail (everything off) and noSuccEmail (failures only).
+# Notifications, by email mode (runAsPipeline --email MODE; default emailPerSample):
+#   emailPerSample -> one alert per SAMPLE (first failure, or completion of its
+#                     last step) + one per-RUN efficiency email. Text only.
+#   allJobs        -> one email per job, success or failure, with mem/cpu plots
+#                     attached + the per-run efficiency email.
+#   successJobOnly -> per-job emails for successful jobs only.
+#   failedJobOnly  -> per-job emails for failed jobs only (old name: noSuccEmail).
+#   requeueOnly    -> only when SmartSlurm auto-resubmits a job (sent above).
+#   noEmail        -> nothing.
+# In allJobs/successJobOnly, ssEmailSkipMemPct=N skips success emails for jobs
+# that used >= N% of their reserved memory. An outlier notice (records moved
+# aside) is always emailed unless the mode is noEmail or requeueOnly.
 # ---------------------------------------------------------------------------
 _ss_sendmail() {   # <subject> <body>
-    [ "$lessEmail" = noEmail ] && { echo "noEmail: suppressed [$1]"; return 0; }
+    [ "$emailMode" = noEmail ] && { echo "noEmail: suppressed [$1]"; return 0; }
     echo -e "$2" | mail -s "$1" "$USER" 2>/dev/null && echo "email sent: $1" || echo "email not sent: $1"
 }
 
 alljobs="$smartSlurmLogDir/allJobs.txt"
 
-# ---- per-JOB email (default: every job, success or failure) ----
-# Carries the job log, errors, AI analysis and the mem/cpu plots (plus the
-# estimator's fit plots for this program when present).
-# To cut volume later: ssEmailSkipMemPct=N skips SUCCESS emails for jobs whose
-# peak memory used >= N% of what was reserved (well-sized jobs need no attention).
-# Failures are always emailed. Unset/0 = send all.
 memPct=0
 [[ "$srunM" =~ ^[0-9]+$ ]] && [[ "$totalM" =~ ^[0-9]+$ ]] && [ "$totalM" -gt 0 ] && memPct=$((srunM * 100 / totalM))
-skipJobEmail=""
-if [ -f "$succFile" ]; then
-    [ "$lessEmail" = noSuccEmail ] && skipJobEmail="noSuccEmail"
-    if [[ "${ssEmailSkipMemPct:-0}" =~ ^[0-9]+$ ]] && [ "${ssEmailSkipMemPct:-0}" -gt 0 ] && [ "$memPct" -ge "$ssEmailSkipMemPct" ]; then
-        skipJobEmail="memory use ${memPct}% >= ${ssEmailSkipMemPct}%"
-    fi
-else
-    toSend="Step $flag of sample '$effSample' FAILED ($jobStatus).\nRe-run the same command to continue -- SmartSlurm will resize and resubmit.\n\n$toSend"
+
+# ---- per-JOB email (allJobs / successJobOnly / failedJobOnly) ----
+# Carries the job log, errors, AI analysis and the mem/cpu plots (plus the
+# estimator's fit plots for this program when present).
+sendJobEmail=""
+case "$emailMode" in
+    allJobs)        sendJobEmail=1 ;;
+    successJobOnly) [ -f "$succFile" ] && sendJobEmail=1 ;;
+    failedJobOnly)  [ -f "$succFile" ] || sendJobEmail=1 ;;
+esac
+if [ -n "$sendJobEmail" ] && [ -f "$succFile" ] && [[ "${ssEmailSkipMemPct:-0}" =~ ^[0-9]+$ ]] \
+   && [ "${ssEmailSkipMemPct:-0}" -gt 0 ] && [ "$memPct" -ge "$ssEmailSkipMemPct" ]; then
+    echo "job email skipped: memory use ${memPct}% >= ${ssEmailSkipMemPct}% [$s]"
+    sendJobEmail=""
 fi
+[ -f "$succFile" ] || toSend="Step $flag of sample '$effSample' FAILED ($jobStatus).\nRe-run the same command to continue -- SmartSlurm will resize and resubmit.\n\n$toSend"
 toSend="Peak memory used: ${srunM}M of ${totalM}M reserved (${memPct}%).\n$toSend"
 if [ -n "$outlierMsg" ]; then
     toSend="$outlierMsg\n\n$toSend"
     s="Outlier-$s"
-    skipJobEmail=""   # always tell the user when records were moved
+    # always tell the user when records were moved aside
+    [ "$emailMode" != noEmail ] && [ "$emailMode" != requeueOnly ] && sendJobEmail=1
 fi
 
-if [ "$lessEmail" = noEmail ]; then
-    echo "noEmail: job email suppressed [$s]"
-elif [ -n "$skipJobEmail" ]; then
-    echo "job email skipped: $skipJobEmail [$s]"
-else
+if [ -n "$sendJobEmail" ]; then
     attach=()
     for f in $memPng $cpuPng $smartSlurmJobRecordDir/stats/$software.$ref.mem.png $smartSlurmJobRecordDir/stats/$software.$ref.time.png; do
         [ -s "$f" ] && attach+=(-a "$f")
     done
     echo -e "$toSend" | mail -s "$s" "${attach[@]}" "$USER" 2>/dev/null && echo "email sent: $s" || \
         { echo -e "$toSend" | mail -s "$s" "$USER" 2>/dev/null && echo "email sent without attachments: $s" || echo "email not sent: $s"; }
+else
+    echo "job email not sent (email mode $emailMode) [$s]"
 fi
 
-if [ -f "$succFile" ]; then
-
-    # ---- per-RUN efficiency email: fire once, when EVERY job has succeeded ----
-    # (A run with any failed sample does not get a "complete" email; its break
-    # warning covers it. Only a fully-successful run reports efficiency.)
-    if [ "$lessEmail" != noSuccEmail ] && [ "$lessEmail" != noEmail ] && [ -f "$alljobs" ]; then
-        total=`awk 'NR>1 && NF>=3' "$alljobs" | wc -l`
-        succN=0
-        while read -r fl; do
-            [ -z "$fl" ] && continue
-            [ -e "$smartSlurmLogDir/$fl.success" ] && succN=$((succN+1))
-        done < <(awk 'NR>1 && NF>=3{print $3}' "$alljobs")
-        # Fire only from a DOWNSTREAM/terminal step -- one that depends on an
-        # earlier step (the flag's 2nd field, the dependency, is non-zero). A
-        # source producer (dep field 0) is excluded, so it cannot prematurely
-        # trigger the run email when allJobs.txt is still being populated (as in
-        # the synchronous harness, where submit == run). On real Slurm allJobs is
-        # complete up front, so succN>=total already pins the true last job; this
-        # guard just makes the harness agree.
-        # Standalone jobs (flag not of the pipeline form step.dep.name) never
-        # trigger it: without a dot, cut would return the whole flag as "dep".
-        myDep=0
-        [[ "$flag" =~ ^[0-9]+\.([^.]+) ]] && myDep="${BASH_REMATCH[1]}"
-        runMark="$smartSlurmLogDir/.emailed.effrun"
-        if [ "${total:-0}" -ge 1 ] && [ "${succN:-0}" -ge "${total:-0}" ] && [ "${myDep:-0}" != 0 ] && [ ! -f "$runMark" ]; then
-            : > "$runMark"
-            effTable=`"$(dirname "$0")/checkRunGrid" --efficiency --no-color --log "$smartSlurmLogDir" 2>/dev/null`
-            _ss_sendmail "SmartSlurm run complete: resource efficiency" \
-                "All jobs in this run finished successfully.\n\n$effTable\n\nSee 'checkRun' (press e) for the per-step breakdown."
+# ---- per-SAMPLE alerts (emailPerSample) ----
+if [ "$emailMode" = emailPerSample ]; then
+    if [ ! -f "$succFile" ]; then
+        # sample BREAK: one warning per sample (first failure wins)
+        brkMark="$smartSlurmLogDir/.emailed.break.$effSample"
+        if [ ! -f "$brkMark" ]; then
+            : > "$brkMark"
+            _ss_sendmail "SmartSlurm FAIL: sample $effSample ($jobStatus)" "$toSend"
+        else
+            echo "break already emailed for sample $effSample"
         fi
+    elif [ -f "$alljobs" ]; then
+        # sample COMPLETE: fire from the terminal (highest-step) job of the
+        # sample, so one confirmation per sample. Sample + step are read from
+        # allJobs.txt (col 3 = flag -> step; col 6 = inputs -> sample) the same
+        # way effSample is derived, so both sides agree.
+        myStep="${flag%%.*}"
+        maxStep=`awk -v s="$effSample" '
+            function samp(inp,   x,p,n){ sub(/^,/,"",inp); sub(/ .*/,"",inp); split(inp,x,","); n=split(x[1],p,"/"); return p[n] }
+            NR>1 && NF>=6 { st=$3; sub(/\..*/,"",st); smp=samp($6); if(smp==""||smp=="none") smp=$4; if(smp==s && st+0>m) m=st+0 }
+            END { print m+0 }' "$alljobs"`
+        cmpMark="$smartSlurmLogDir/.emailed.done.$effSample"
+        if [ "${myStep:-0}" -ge "${maxStep:-0}" ] && [ ! -f "$cmpMark" ]; then
+            : > "$cmpMark"
+            _ss_sendmail "SmartSlurm done: sample $effSample completed" \
+                "Sample '$effSample' completed successfully (through step $myStep).\n\nSee 'checkRun' (press e) for resource efficiency."
+        fi
+    fi
+fi
+
+# ---- per-RUN efficiency email (emailPerSample / allJobs): once, when EVERY job succeeded ----
+# (A run with any failed sample does not get a "complete" email; its failure
+# emails cover it. Only a fully-successful run reports efficiency.)
+if [ -f "$succFile" ] && { [ "$emailMode" = emailPerSample ] || [ "$emailMode" = allJobs ]; } && [ -f "$alljobs" ]; then
+    total=`awk 'NR>1 && NF>=3' "$alljobs" | wc -l`
+    succN=0
+    while read -r fl; do
+        [ -z "$fl" ] && continue
+        [ -e "$smartSlurmLogDir/$fl.success" ] && succN=$((succN+1))
+    done < <(awk 'NR>1 && NF>=3{print $3}' "$alljobs")
+    # Fire only from a DOWNSTREAM/terminal step -- one that depends on an
+    # earlier step (the flag's 2nd field, the dependency, is non-zero). A
+    # source producer (dep field 0) is excluded, so it cannot prematurely
+    # trigger the run email when allJobs.txt is still being populated (as in
+    # the synchronous harness, where submit == run). On real Slurm allJobs is
+    # complete up front, so succN>=total already pins the true last job; this
+    # guard just makes the harness agree.
+    # Standalone jobs (flag not of the pipeline form step.dep.name) never
+    # trigger it: without a dot, cut would return the whole flag as "dep".
+    myDep=0
+    [[ "$flag" =~ ^[0-9]+\.([^.]+) ]] && myDep="${BASH_REMATCH[1]}"
+    runMark="$smartSlurmLogDir/.emailed.effrun"
+    if [ "${total:-0}" -ge 1 ] && [ "${succN:-0}" -ge "${total:-0}" ] && [ "${myDep:-0}" != 0 ] && [ ! -f "$runMark" ]; then
+        : > "$runMark"
+        effTable=`"$(dirname "$0")/checkRunGrid" --efficiency --no-color --log "$smartSlurmLogDir" 2>/dev/null`
+        _ss_sendmail "SmartSlurm run complete: resource efficiency" \
+            "All jobs in this run finished successfully.\n\n$effTable\n\nSee 'checkRun' (press e) for the per-step breakdown."
     fi
 fi
 sleep 5

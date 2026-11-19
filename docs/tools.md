@@ -36,7 +36,7 @@
 ```
 runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--pipeline NAME]
               [--sbatch-options "SBATCH_OPTIONS"] [--mode dryrun] [--lint]
-              [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]
+              [--email MODE] [--special checkpoint|excludeFailedNodes]
               [-v|--verbose | -q|--quiet]
 ```
 
@@ -51,7 +51,7 @@ Arguments are **named options**:
 | `--sbatch-options "SBATCH_OPTIONS"` | Default sbatch options for steps that don't specify their own. | No | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
 | `--mode dryrun` | Dry run only (builds the pipeline and logs planned jobs; no Slurm submission). | No | run (submit) |
 | `--lint` | Validate block structure and exit — no conversion driver is run, nothing is submitted. | No | off |
-| `--email noEmail\|noSuccEmail` | Silence all emails, or success emails only. | No | all emails |
+| `--email MODE` | How you are emailed: `emailPerSample`, `allJobs`, `successJobOnly`, `failedJobOnly`, `requeueOnly` or `noEmail`. See [Notifications](core-concepts.md#notifications-emails). | No | `emailPerSample` |
 | `--special checkpoint\|excludeFailedNodes` | Enable checkpointing, or exclude nodes where this job type failed before. | No | none |
 | `-v\|--verbose` | Full firehose output (per-job "Submitted batch job N" + the jobs table). | No | off |
 | `-q\|--quiet` | Errors only; silent on success. | No | off |

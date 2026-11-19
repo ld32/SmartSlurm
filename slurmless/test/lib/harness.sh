@@ -366,7 +366,7 @@ stat_val() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1; }
 
 # run the pipeline. usage: ss_run_pipeline "<script args>" "<sbatch opts>" [--dryrun]
 # writes combined output to $LAST_RUN_LOG, returns rAP's exit code.
-ss_run_pipeline() {
+ss_run_pipeline() {   # extra runAsPipeline options: SS_RAP_ARGS="--email allJobs"
   local script="$1" opts="$2" mode="${3:-}"
   export LAST_RUN_LOG="${MOCK_SLURM_STATE%/*}/rap.log"
   local mflag=()
@@ -377,7 +377,7 @@ ss_run_pipeline() {
   # test (original user workflow in wf-mode + its rAP port) from crosstalking through
   # the shared mock. (Each arm must still use its own ss_new_workspace / state.)
   SS_WF_MODE= bash "$SMARTSLURM_ROOT/bin/runAsPipeline" \
-       --script "$script" --sbatch-options "$opts" --tmp noTmp "${mflag[@]}" \
+       --script "$script" --sbatch-options "$opts" --tmp noTmp "${mflag[@]}" ${SS_RAP_ARGS:-} \
        >"$LAST_RUN_LOG" 2>&1
 }
 
