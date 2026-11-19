@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# jrRepair.sh -- one-time, MANUAL converter of a legacy (v1) jobRecord store to
+# jobRecordsRepair.sh -- one-time, MANUAL converter of a legacy (v1) jobRecord store to
 # the v2 schema. Run once per store after upgrading SmartSlurm.
 #
-#   jrRepair.sh [jobRecordDir]     # default: $smartSlurmJobRecordDir
-#   jrRepair.sh --dry-run [dir]    # report what would change; write nothing
-#   jrRepair.sh --check [dir]      # health report only (schema + row census +
+#   jobRecordsRepair.sh [jobRecordDir]     # default: $smartSlurmJobRecordDir
+#   jobRecordsRepair.sh --dry-run [dir]    # report what would change; write nothing
+#   jobRecordsRepair.sh --check [dir]      # health report only (schema + row census +
 #                                  # unrecognized rows); writes nothing, exits
 #                                  # non-zero if any store has unrecognized rows
 #
@@ -21,7 +21,7 @@
 #   status(9) user(10) node=""  epoch(21)  isoDate=old date(20)  flag(14)
 # Dropped: memDefault timeDefault saccMem extraMem extraTime ratioM ratioT.
 # Rows that are not clean 21-field v1 rows are NOT converted: they are copied to
-# <name>.jrRepair.skipped.<ts> and counted, so nothing is silently lost.
+# <name>.jobRecordsRepair.skipped.<ts> and counted, so nothing is silently lost.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 . "$(dirname "$0")/jobRecordSchema.sh"
@@ -34,7 +34,7 @@ for a in "$@"; do
         --dry-run) dryrun=1 ;;
         --check)   check=1 ;;
         -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        -*) echo "jrRepair: unknown option: $a" >&2; exit 2 ;;
+        -*) echo "jobRecordsRepair: unknown option: $a" >&2; exit 2 ;;
         *)  dir=$a ;;
     esac
 done
@@ -44,20 +44,20 @@ if [ -z "$dir" ]; then
     cfg="$(dirname "$0")/../config/config.txt"
     [ -f "$cfg" ] && dir="$(. "$cfg" 2>/dev/null; echo "${smartSlurmJobRecordDir:-}")"
 fi
-[ -n "$dir" ] || { echo "jrRepair: no jobRecord dir (pass one, or set smartSlurmJobRecordDir)" >&2; exit 2; }
-[ -d "$dir" ] || { echo "jrRepair: not a directory: $dir" >&2; exit 2; }
+[ -n "$dir" ] || { echo "jobRecordsRepair: no jobRecord dir (pass one, or set smartSlurmJobRecordDir)" >&2; exit 2; }
+[ -d "$dir" ] || { echo "jobRecordsRepair: not a directory: $dir" >&2; exit 2; }
 
 # --check: read-only health report (schema version + row census + unrecognized
 # rows) for every store in the dir. Writes nothing. Exits non-zero if any store
 # has unrecognized rows, so it can gate CI / a cluster audit.
 if [ -n "$check" ]; then
-    echo "jrRepair: health check of $dir"
+    echo "jobRecordsRepair: health check of $dir"
     rc=0
     for s in jobRecord.txt jobRecord.oom.oot.over.txt; do
         [ -e "$dir/$s" ] || continue
-        jrLint "$dir/$s" || rc=1
+        jobRecordsLint "$dir/$s" || rc=1
     done
-    [ "$rc" = 0 ] && echo "jrRepair: all stores clean." || echo "jrRepair: some stores have unrecognized rows (see above)."
+    [ "$rc" = 0 ] && echo "jobRecordsRepair: all stores clean." || echo "jobRecordsRepair: some stores have unrecognized rows (see above)."
     exit $rc
 fi
 
@@ -65,30 +65,30 @@ fi
 convertOne() {
     local f=$1 ver ts bak out skip conv total
     [ -f "$f" ] || return 0
-    ver=$(jrSchemaVersion "$f")
+    ver=$(jobRecordsSchemaVersion "$f")
     case "$ver" in
         2) echo "  $f: already v2 -- skipped"; return 0 ;;
         0) echo "  $f: unrecognized header -- NOT touched (inspect manually)"; return 0 ;;
     esac
     ts=$(date +%Y-%m-%d_%H-%M-%S)
-    out="$f.jrRepair.new.$$"
-    skip="$f.jrRepair.skipped.$ts"
+    out="$f.jobRecordsRepair.new.$$"
+    skip="$f.jobRecordsRepair.skipped.$ts"
 
-    # Divert only rows jrEmitV2 actually drops (genuine junk): NOT a header, NOT an
-    # already-v2 row (17 fields), NOT a v1 data row (numeric jobID, 20+ fields --
+    # Divert only rows jobRecordsEmitV2 actually drops (genuine junk): NOT a header, NOT an
+    # already-v2 row (17 or 18 fields), NOT a v1 data row (numeric jobID, 20+ fields --
     # both the 20-col no-epoch and 21-col epoch variants convert).
     # (The old test diverted every non-21-field row, which wrongly skipped v2 rows.)
     # The v2 header is ONLY "pipeline,step,..." ($1==pipeline AND $2==step); a data
     # row whose pipeline is literally "pipeline" ($2 is a step name) must still be
-    # diverted if junk -- matching jrEmitV2's header test so the counts agree.
+    # diverted if junk -- matching jobRecordsEmitV2's header test so the counts agree.
     awk -F, 'NF>0 && ($1!="pipeline" || $2!="step") && $1!="1jobID" \
-             && !($1 !~ /^[0-9]+$/ && NF==17) \
+             && !($1 !~ /^[0-9]+$/ && (NF==17 || NF==18)) \
              && !($1 ~ /^[0-9]+$/ && NF>=20)' "$f" > "$skip"
     skip_n=$(wc -l < "$skip"); skip_n=${skip_n//[^0-9]/}
     [ "${skip_n:-0}" -gt 0 ] || rm -f "$skip"
 
     # Convert via the shared shim (single source of the v1->v2 mapping).
-    jrEmitV2 "$f" > "$out"
+    jobRecordsEmitV2 "$f" > "$out"
     conv=$(( $(wc -l < "$out") - 1 ))   # minus the header line
     total=$((conv + ${skip_n:-0}))
 
@@ -107,9 +107,9 @@ convertOne() {
     return 0
 }
 
-echo "jrRepair: ${dryrun:+(dry-run) }scanning $dir"
+echo "jobRecordsRepair: ${dryrun:+(dry-run) }scanning $dir"
 rc=0
 convertOne "$dir/jobRecord.txt"              || rc=1
 convertOne "$dir/jobRecord.oom.oot.over.txt" || rc=1
-echo "jrRepair: done."
+echo "jobRecordsRepair: done."
 exit $rc

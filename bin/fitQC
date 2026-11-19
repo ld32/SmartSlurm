@@ -1,0 +1,767 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# fitQC -- estimation quality-control for the SmartSlurm jobRecord.
+#
+# A standalone, on-cluster, pure bash+awk tool that grades the ESTIMATOR'S model and
+# flags the outliers that actually affect it. Per (pipeline, step, refGroup) it mirrors
+# estimateResource/calculateMemTime exactly: the MAX-per-inputSize envelope -> an OLS
+# line, LINE when the slope is meaningfully positive else a CONST (p93) model, wrapped
+# in a p93 relative-residual margin. It then reports, per group:
+#   model     -- LINE (size-scaled) or CONST (flat p93), as the estimator would choose
+#   cover%    -- share of observed jobs the estimate would hold (target p93)
+#   waste%    -- median reservation left unused (over-allocation)
+#   infl      -- the single row whose removal most tightens the estimate WITHOUT
+#                dropping coverage below target (the outlier that affects estimation);
+#                low points the estimator never sees are ignored.
+# awk does the MATH; gnuplot (--plot) is the only thing that draws.
+#
+# Two views, so a store with thousands of rows and dozens of steps stays legible:
+#   fitQC                 L1 triage: one line per group (by pipeline), worst first.
+#   fitQC P/S/R | N       L2 detail: model + coverage/waste + rows by influence.
+# Group keys are pipeline/step/refGroup (copy from L1), or the row number shown there.
+#
+# A pure bash+awk companion to the off-cluster bin/reviewJobRecords.py: fitQC runs
+# on the cluster with no Python. The two run in PARALLEL -- fitQC does not replace
+# reviewJobRecords.py, which stays the off-cluster home for heavier analysis.
+# ---------------------------------------------------------------------------
+set -u
+
+self=$(basename "$0")
+usage() {
+    cat >&2 <<EOF
+$self -- jobRecord estimation QC (grade the estimator's fit; flag inflating outliers)
+
+  Mirrors the estimator (estimateResource/calculateMemTime): per (pipeline,step,ref)
+  it fits the MAX-per-inputSize envelope, picks LINE vs CONST, and wraps it in a p${targetPct}
+  margin. It then reports, per group, cover% (jobs the estimate would hold), waste%
+  (reservation left unused), and the row whose removal most tightens the estimate
+  WITHOUT dropping coverage -- the outlier that actually affects estimation quality.
+
+  $self -i                      interactive browser (pick a group, inspect, remove)
+  $self                         triage: groups by pipeline, worst first, numbered
+  $self PIPE/STEP/REF ... | N   detail for one or more groups (by key or row #)
+  $self --pipeline P --step S --ref R   detail by explicit fields
+  $self PIPE/STEP/REF --remove 1004,1009   drop those jobIDs, re-estimate
+  $self PIPE/STEP/REF --auto    iteratively remove inflating rows (coverage-safe)
+
+Options:
+  --store FILE     read this jobRecord file (default: from config.txt)
+  --metric mem|time   which fit to inspect (default: mem)
+  --worst N        limit rows: top-N groups (triage) / top-N points (detail)
+  --resid-cut X    (vestigial) accepted and validated for back-compat; no longer
+                   drives --auto, which is now coverage-based. 'auto' or a positive number.
+  --r2-below X     (vestigial) accepted for back-compat; low-R2 is no longer the
+                   headline (envelope-R2 is shown in per-group detail for LINE groups)
+  --min-n N        a group with fewer than N distinct input sizes is marked 'thin'
+                   (default 3); the estimator pools thin groups across pipelines
+  --pipeline P     triage/detail: restrict to pipeline P (substring)
+  --step S         restrict to step S (substring)
+  --ref R          restrict to ref/refGroup R (substring)
+  --all            triage: also show healthy / thin groups (hidden by default)
+  --tsv            triage: machine-readable, one line per group, tab-separated
+                   (key, n, nSizes, model, cover%, waste%, inflJob, inflMrec, note)
+  --plot           detail: add a gnuplot scatter + fit line above the table
+  --gfx MODE       plot backend: dumb (ASCII, universal), sixel or kitty (true
+                   raster line, needs a capable terminal). Default: auto (kitty if
+                   detected, else dumb)
+  --no-color       disable red highlighting of suspected outliers (auto-off when
+                   output is piped/redirected)
+  --remove IDS     remove these comma-separated jobIDs from the one named group
+  --auto           iteratively remove the most estimation-inflating row (recovers the
+                   most allocation) while coverage stays >= p${targetPct}; stops at
+                   --max-remove or when the rest are load-bearing for coverage
+  --remove-worst   alias for --auto
+  --max-remove N   cap for --auto (default 5)
+  --dry-run        preview --remove/--auto on a scratch copy; write nothing
+  -h, --help       this help
+
+How to read the triage (one row per pipeline/step/refGroup; only flagged groups
+show by default -- the rest estimate fine; add --all to see them):
+  model    LINE = estimate scales with input size;  CONST = flat p${targetPct} of usage
+  cover%   share of past jobs the estimate would have held (target p${targetPct});
+           below it => the estimate is too low for some jobs = OOM risk
+  waste%   median reservation left unused = over-allocation
+  infl     job:M  -- one row whose removal recovers ~M of allocation, coverage-safe
+  note     UNDER-COVER (OOM risk) | over-alloc (waste) | infl (removable) |
+           thin (too few sizes to fit) | merged-steps (two steps fit as one)
+
+How to act on each flag:
+  infl / over-alloc with an infl row  ->  fitQC <#> --auto      (remove inflating row(s))
+  UNDER-COVER                         ->  model under-predicts; do NOT remove rows --
+                                          it needs more margin / a model fix
+  thin                                ->  nothing here; the estimator pools cross-pipeline
+  merged-steps                        ->  give the steps distinct names if they differ
+  always inspect first:  fitQC <#>    (ranks rows by influence: INFL vs LOAD-BEARING)
+
+Consequences of --remove / --auto:
+  Rows are DELETED from the jobRecord store (backed up to jobRecord.back.<ts>.txt
+  first) and only from the named group, then the fit is recomputed. This changes the
+  estimate the scheduler uses for FUTURE jobs in that group -- removing inflaters
+  gives a tighter reservation (less waste); it never touches running jobs. --auto
+  only removes rows that keep coverage >= p${targetPct}, so it cuts waste without
+  adding OOM risk. Preview any removal with --dry-run (writes nothing).
+EOF
+    exit "${1:-0}"
+}
+
+# --- schema SSOT (jobRecordsEmitV2, JOB_RECORDS_AWK_COLMAP, jobRecordsRefClass, JOB_RECORDS_REF_CLASS) --------
+_bindir=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=/dev/null
+. "$_bindir/jobRecordSchema.sh" 2>/dev/null || { echo "$self: cannot source jobRecordSchema.sh" >&2; exit 1; }
+
+# --- args ------------------------------------------------------------------
+# targetPct is referenced by usage() (which can fire on -h DURING arg parsing), so set
+# it before the loop; floorAbs depends on the parsed --metric so it is set afterwards.
+targetPct="${targetFirstPassPct:-93}"
+store=""; metric="mem"; worst=0; residCut=auto; r2below=""; minN=3
+fPipe=""; fStep=""; fRef=""; showAll=0; doPlot=0
+removeIDs=""; autoRemove=0; maxRemove=5; dryRun=0; useColor=auto; interactive=0; gfx=auto; tsv=0
+groups=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --store)     store=$2; shift 2;;
+        --metric)    metric=$2; shift 2;;
+        --worst)     worst=$2; shift 2;;
+        --resid-cut) residCut=$2; shift 2
+                     # Must be 'auto' or a POSITIVE number. A non-numeric/empty/negative value
+                     # is coerced to 0 by awk, and 0 ITSELF makes --auto treat EVERY nonzero
+                     # residual as an outlier and delete legitimate rows -- so reject 0 too.
+                     if [ "$residCut" != auto ]; then
+                       if ! [[ "$residCut" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk "BEGIN{exit !($residCut>0)}"; then
+                         echo "fitQC: --resid-cut must be 'auto' or a POSITIVE number, got '$residCut'" >&2; exit 2
+                       fi
+                     fi ;;
+        --r2-below)  r2below=$2; shift 2;;
+        --min-n)     minN=$2; shift 2;;
+        --pipeline)  fPipe=$2; shift 2;;
+        --step|--program) fStep=$2; shift 2;;
+        --ref)       fRef=$2; shift 2;;
+        --all)       showAll=1; shift;;
+        --tsv)       tsv=1; shift;;
+        --plot)      doPlot=1; shift;;
+        --gfx)       gfx=$2; shift 2;;
+        --no-color)  useColor=off; shift;;
+        -i|--interactive) interactive=1; shift;;
+        --remove)    removeIDs=$2; shift 2;;
+        --auto|--remove-worst) autoRemove=1; shift;;
+        --max-remove) maxRemove=$2; shift 2;;
+        --dry-run)   dryRun=1; shift;;
+        -h|--help)   usage 0;;
+        --)          shift; while [ $# -gt 0 ]; do groups+=("$1"); shift; done;;
+        -*)          echo "$self: unknown option: $1" >&2; usage 1;;
+        *)           groups+=("$1"); shift;;
+    esac
+done
+case "$metric" in mem|time) ;; *) echo "$self: --metric must be mem or time" >&2; exit 1;; esac
+
+# Color: auto = on only when stdout is a terminal (so pipes/redirects/the harness
+# get plain text); --no-color forces off. Suspected outliers (over the cut) show red.
+[ "$useColor" = auto ] && { [ -t 1 ] && useColor=on || useColor=off; }
+if [ "$useColor" = on ]; then C_RED=$'\033[31m'; C_OFF=$'\033[0m'; else C_RED=; C_OFF=; fi
+
+# detect_sixel: ask the terminal for its Primary Device Attributes and look for
+# capability 4 (sixel) in the reply. Safe: only on a real TTY, with a short read
+# timeout so a terminal that stays silent (or tmux/screen swallowing the query)
+# just falls through. Consumes the whole reply (up to the 'c' terminator) so no
+# stray bytes leak into later prompts.
+detect_sixel() {
+    [ -t 1 ] && [ -e /dev/tty ] || return 1
+    local reply f oldifs
+    printf '\033[c' > /dev/tty
+    # shellcheck disable=SC2034  # 'c' is the -d delimiter (DA reply ends in 'c'), not a var
+    IFS= read -rs -t 1 -d c reply < /dev/tty 2>/dev/null || return 1
+    reply=${reply#*\?}
+    oldifs=$IFS; IFS=';'
+    for f in $reply; do [ "$f" = 4 ] && { IFS=$oldifs; return 0; }; done
+    IFS=$oldifs; return 1
+}
+
+# Plot backend. auto -> kitty when running inside kitty (env is reliable), else
+# sixel when the terminal advertises it (probe), else the ASCII dumb terminal
+# (universal). --gfx forces a specific backend and skips the probe.
+if [ "$gfx" = auto ]; then
+    if [ -n "${KITTY_WINDOW_ID:-}" ]; then gfx=kitty
+    elif detect_sixel;              then gfx=sixel
+    else                                 gfx=dumb; fi
+fi
+
+# --- locate the store ------------------------------------------------------
+if [ -z "$store" ]; then
+    if [ -f ~/.smartSlurm/config/config.txt ]; then
+        # shellcheck source=/dev/null
+        . ~/.smartSlurm/config/config.txt 2>/dev/null
+    elif [ -f "$_bindir/../config/config.txt" ]; then
+        # shellcheck source=/dev/null
+        . "$_bindir/../config/config.txt" 2>/dev/null
+    fi
+    store="${smartSlurmJobRecordDir:-}/jobRecord.txt"
+fi
+[ -s "$store" ] || { echo "$self: jobRecord not found or empty: $store" >&2; exit 1; }
+if [ "$(jobRecordsSchemaVersion "$store")" != 2 ]; then
+    echo "$self: $store is not the v2 schema. Convert it first with jobRecordsRepair.sh." >&2
+    exit 1
+fi
+
+metricCol=memUsed; [ "$metric" = time ] && metricCol=timeUsed
+# Coverage target = the estimator's first-pass percentile (calculateMemTime's
+# targetFirstPassPct, default 93). Estimate floor mirrors calculateMemTime (100 M /
+# 10 min). Both feed the QC so fitQC grades the SAME allocation the estimator submits.
+floorAbs=100; [ "$metric" = time ] && floorAbs=10
+
+# --- the engine: one awk pass builds per-group points, then fits + diagnoses.
+# Mirrors jobRecordsRefClass() for the refGroup (from JOB_RECORDS_REF_CLASS) so grouping matches
+# the estimator exactly. Statistics: OLS y=a*x+b, R2, STDFIT=sqrt(SSE/(n-2)),
+# leverage h=1/n+(x-xbar)^2/Sxx, studentized residual e/(s*sqrt(1-h)),
+# Cook's D = (e^2/(p*s^2))*(h/(1-h)^2) with p=2.
+# engine MODE WANTKEYS : MODE is triage|detail|emit; emit prints machine-readable
+# per-point diagnostics (one math implementation shared with the --remove loop).
+engine() {
+  jobRecordsEmitV2 "$store" | awk -F, \
+    -v mcol="$metricCol" -v refmap="$JOB_RECORDS_REF_CLASS" \
+    -v mode="$1" \
+    -v want="$2" -v rc="$residCut" -v worst="$worst" -v r2below="$r2below" \
+    -v minN="$minN" -v fp="$fPipe" -v fs="$fStep" -v fr="$fRef" -v showAll="$showAll" \
+    -v red="$C_RED" -v off="$C_OFF" -v P="$targetPct" \
+    "$JOB_RECORDS_AWK_COLMAP"'
+    function refClass(r,   i,a,kv){
+        if(r=="none"||r=="") return (r=="")?"":"none"
+        for(i in RM) if(i==r) return RM[i]
+        return r
+    }
+    BEGIN{
+        n=split(refmap,A," "); for(i=1;i<=n;i++){ split(A[i],kv,"="); RM[kv[1]]=kv[2] }
+        nw=split(want,W," "); for(i=1;i<=nw;i++) WANT[W[i]]=1
+        if(P==""||P+0<=0) P=93           # coverage target percentile (estimator targetFirstPassPct)
+        FLR=(mcol=="memUsed"?100:10)      # estimate floor (M / min), mirrors calculateMemTime
+        RULE="──────────────────────────"   # short pipeline-header rule (display only)
+        UNIT=(mcol=="memUsed")?"M":"min"      # recovery/estimate unit for the action column
+    }
+    # -------- the estimator model, mirrored (estimateResource + calculateMemTime) --
+    # pctl: p-th percentile (value) of arr[1..mm], ceil index like the estimator awk.
+    function pctl(arr,mm,p,   b,j,i2,t_){ if(mm<1)return 0; for(j=1;j<=mm;j++)b[j]=arr[j]
+        for(j=1;j<=mm;j++)for(i2=j+1;i2<=mm;i2++)if(b[i2]<b[j]){t_=b[j];b[j]=b[i2];b[i2]=t_}
+        i2=int(p/100*mm+0.9999); if(i2<1)i2=1; if(i2>mm)i2=mm; return b[i2] }
+    function medianArr(arr,mm,   b,j,i2,t_){ if(mm<1)return 0; for(j=1;j<=mm;j++)b[j]=arr[j]
+        for(j=1;j<=mm;j++)for(i2=j+1;i2<=mm;i2++)if(b[i2]<b[j]){t_=b[j];b[j]=b[i2];b[i2]=t_}
+        return b[int((mm+1)/2)] }
+    # envmodel(key,rm): build the estimator model for group key EXCLUDING index rm
+    # (0=none). max-per-inputSize envelope -> OLS line; LINE if slope meaningfully>0 else
+    # CONST (p-th pctile of usage); margin frac = p-th pctile of relative residuals,
+    # clamped >=0. Sets gA,gB,gMODEL,gFRAC,gCB,gNS,gXmax,gENVR2.
+    function envmodel(key,rm,   i,x,q,ne,sx,sy,sxx,sxy,xb,Sxx,ab,mm,ybar,sse,syy,f){
+        split("",EM); split("",VT); split("",RELR)   # clear + force array type (reused across groups)
+        for(i=1;i<=cnt[key];i++){ if(i==rm)continue; x=X[key,i]; if(!((x) in EM)||Y[key,i]>EM[x])EM[x]=Y[key,i] }
+        ne=0;sx=sy=sxx=sxy=0;gXmax=0
+        for(q in EM){ ne++; sx+=q; sy+=EM[q]; sxx+=q*q; sxy+=q*EM[q]; if(q+0>gXmax)gXmax=q+0 }
+        gNS=ne
+        if(ne<=1){ gA=0; gB=(ne?sy:0); gENVR2=1 }
+        else{ ybar=sy/ne; xb=sx/ne; Sxx=sxx-sx*xb
+              if(Sxx<=0){ gA=0; gB=ybar } else { gA=(sxy-sx*ybar)/Sxx; gB=ybar-gA*xb }
+              sse=0; syy=0
+              for(q in EM){ f=gA*q+gB; sse+=(EM[q]-f)*(EM[q]-f); syy+=(EM[q]-ybar)*(EM[q]-ybar) }
+              gENVR2=(syy>0)?1-sse/syy:1 }
+        ab=(gB<0?-gB:gB); if(ab<1)ab=1
+        gMODEL=(gA>0 && gA*gXmax>=1e-6*ab)?"LINE":"CONST"
+        mm=0; for(i=1;i<=cnt[key];i++){ if(i==rm)continue; VT[++mm]=Y[key,i] } gCB=pctl(VT,mm,P)
+        if(gMODEL=="LINE"){ mm=0; for(i=1;i<=cnt[key];i++){ if(i==rm)continue; f=gA*X[key,i]+gB; if(f>0)RELR[++mm]=(Y[key,i]-f)/f }
+            f=pctl(RELR,mm,P); gFRAC=(f<0?0:f) } else gFRAC=0
+    }
+    function estv(x,   f){ if(gMODEL=="LINE"){ f=(gA*x+gB)*(1+gFRAC); return f<FLR?FLR:f } return gCB<FLR?FLR:gCB }
+    function central(x){ return (gMODEL=="LINE")? gA*x+gB : gCB }   # model pre-margin prediction
+    # computeGroup(key): full-model coverage/waste/typical-estimate + best influence.
+    function computeGroup(key,   i,e,w,mm,cov,medX){
+        envmodel(key,0); C_model=gMODEL
+        cov=0; mm=0
+        for(i=1;i<=cnt[key];i++){ e=estv(X[key,i]); EFG[key,i]=e; if(Y[key,i]<=e+0.001)cov++; w=(e-Y[key,i])/e; if(w<0)w=0; WW[++mm]=w }
+        C_cov=(cnt[key]>0)?100*cov/cnt[key]:0
+        C_waste=100*medianArr(WW,mm)
+        mm=0; for(i=1;i<=cnt[key];i++) XT[++mm]=X[key,i]
+        medX=medianArr(XT,mm); C_typ=estv(medX)
+        bestInfluence(key); C_brec=BI_rec; C_bj=BI_j
+    }
+    # bestInfluence(key): the row whose removal recovers the most TYPICAL allocation
+    # (median over the others of est_full-est_without_r) while keeping coverage>=P.
+    function bestInfluence(key,   r,i,en,d,mm,covc,medRec,covp){
+        BI_rec=0; BI_j="-"
+        for(r=1;r<=cnt[key];r++){ envmodel(key,r)
+            mm=0; covc=0
+            for(i=1;i<=cnt[key];i++){ if(i==r)continue; en=estv(X[key,i]); d=EFG[key,i]-en; DW[++mm]=(d>0?d:0); if(Y[key,i]<=en+0.001)covc++ }
+            medRec=medianArr(DW,mm); covp=(cnt[key]>1)?100*covc/(cnt[key]-1):100
+            if(medRec>BI_rec && covp>=P){ BI_rec=medRec; BI_j=JOB[key,r] }
+        }
+        envmodel(key,0)
+    }
+    # rowInfluence(key): per-row recovery RREC[i], coverage-if-removed RCOV[i], and
+    # whether the row is an envelope max at its size RENV[i]. Leaves the full model set.
+    function rowInfluence(key,   r,i,en,d,mm,covc,x,q){
+        envmodel(key,0)
+        for(i=1;i<=cnt[key];i++) EFG[key,i]=estv(X[key,i])
+        split("",EMX)
+        for(i=1;i<=cnt[key];i++){ x=X[key,i]; if(!((x) in EMX)||Y[key,i]>EMX[x])EMX[x]=Y[key,i] }
+        for(i=1;i<=cnt[key];i++) RENV[i]=(Y[key,i]==EMX[X[key,i]])?1:0
+        for(r=1;r<=cnt[key];r++){ envmodel(key,r)
+            mm=0; covc=0
+            for(i=1;i<=cnt[key];i++){ if(i==r)continue; en=estv(X[key,i]); d=EFG[key,i]-en; DW[++mm]=(d>0?d:0); if(Y[key,i]<=en+0.001)covc++ }
+            RREC[r]=medianArr(DW,mm); RCOV[r]=(cnt[key]>1)?100*covc/(cnt[key]-1):100
+        }
+        envmodel(key,0)
+    }
+    function swapS(a,b,   t){
+        t=SKEY[a];SKEY[a]=SKEY[b];SKEY[b]=t; t=Sn[a];Sn[a]=Sn[b];Sn[b]=t
+        t=SNS[a];SNS[a]=SNS[b];SNS[b]=t; t=SMODEL[a];SMODEL[a]=SMODEL[b];SMODEL[b]=t
+        t=SCOV[a];SCOV[a]=SCOV[b];SCOV[b]=t; t=SWASTE[a];SWASTE[a]=SWASTE[b];SWASTE[b]=t
+        t=SBREC[a];SBREC[a]=SBREC[b];SBREC[b]=t; t=SBJ[a];SBJ[a]=SBJ[b];SBJ[b]=t
+        t=SNOTE[a];SNOTE[a]=SNOTE[b];SNOTE[b]=t; t=SUNDER[a];SUNDER[a]=SUNDER[b];SUNDER[b]=t
+        t=SINFL[a];SINFL[a]=SINFL[b];SINFL[b]=t; t=SACT[a];SACT[a]=SACT[b];SACT[b]=t
+    }
+    # Accept ONLY a finite non-negative decimal. Guards against values like inf /
+    # Infinity / 1e400(overflow) / 0x10 that gawk coerces to 0 but mawk coerces to
+    # +inf -- which would silently poison the fit and flip the outlier/removal verdict
+    # between awks (and could delete legitimate rows under the default mawk). A row
+    # with a non-numeric inputSize or metric is skipped identically under both awks.
+    function isnum(x){ return (x ~ /^[0-9]+(\.[0-9]+)?$/) }
+    $(col["status"])=="COMPLETED" && isnum($(col["inputSize"])) && isnum($(col[mcol])) && $(col["inputSize"])+0>0 {
+        pipe=$(col["pipeline"]); step=$(col["step"]); rg=refClass($(col["ref"]))
+        key=pipe"/"step"/"rg
+        if(fp!="" && index(pipe,fp)==0) next
+        if(fs!="" && index(step,fs)==0) next
+        if(fr!="" && index(rg,fr)==0 && index($(col["ref"]),fr)==0) next
+        i=++cnt[key]
+        X[key,i]=$(col["inputSize"])+0; Y[key,i]=$(col[mcol])+0
+        JOB[key,i]=$(col["jobID"]); CORE[key,i]=$(col["cores"])
+        if(!(key in seen)){ seen[key]=1; KEYS[++nk]=key }
+        # Distinct rAP step NUMBERS feeding this group (leading field of the flag,
+        # e.g. "2.1.bowtie2.s1" -> 2). >1 means two pipeline steps share this
+        # step name + ref and are regressed together -- a non-blocking warning.
+        sn=$(col["flag"]); sub(/\..*/,"",sn)
+        if(sn ~ /^[0-9]+$/ && !((key SUBSEP sn) in snseen)){
+            snseen[key SUBSEP sn]=1
+            snlist[key]=(snlist[key]=="")?sn:snlist[key]","sn
+            snc[key]++
+        }
+    }
+    function abss(v){ return v<0?-v:v }
+    # reftail(rg): compact a dash-flattened reference PATH to its genome tail for
+    # display -- the trailing dash-components that fit in 12 chars (e.g.
+    # ...-indexes-dm6-dm6 -> "dm6-dm6", ...-STAR273a-hg38_50 -> "hg38_50"). "none"/""
+    # stay "none"; a single over-long component is left-trimmed with "..". DISPLAY
+    # ONLY -- the full key is what triage/tsv emit and what selection resolves.
+    function reftail(rg,   a,n,i,out,seg){
+        if(rg=="none"||rg=="") return "none"
+        n=split(rg,a,"-"); out=a[n]
+        for(i=n-1;i>=1;i--){ seg=a[i]"-"out; if(length(seg)<=12) out=seg; else break }
+        if(length(out)>12) out=".." substr(out,length(out)-9)
+        return out
+    }
+    # sort a comma list of step numbers ascending, for stable display
+    function sortednums(csv,   a,n,i,j,t,out){
+        n=split(csv,a,","); for(i=1;i<=n;i++)for(j=i+1;j<=n;j++) if(a[j]+0<a[i]+0){t=a[i];a[i]=a[j];a[j]=t}
+        out=a[1]; for(i=2;i<=n;i++) out=out","a[i]; return out
+    }
+    END{
+        if(nk==0){ print "No COMPLETED rows match." > "/dev/stderr"; exit 0 }
+        if(mode=="triage"||mode=="tsv"){
+            # Per group: mirror the estimator model, then report coverage/waste and the
+            # single most estimation-INFLATING row (removable without dropping coverage).
+            m=0
+            for(k=1;k<=nk;k++){ key=KEYS[k]
+                computeGroup(key)
+                thin=(gNS<minN)
+                # A thin group has too few distinct sizes for reliable coverage/waste,
+                # and the estimator pools it across pipelines anyway -- so never call it
+                # actionable. It appears only under --all, labelled thin.
+                underc=(!thin && C_cov<P); overa=(!thin && C_waste>=50)
+                inflF=(!thin && C_brec>=0.10*C_typ && C_brec>=FLR)
+                note=""
+                if(thin) note="thin"
+                else{
+                    if(underc) note="UNDER-COVER"
+                    if(overa)  note=(note==""?"":note" ")"over-alloc"
+                    if(inflF)  note=(note==""?"":note" ")"infl"
+                }
+                if(snc[key]>=2) note=(note==""||note=="-"?"":note" ")"merged-steps"
+                if(note=="") note="-"
+                vis=(showAll || underc || overa || inflF)
+                if(!vis) continue
+                m++
+                SKEY[m]=key; Sn[m]=cnt[key]; SNS[m]=gNS; SMODEL[m]=C_model
+                SCOV[m]=C_cov; SWASTE[m]=C_waste; SBREC[m]=C_brec; SBJ[m]=C_bj
+                SNOTE[m]=note; SUNDER[m]=(underc?1:0); SINFL[m]=(inflF?1:0)
+                # one terse action per group (OOM risk first); the last column, so no pad needed
+                if(thin)        SACT[m]="thin"
+                else if(underc) SACT[m]="under-covers -> fix model"
+                else if(inflF)  SACT[m]="--auto  ~" int(C_brec) UNIT
+                else if(overa)  SACT[m]="over-reserved"
+                else            SACT[m]="-"
+            }
+            if(m==0){ if(mode=="triage") print "All groups look healthy (coverage >= p"P", no over-allocation or inflating outliers; use --all to list them)."; exit 0 }
+            # worst-first: UNDER-COVER (OOM risk) first, then recoverable influence, then waste
+            for(a=1;a<=m;a++)for(b=a+1;b<=m;b++){
+                if( SUNDER[b]>SUNDER[a] ||
+                    (SUNDER[b]==SUNDER[a] && SBREC[b]>SBREC[a]) ||
+                    (SUNDER[b]==SUNDER[a] && SBREC[b]==SBREC[a] && SWASTE[b]>SWASTE[a]) ) swapS(a,b)
+            }
+            # contiguous pipeline blocks (first-appearance order); ONE continuous numbering
+            # drives both the human view and the tsv/selection list, so a row # maps to one group.
+            np=0
+            for(a=1;a<=m;a++){ pp=SKEY[a]; sub(/\/.*/,"",pp); if(!(pp in _ps)){ _ps[pp]=1; PORD[++np]=pp } }
+            ro=0
+            for(pi=1;pi<=np;pi++){ pp=PORD[pi]
+                for(a=1;a<=m;a++){ q=SKEY[a]; sub(/\/.*/,"",q); if(q==pp) ORDER[++ro]=a } }
+            lim=(worst+0>0)?worst+0:ro
+            if(mode=="tsv"){
+                for(r=1;r<=ro && r<=lim;r++){ a=ORDER[r]
+                    printf "%s\t%d\t%d\t%s\t%.1f\t%.1f\t%s\t%d\t%s\n",SKEY[a],Sn[a],SNS[a],SMODEL[a],SCOV[a],SWASTE[a],(SINFL[a]?SBJ[a]:"-"),(SINFL[a]?int(SBREC[a]):0),SNOTE[a] }
+            } else {
+                curp=""; shown=0
+                for(r=1;r<=ro && r<=lim;r++){ a=ORDER[r]
+                    split(SKEY[a],KK,"/"); pp=KK[1]; step=KK[2]; rgs=KK[3]
+                    if(pp!=curp){ curp=pp
+                        printf "\n%s %s\n", pp, RULE
+                        if(shown==0) printf "  #   %-16s %-12s %6s %6s  %s\n","step","ref","cover","waste","action"
+                    }
+                    shown++
+                    hot=(SUNDER[a]||SINFL[a])
+                    printf "%s%3d   %-16s %-12s %5d%% %5d%%  %s%s\n",(hot?red:""),r,step,reftail(rgs),int(SCOV[a]),int(SWASTE[a]),SACT[a],(hot?off:"")
+                }
+                # one-line footer: scope + the two commands that matter. Full legend is in -h.
+                if(showAll) printf "\n%d group%s shown · metric=%s · coverage target p%d   —   fitQC <#> to inspect · fitQC <#> --auto to fix · -h for help\n",m,(m==1?"":"s"),mcol,P
+                else        printf "\n%d flagged (of %d) · metric=%s · target p%d   —   fitQC <#> to inspect · fitQC <#> --auto to fix · --all for all · -h for help\n",m,nk,mcol,P
+            }
+        } else if(mode=="emit"){
+            # per-row estimation influence for the wanted group(s); drives --auto:
+            # key  jobID  inputSize  mem  Mrec(alloc recovered if removed)  coverageIfRemoved  env?
+            for(k=1;k<=nk;k++){ key=KEYS[k]
+                if(nw>0 && !(key in WANT)) continue
+                rowInfluence(key)
+                for(i=1;i<=cnt[key];i++)
+                    printf "%s\t%s\t%d\t%d\t%d\t%.1f\t%d\n",key,JOB[key,i],X[key,i],Y[key,i],int(RREC[i]),RCOV[i],RENV[i]
+            }
+        } else {
+            # detail mode: model + coverage/waste, then rows ranked by estimation influence
+            for(k=1;k<=nk;k++){ key=KEYS[k]
+                if(nw>0 && !(key in WANT)) continue
+                computeGroup(key); rowInfluence(key)
+                printf "== %s ==\n",key
+                if(C_model=="LINE")
+                    printf "   model: LINE    %s = %.4g * inputSize + %.4g   (envelope R2=%.3f over %d sizes, margin +%.0f%% @p%d)\n",mcol,gA,gB,gENVR2,gNS,gFRAC*100,P
+                else
+                    printf "   model: CONST   %s = p%d of observed usage = %d   (size-independent; %d distinct sizes)\n",mcol,P,int(gCB),gNS
+                printf "   coverage: %.1f%% of %d jobs <= estimate (target p%d)    median waste: %.1f%%\n",C_cov,cnt[key],P,C_waste
+                if(snc[key]>=2) printf "   WARNING: this group regresses %d rAP steps together (steps %s) -- same step name + ref.\n            If they are different workloads, give them distinct step names so they fit separately; otherwise ignore.\n",snc[key],sortednums(snlist[key])
+                if(gNS<minN) printf "   thin: only %d distinct input size%s (< %d) -- the estimator pools across pipelines here; per-group QC is unreliable.\n",gNS,(gNS==1?"":"s"),minN
+                dHasInfl=0
+                for(i=1;i<=cnt[key];i++) DI[i]=i
+                for(a=1;a<=cnt[key];a++)for(b=a+1;b<=cnt[key];b++) if(RREC[DI[b]]>RREC[DI[a]]){ tt=DI[a];DI[a]=DI[b];DI[b]=tt }
+                printf "   %-12s %12s %12s %12s %10s %4s %10s  %s\n","jobID","inputSize",mcol,"est@size","resid","env","Mrec","flag"
+                lim=(worst+0>0)?worst+0:12
+                shown=0
+                for(a=1;a<=cnt[key] && shown<lim;a++){ i=DI[a]
+                    e=estv(X[key,i]); rsd=Y[key,i]-central(X[key,i])
+                    fl="-"
+                    if(RREC[i]>=FLR && RCOV[i]>=P){ fl="INFL"; dHasInfl=1 }
+                    else if(RCOV[i]<P) fl="LOAD-BEARING"
+                    hot=(fl=="INFL")
+                    printf "%s   %-12s %12d %12d %12d %10.0f %4s %10d  %s%s\n",(hot?red:""),JOB[key,i],X[key,i],Y[key,i],int(e),rsd,(RENV[i]?"yes":"-"),int(RREC[i]),fl,(hot?off:"")
+                    shown++
+                }
+                clean=cnt[key]-shown; if(clean>0) printf "   (%d more row%s not shown)\n",clean,(clean==1?"":"s")
+                print "   flag: INFL=removing recovers allocation, coverage stays >=p"P" (safe to remove)   LOAD-BEARING=removing drops coverage below p"P" (keep)"
+                if(gNS<minN)      print "   Action: none here -- thin group; the estimator pools it across pipelines, so per-group QC is unreliable."
+                else if(dHasInfl) print "   Action: fitQC "key" --auto   removes the INFL row(s) (store backed up, then re-fits); future "mcol" estimates for this group drop, coverage stays >= p"P". Preview with --dry-run."
+                else if(C_cov<P)  print "   Action: none by removal -- every row is load-bearing (removing one raises OOM risk). The model under-predicts; it needs more margin or a different model, not fewer rows."
+                else              print "   Action: none -- the estimate covers >= p"P" and no single row inflates it."
+                print ""
+            }
+        }
+    }'
+}   # end engine()
+
+# --- mutation helpers (Phase 2) --------------------------------------------
+# Removal is backed up (reusing cleanUp's jobRecord.back.<ts>.txt naming) and
+# scoped to the named group: a jobID is dropped only from rows whose
+# (pipeline, step, refGroup) matches, so a colliding id elsewhere is never hit.
+backupPath=""
+_backup_once() {
+    [ -n "$backupPath" ] && return 0
+    local dir ts
+    dir=$(dirname "$store"); ts=$(date +%Y-%m-%d_%H-%M-%S)
+    backupPath="$dir/jobRecord.back.$ts.txt"
+    # -p preserves mode/timestamps (cleanUp's backups keep them via mv/cp -p): the
+    # backup then reflects the store's real age, so a restore does not reset mtime
+    # and skew cleanUp's recency-based pruning.
+    cp -p "$store" "$backupPath" && echo "Backed up store -> $backupPath (roll back by restoring this file)."
+}
+_prune() {   # $1=groupKey  $2=comma-separated jobIDs -> remove them via the SSOT's
+             # LOCKED, atomic jobRecord rewrite (jobRecordsRewrite): it takes the same _jobRecordsLock a
+             # finishing pipeline's jobRecordsAppendLine takes and renames a SAME-DIR temp, so a
+             # concurrent pipeline write can never be clobbered and the store can't be
+             # left truncated.
+             # Return: 0 = rows were actually dropped; 1 = rewrite applied but NO targeted
+             # jobID was present in the group (honest no-match -- caller must NOT say
+             # "removed"); 2 = could not take the lock, store UNCHANGED (retry).
+    local key=$1 ids=$2 p rest s rg prog
+    p=${key%%/*}; rest=${key#*/}; s=${rest%%/*}; rg=${rest#*/}
+    # Per-data-row body for jobRecordsRewrite (header + col[] handled by jobRecordsRewrite). Drop a row
+    # only when its (pipeline, step, refGroup) matches the target AND its jobID is in the
+    # set -- so a jobID that collides in another group/pipeline is never touched. refClass
+    # is inlined to match the engine's refClass() exactly. Underscore locals avoid
+    # colliding with jobRecordsRewrite's own awk vars.
+    prog='
+      if(!_i){ _n=split(ids,_a,","); for(_k=1;_k<=_n;_k++)R[_a[_k]]=1
+               _m=split(refmap,_M," "); for(_k=1;_k<=_m;_k++){split(_M[_k],_kv,"=");RM[_kv[1]]=_kv[2]}; _i=1 }
+      _r=$(col["ref"]);
+      _rc=(_r=="")?"":((_r=="none")?"none":((_r in RM)?RM[_r]:_r));
+      if($(col["pipeline"])"/"$(col["step"])"/"_rc==tgt && ($(col["jobID"]) in R)) next;
+      print'
+    jobRecordsRewrite "$store" "$prog" -v ids="$ids" -v refmap="$JOB_RECORDS_REF_CLASS" -v tgt="$p/$s/$rg" || return 2
+    [ "${JOB_RECORDS_REWRITE_DROPPED:-0}" -gt 0 ] && return 0
+    return 1
+}
+
+# _auto_remove GROUP : iteratively remove the TOP estimation-inflating row -- the one
+# whose removal recovers the most allocation (emit Mrec) WHILE keeping coverage >= the
+# target percentile (emit coverageIfRemoved) -- then re-evaluate and repeat. Stops at
+# --max-remove, or when no remaining row recovers >= the estimate floor without dropping
+# coverage below target (a load-bearing row is never auto-removed). Caller backs up first.
+_auto_remove() {
+    local grp=$1 pass pick jid rec unit trail=""
+    unit=M; [ "$metric" = time ] && unit=min
+    for (( pass=1; pass<=maxRemove; pass++ )); do
+        pick=$(engine emit "$grp" | awk -v P="$targetPct" -v fl="$floorAbs" '
+            BEGIN{best=-1}
+            { rec=$5+0; cov=$6+0; if(rec>=fl && cov>=P && rec>best){ best=rec; jid=$2 } }
+            END{ if(best<0) print "NONE 0"; else printf "%s %d\n",jid,int(best) }')
+        # shellcheck disable=SC2086
+        set -- $pick
+        if [ "$1" = NONE ]; then
+            echo ">>> converged: no remaining row recovers >= ${floorAbs} ${unit} while keeping coverage >= p${targetPct} (the rest are load-bearing for coverage)."
+            break
+        fi
+        jid=$1; rec=$2
+        _prune "$grp" "$jid"; prc=$?
+        if [ "$prc" = 2 ]; then
+            echo ">>> stop: removal did not apply (could not take the jobRecord lock -- a pipeline may be writing); nothing changed" >&2
+            break
+        elif [ "$prc" = 1 ]; then
+            echo ">>> stop: jobID $jid is no longer in the group (the store changed under us); nothing removed" >&2
+            break
+        fi
+        trail="$trail $jid(~${rec}${unit})"
+        echo "    pass $pass: removed jobID $jid -- recovers ~${rec} ${unit}, coverage kept >= p${targetPct}"
+    done
+    [ -n "$trail" ] && echo ">>> removed:$trail"
+}
+
+# Normalize any PIPE/STEP/REF group selectors: map the ref component through
+# jobRecordsRefClass so a user can type the raw ref (hg38) or the pooled group (mammal).
+# A bare integer is a ROW NUMBER from the numbered triage list: resolve it to its
+# full key via the tsv order (same order the table is numbered in). The tsv list
+# follows the current filters/--all, so numbers match what the user just saw.
+# (Placed after engine()/helpers are defined, since numeric resolution calls engine.)
+wantKeys=""
+_ordLoaded=0; _ord=()
+for g in "${groups[@]:-}"; do
+    [ -z "$g" ] && continue
+    if [[ "$g" =~ ^[0-9]+$ ]]; then
+        if [ "$_ordLoaded" = 0 ]; then mapfile -t _ord < <(engine tsv "" | cut -f1); _ordLoaded=1; fi
+        if [ "$g" -ge 1 ] && [ -n "${_ord[$((g-1))]:-}" ]; then
+            wantKeys="$wantKeys ${_ord[$((g-1))]}"
+        else
+            echo "$self: no group #$g in the triage list (run fitQC with no args to see the numbers)" >&2; exit 1
+        fi
+        continue
+    fi
+    p=${g%%/*}; rest=${g#*/}; s=${rest%%/*}; r=${rest#*/}
+    [ "$r" = "$rest" ] && r=""        # only two components given -> no ref
+    rg=$(jobRecordsRefClass "$r")
+    wantKeys="$wantKeys $p/$s/$rg"
+done
+wantKeys="${wantKeys# }"
+
+# --- dispatch --------------------------------------------------------------
+if [ -n "$removeIDs" ] || [ "$autoRemove" = 1 ]; then
+    # mutation needs exactly one resolved group
+    # shellcheck disable=SC2086
+    set -- $wantKeys
+    [ "$#" -eq 1 ] || { echo "$self: --remove/--auto need exactly one group as PIPE/STEP/REF (got: ${wantKeys:-none})" >&2; exit 1; }
+    grp=$1
+    if [ "$dryRun" = 1 ]; then
+        work=$(mktemp); cp "$store" "$work"; store="$work"
+        echo "(dry run: operating on a scratch copy; the real store is untouched)"
+    fi
+
+    echo "### BEFORE ###"; engine detail "$grp"
+
+    if [ -n "$removeIDs" ]; then
+        [ "$dryRun" = 1 ] || _backup_once
+        _prune "$grp" "$removeIDs"; prc=$?
+        case $prc in
+          0) echo ">>> removed [$removeIDs] from $grp" ;;
+          1) echo ">>> nothing removed: no jobID in [$removeIDs] is present in $grp (check the id and the group)." >&2 ;;
+          *) echo ">>> removal did NOT apply: could not take the jobRecord lock (a pipeline may be writing). Nothing changed -- retry." >&2 ;;
+        esac
+    fi
+
+    if [ "$autoRemove" = 1 ]; then
+        [ "$dryRun" = 1 ] || _backup_once
+        _auto_remove "$grp"
+    fi
+
+    echo "### AFTER ###"; engine detail "$grp"
+    if [ "$dryRun" = 1 ]; then rm -f "$store"; echo "(dry run: nothing was written)"; fi
+    exit 0
+fi
+
+# plot_group KEY : a compact gnuplot ASCII scatter + fit line for one group -- the
+# "plot on top" pane. Display-only (no labels/selection); the ranked table below
+# does the precise work. gnuplot does the drawing (never hand-rolled in awk).
+plot_group() {
+    local key=$1 clean out all term spec npts W H
+    clean=$(mktemp); out=$(mktemp); all=$(mktemp)
+    # split this group's points into clean vs estimation-inflating, reusing the engine's
+    # per-row verdict (emit: $3=inputSize $4=mem $5=Mrec $6=coverageIfRemoved) so the plot
+    # agrees with the detail table: red = removable inflating row (Mrec>=floor, coverage ok).
+    engine emit "$key" | awk -v c="$clean" -v o="$out" -v a="$all" -v P="$targetPct" -v fl="$floorAbs" \
+        '{ print $3,$4 > a; if(($5+0)>=fl && ($6+0)>=P) print $3,$4 > o; else print $3,$4 > c }'
+    npts=$(wc -l < "$all")
+    if [ "${npts:-0}" -lt 1 ]; then rm -f "$clean" "$out" "$all"; return; fi
+    case "$gfx" in
+        sixel)  term="sixelgd size 640,420" ;;
+        kitty)  term="kittycairo size 640,420" ;;
+        *)      [ "$useColor" = on ] && term="dumb ansi256" || term="dumb" ;;
+    esac
+    # default framing (raster terms + fallback): let gnuplot autorange with margins.
+    local yopts="" plotoff="set offsets graph 0.02,0.02,0.08,0.08"
+    if [ "$gfx" = dumb ]; then
+        W=$( { tput cols 2>/dev/null || echo 80; } ); W=$((W-4)); [ "$W" -gt 100 ] && W=100; [ "$W" -lt 50 ] && W=78
+        # Pin even y-ticks: pick a round interval (~5 across the data), round the
+        # range out to it, and set the plot height to a multiple of the interval
+        # count so every tick spans the same number of rows (no uneven gaps, which
+        # the dumb terminal otherwise produces when rows don't divide by the ticks).
+        local ylo yhi ystep nI rowsPer
+        read -r ylo yhi ystep nI < <(awk '{y=$2+0; if(NR==1||y<mn)mn=y; if(NR==1||y>mx)mx=y}
+            END{ r=mx-mn
+                 if(r<=0){ print mn-1, mx+1, 0, 0; exit }
+                 raw=r/5; m=exp(log(10)*int(log(raw)/log(10))); if(m<=0)m=1
+                 n=raw/m; s=(n<1.5?1:(n<3?2:(n<7?5:10)))*m
+                 # work in integer tick indices to avoid float drift on the bounds
+                 nlo=int(mn/s); if(nlo*s>mn)nlo--
+                 nhi=int(mx/s); if(nhi*s<mx)nhi++
+                 nhi++                                    # one interval of headroom
+                 print nlo*s, nhi*s, s, nhi-nlo }' "$all")
+        if [ "${nI:-0}" -ge 2 ]; then
+            rowsPer=3; [ $((nI*rowsPer+4)) -gt 30 ] && rowsPer=2; [ $((nI*rowsPer+4)) -gt 30 ] && rowsPer=1
+            H=$((nI*rowsPer+4))
+            yopts="set yrange [$ylo:$yhi]; set ytics $ystep;"
+            plotoff="set offsets graph 0.03,0.03,0,0"   # yrange already gives headroom
+        else
+            H=$((W*7/20)); [ "$H" -gt 28 ] && H=28; [ "$H" -lt 14 ] && H=14
+        fi
+        term="$term size $W,$H"
+    fi
+    printf '   plot: %s vs inputSize   (%sred%s = suspected outlier)\n' "$metricCol" "$C_RED" "$C_OFF"
+    # glyphs: raster terms (sixel/kitty) get real filled markers; dumb gets ASCII
+    # chars distinct from the line's own glyph (clean 'o', outlier 'O'). Fit line
+    # (yellow) on ALL points so it matches the table's fit. Only data-bearing series.
+    local cpt opt
+    case "$gfx" in
+        sixel|kitty) cpt="pt 6 ps 1.2"; opt="pt 7 ps 1.8" ;;
+        *)           cpt="pt 'o'";      opt="pt 'O'" ;;
+    esac
+    spec=""
+    [ "$npts" -ge 2 ] && spec="f(x) w lines lw 2 lc rgb 'yellow'"
+    [ -s "$clean" ] && spec="${spec:+$spec, }'$clean' u 1:2 w points $cpt lc rgb 'cyan'"
+    [ -s "$out" ]   && spec="${spec:+$spec, }'$out' u 1:2 w points $opt lc rgb 'red'"
+    gnuplot -e "set term $term; set key off; $yopts $plotoff; set fit logfile '/dev/null'; set fit quiet; f(x)=a*x+b; fit f(x) '$all' u 1:2 via a,b; plot $spec" 2>/dev/null
+    rm -f "$clean" "$out" "$all"
+}
+
+# --- interactive browser (checkRun-style; prompt-driven, up/down levels) -------
+_clear() { clear 2>/dev/null || printf '\033[H\033[2J'; }
+_pause() { printf '   %b[Enter] back%b ' "$C_RED" "$C_OFF"; read -r _ </dev/tty; }
+QUIT=0
+
+# fitq_group GROUP : level-2 inspect view. Returns 0 if the store was mutated
+# (so the group list refreshes its counts), else 1. Redraws only on entry and
+# after a change -- the plot submenu and bad input reuse the cached detail.
+fitq_group() {
+    local grp=$1 detail tok mutated=0 redraw=1
+    while [ "$QUIT" = 0 ]; do
+        [ "$redraw" = 1 ] && { detail=$(engine detail "$grp"); redraw=0; }
+        _clear
+        printf '%s\n\n' "$detail"
+        echo "p = plot   ·   r <ids> = remove   ·   A = auto-remove   ·   b = back   ·   q/qq = quit"
+        read -rp "> " tok </dev/tty || break
+        # shellcheck disable=SC2086
+        set -- $tok
+        case "${1:-}" in
+            ''|b) break;;
+            q)    break;;
+            qq)   QUIT=1; break;;
+            p)    _clear; plot_group "$grp"; _pause;;                     # plot submenu -> back up
+            r)    shift; if [ -n "$*" ]; then _backup_once
+                        _prune "$grp" "$(echo "$* "|tr ' ' ',')"; prc=$?
+                        case $prc in
+                          0) mutated=1;;
+                          1) echo "nothing removed: no such jobID in this group";;
+                          *) echo "removal did not apply (store busy/locked)";;
+                        esac
+                        redraw=1; fi;;
+            A)    _backup_once; _auto_remove "$grp"; _pause; mutated=1; redraw=1;;
+            *)    ;;                                                       # ignore junk (no recompute)
+        esac
+    done
+    [ "$mutated" = 1 ]
+}
+
+# fitq_interactive : level-1 group list. Caches the triage + key list; recomputes
+# only on entry, refresh, all/actionable toggle, or after a mutation.
+fitq_interactive() {
+    local tok triage dirty=1
+    local -a keys
+    while [ "$QUIT" = 0 ]; do
+        if [ "$dirty" = 1 ]; then
+            # The engine triage is already grouped + numbered; the tsv list is the
+            # SAME order, so displayed row N maps to keys[N-1]. No re-numbering here.
+            triage=$(engine triage "")
+            mapfile -t keys < <(engine tsv "" | cut -f1)
+            dirty=0
+        fi
+        _clear
+        printf 'fitQC  —  %s\n' "$store"
+        printf '%s\n' "$triage"
+        echo
+        echo "<#> inspect group   ·   a = all/actionable   ·   r = refresh   ·   q = quit"
+        read -rp "> " tok </dev/tty || break
+        case "$tok" in
+            q|qq) break;;
+            ''|r) dirty=1;;
+            a)    showAll=$([ "$showAll" = 1 ] && echo 0 || echo 1); dirty=1;;
+            *[!0-9]*) ;;
+            *)    if [ "$tok" -ge 1 ] 2>/dev/null && [ "$tok" -le "${#keys[@]}" ]; then
+                      fitq_group "${keys[$((tok-1))]}" && dirty=1
+                  fi;;
+        esac
+    done
+    _clear
+}
+
+if [ "$interactive" = 1 ]; then
+    [ -e /dev/tty ] || { echo "$self: --interactive needs a terminal" >&2; exit 1; }
+    fitq_interactive
+    exit 0
+fi
+
+# read-only views: triage, or detail (per group; with --plot the plot sits on top)
+if [ ${#groups[@]} -gt 0 ]; then
+    if [ "$doPlot" = 1 ]; then
+        for key in $wantKeys; do plot_group "$key"; engine detail "$key"; done
+    else
+        engine detail "$wantKeys"
+    fi
+elif [ "$tsv" = 1 ]; then
+    engine tsv ""
+else
+    engine triage ""
+fi

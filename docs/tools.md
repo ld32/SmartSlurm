@@ -7,6 +7,7 @@
 | Tool | Kind | What it does | Details |
 |------|------|--------------|---------|
 | `runAsPipeline` | command | Convert and run an annotated Bash script as a dependency-aware pipeline. | [runAsPipeline](#runaspipeline) |
+| `convertToPipeline` | command | Convert a hand-written sbatch submit script to a `runAsPipeline` script (with AI help), checked off-cluster. | [convertToPipeline](#converttopipeline) |
 | `ssbatch` | command | Drop-in `sbatch` wrapper with smart sizing, partition selection, and OOM/OOT resubmit. | [ssbatch](#ssbatch) |
 | `checkRun` | command | Interactive status grid + log/diagnosis/efficiency browser for a run. | [The status grid](monitoring.md#the-status-grid-checkrun) |
 | `checkRunGrid` | command | Non-interactive render/resolve engine behind `checkRun` (scriptable). | [The status grid](monitoring.md#the-status-grid-checkrun) |
@@ -17,7 +18,7 @@
 | `cleanUp.sh` | internal | Per-job EXIT-trap teardown: writes the jobRecord row, prunes/invalidates stats, decides OOM/OOT requeue, sends emails. | [Under-the-hood tools](#under-the-hood-tools) |
 | `estimateResource.sh` | internal | Computes the memory/time estimate for a (pipeline, step, ref) group. | [Under-the-hood tools](#under-the-hood-tools) |
 | `jobRecordSchema.sh` | internal | Single source of truth for the jobRecord schema; sourced by writers/readers. | [Under-the-hood tools](#under-the-hood-tools) |
-| `jrRepair.sh` | command | One-time migration of a legacy (v1) jobRecord store to the current (v2) schema. | [Under-the-hood tools](#under-the-hood-tools) |
+| `jobRecordsRepair.sh` | command | One-time migration of a legacy (v1) jobRecord store to the current (v2) schema. | [Under-the-hood tools](#under-the-hood-tools) |
 
 ## runAsPipeline
 
@@ -36,7 +37,7 @@
 ```
 runAsPipeline --script "SCRIPT [ARGS]" --tmp {useTmp|noTmp} [--pipeline NAME]
               [--sbatch-options "SBATCH_OPTIONS"] [--mode dryrun] [--lint]
-              [--email noEmail|noSuccEmail] [--special checkpoint|excludeFailedNodes]
+              [--email MODE] [--special checkpoint|excludeFailedNodes]
               [-v|--verbose | -q|--quiet]
 ```
 
@@ -51,7 +52,7 @@ Arguments are **named options**:
 | `--sbatch-options "SBATCH_OPTIONS"` | Default sbatch options for steps that don't specify their own. | No | `"sbatch -p short -c 1 --mem 2G -t 50:0"` |
 | `--mode dryrun` | Dry run only (builds the pipeline and logs planned jobs; no Slurm submission). | No | run (submit) |
 | `--lint` | Validate block structure and exit — no conversion driver is run, nothing is submitted. | No | off |
-| `--email noEmail\|noSuccEmail` | Silence all emails, or success emails only. | No | all emails |
+| `--email MODE` | How you are emailed: `emailPerSample`, `allJobs`, `successJobOnly`, `failedJobOnly`, `requeueOnly` or `noEmail`. See [Notifications](core-concepts.md#notifications-emails). | No | `emailPerSample` |
 | `--special checkpoint\|excludeFailedNodes` | Enable checkpointing, or exclude nodes where this job type failed before. | No | none |
 | `-v\|--verbose` | Full firehose output (per-job "Submitted batch job N" + the jobs table). | No | off |
 | `-q\|--quiet` | Errors only; silent on success. | No | off |
@@ -106,6 +107,22 @@ The full per-job detail is always written to `.smartSlurm.log` regardless of ver
 
 Each directory has its own README with the exact commands and expected output.
 
+## convertToPipeline
+
+Converts a hand-written Slurm submit script (`sbatch` calls chained with `--dependency=afterok:$jid`) into a `runAsPipeline` script, and checks it off-cluster in the [slurmless](testing-off-cluster.md) sandbox before you run it for real.
+
+```bash
+convertToPipeline submit.sh [-o OUT.sh] [--sbatch "sbatch -p short -t 2:0:0"] [--compare "result/*.txt"] [-- SUBMIT_ARGS]
+```
+
+1. Runs your submit script against a fake `sbatch` that **records** each job and its dependencies but runs nothing.
+2. Asks AI (through [`aiHelper.sh`](ai-assistance.md), so you need no AI tools of your own) to group those jobs into pipeline steps, for example one looped step per sample plus a merge step.
+3. Writes the `runAsPipeline` script, then checks it with `runAsPipeline --lint` and a sandbox dry run. A failed check goes back to AI for another try (`--tries`, default 3).
+4. With `--compare "FILES"`, it also **runs** both the original and the new pipeline in the sandbox on a copy of your folder and compares those output files. This runs your real commands locally, so use it only with small test data.
+5. Shows the result and asks before writing it (default `SUBMIT.rap.sh`; `--yes` skips the question). Your folder is not changed until then.
+
+**No AI access?** It writes `SUBMIT.plan.txt`: the recorded jobs plus a plan to edit by hand (format: `slurmless/skills/migration-assistant/references/plan-format.md`). Then run `convertToPipeline submit.sh --plan submit.plan.txt`; steps 3–5 work the same.
+
 ## ssbatch
 
 For most programs, memory and run-time scale with input size. ssbatch records what resources prior jobs actually used, fits that relationship (see [Resource estimation](core-concepts.md#resource-estimation)), and uses it to allocate resources for subsequent jobs.
@@ -113,8 +130,8 @@ For most programs, memory and run-time scale with input size. ssbatch records wh
 **Usage**
 
 ```
-ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] --wrap="COMMAND" [dryrun]
-ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dryrun]
+ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] --wrap="COMMAND" [-dryrun]
+ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [-dryrun]
 ```
 
 | Option | Description | Required |
@@ -127,7 +144,7 @@ ssbatch [-P PROGRAM] [-R REF] [-I INPUTS] [-F FLAG] [-d DEPS] [SBATCH_OPTIONS] S
 | `--wrap="CMD"` | Command to run. | Yes* |
 | `SCRIPT.sh [ARGS]` | A script to run instead of `--wrap`. Its first line must be a shebang. | Yes* |
 | `SBATCH_OPTIONS` | Any standard sbatch option (`-c`, `--mem`, `-t`, `-p`, `-A`, `--mail-user=`, …). Defaults exist for memory and time. | No |
-| `dryrun` | As the **last** argument: does not actually submit, only estimates and builds the job script. | No |
+| `-dryrun` | Build the job script and show the estimate and the sbatch command, without submitting. Nothing is written to `jobRecord.txt`. (`--dryrun`, or a bare `dryrun` as the last argument, also work.) | No |
 
 <sub>*Provide **either** `--wrap` **or** a script file.</sub>
 
@@ -233,8 +250,8 @@ These are invoked by SmartSlurm itself (not typed by you day-to-day), but they a
 |------|------|
 | `cleanUp.sh` | Runs from each job's **EXIT trap** (on success and failure). It emits the `========== SmartSlurm job report ==========` section, writes the job's `efficiency.tsv` row (unconditionally) and its `jobRecord.txt` row, prunes/invalidates stale stats on OOM/OOT, decides whether to requeue with doubled resources, and sends the consolidated [emails](core-concepts.md#notifications-emails). |
 | `estimateResource.sh` | The estimator. Called as `estimateResource.sh PROGRAM REF INPUTS …`; returns memory (in M) and time (in minutes) for a `(pipeline, step, ref)` group, fitting input-size→mem/time when ≥3 records exist, otherwise falling back to defaults. Writes fitted plots under `$smartSlurmJobRecordDir/stats/`. |
-| `jobRecordSchema.sh` | **Single source of truth** for the jobRecord schema. It is *sourced* (defines variables and functions, no side effects) by the writers (`ssbatch`/`cleanUp.sh`), the readers (`estimateResource.sh`, `calculateMemTime.sh`), and `jrRepair.sh`, so the column layout is defined in exactly one place. It detects version by header signature (a v2 file's header begins with `pipeline,`; a legacy v1 header began with `1jobID,`). |
-| `jrRepair.sh` | One-time, **manual** converter of a legacy (v1) jobRecord store to the v2 schema; run once per store after upgrading. It converts `jobRecord.txt` **and** `jobRecord.oom.oot.over.txt` in place after backing each up to `<base>.back.<timestamp>.txt`, and is idempotent (a v2 file is left untouched). Options: `--dry-run` (report, write nothing) and `--check` (health report only; exits non-zero if any store has unrecognized rows). Rows that are not clean 21-field v1 rows are copied to `<name>.jrRepair.skipped.<ts>` and counted, so nothing is silently lost. See [jobRecords](core-concepts.md#jobrecords). |
+| `jobRecordSchema.sh` | **Single source of truth** for the jobRecord schema. It is *sourced* (defines variables and functions, no side effects) by the writers (`ssbatch`/`cleanUp.sh`), the readers (`estimateResource.sh`, `calculateMemTime.sh`), and `jobRecordsRepair.sh`, so the column layout is defined in exactly one place. It detects version by header signature (a v2 file's header begins with `pipeline,`; a legacy v1 header began with `1jobID,`). |
+| `jobRecordsRepair.sh` | One-time, **manual** converter of a legacy (v1) jobRecord store to the v2 schema; run once per store after upgrading. It converts `jobRecord.txt` **and** `jobRecord.oom.oot.over.txt` in place after backing each up to `<base>.back.<timestamp>.txt`, and is idempotent (a v2 file is left untouched). Options: `--dry-run` (report, write nothing) and `--check` (health report only; exits non-zero if any store has unrecognized rows). Rows that are not clean 21-field v1 rows are copied to `<name>.jobRecordsRepair.skipped.<ts>` and counted, so nothing is silently lost. See [jobRecords](core-concepts.md#jobrecords). |
 
 ---
 

@@ -50,7 +50,7 @@ export SMARTSLURM_ROOT
 # on the same stat key. Without this, runAsPipeline derives the pipeline from the
 # script name ("pipeline") while ss_fit would query a different key -> the fit input
 # is empty and every estimator block silently fails.
-# MUST be a VALID, non-reserved name: runAsPipeline (and jrCurate) now REJECT
+# MUST be a VALID, non-reserved name: runAsPipeline (and jobRecordsCurate) now REJECT
 # 'unknown' and 'legacy' as --pipeline values -- they are reserved jobRecord markers
 # (unknown = the estimator's standalone default; legacy = migrated jR1 rows). The
 # harness once used 'unknown' here; once the tool added that validation, --pipeline
@@ -172,8 +172,8 @@ ss_activate() {
   export smartSlurmJobRecordDir="$HOME/.smartSlurm"   # match config's resolution
   # jobRecords v2: disable ref size-class pooling by default so stat filenames are
   # deterministic (refGroup==ref). The dedicated ref_class block sets it on to test
-  # pooling. (Default JR_REF_CLASS pools mm*/hg*/GRC* -> "mammal".)
-  export JR_REF_CLASS=""
+  # pooling. (Default JOB_RECORDS_REF_CLASS pools mm*/hg*/GRC* -> "mammal".)
+  export JOB_RECORDS_REF_CLASS=""
 
   # 4) mock scheduler state
   export MOCK_SLURM_STATE="${SS_SCRATCH:-/tmp/ss-scratch}/mockstate"
@@ -208,7 +208,7 @@ ss_new_workspace() {
   #   so its .success flags never appear and the block fails late and confusingly,
   #   only in full-suite order. The rest are reset for the same isolation reason.
   unset SS_WF_MODE SS_MODEL smartSlurmRerun MOCK_FAIL_MODE MOCK_FAIL_JOB
-  export JR_REF_CLASS=""
+  export JOB_RECORDS_REF_CLASS=""
 }
 
 # --- resource model selection -------------------------------------------------
@@ -277,7 +277,7 @@ ss_fit() {
   # can be an early, few-point fit. Removing it makes the builder re-run.
   # ss_fit estimates under $SS_PIPELINE -- the SAME name ss_run_sweep recorded the
   # rows under -- so the record and fit sides share the stat key $SS_PIPELINE.PROG.REF
-  # (JR_REF_CLASS="" in the harness => refGroup==ref). The pipeline name is passed as
+  # (JOB_RECORDS_REF_CLASS="" in the harness => refGroup==ref). The pipeline name is passed as
   # the 8th positional arg, exactly as ssbatch calls estimateResource in production.
   rm -f "$smartSlurmJobRecordDir/stats/$pipe.$prog.$ref.mem.stat" \
         "$smartSlurmJobRecordDir/stats/$pipe.$prog.$ref.time.stat"
@@ -339,14 +339,14 @@ ss_seed_record() {
   local prog="$1" ref="$2" size="$3" mem="$4" tim="$5" status="$6" count="${7:-1}" sacc="${8:-$4}" pipe="${9:-unknown}"
   local jr="$smartSlurmJobRecordDir/jobRecord.txt"
   mkdir -p "$smartSlurmJobRecordDir"
-  # v2 schema (17 cols). Seed pipeline defaults to "unknown" to match ss_fit's
+  # v2 schema (18 cols). Seed pipeline defaults to "unknown" to match ss_fit's
   # query (estimateResource invoked without --pipeline), so records land in the
-  # queried group directly. Ensure a v2 header so jrSchemaVersion detects v2.
-  [ -s "$jr" ] || printf 'pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag\n' > "$jr"
+  # queried group directly. Ensure a v2 header so jobRecordsSchemaVersion detects v2.
+  [ -s "$jr" ] || printf 'pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes\n' > "$jr"
   local i jid
   for ((i=0; i<count; i++)); do
     jid=$(( (RANDOM % 90000) + 10000 ))
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n' \
       "$pipe" "$prog" "$ref" "" "$jid" "$size" "$mem" "$mem" "$tim" "$tim" 1 \
       "$status" "${USER:-tester}" "node" "$(date +%s)" "$(date +%Y-%m-%dT%H:%M:%S)" "$prog" >> "$jr"
   done
@@ -366,7 +366,7 @@ stat_val() { sed -n "s/^$1=//p" "$2" 2>/dev/null | head -1; }
 
 # run the pipeline. usage: ss_run_pipeline "<script args>" "<sbatch opts>" [--dryrun]
 # writes combined output to $LAST_RUN_LOG, returns rAP's exit code.
-ss_run_pipeline() {
+ss_run_pipeline() {   # extra runAsPipeline options: SS_RAP_ARGS="--email allJobs"
   local script="$1" opts="$2" mode="${3:-}"
   export LAST_RUN_LOG="${MOCK_SLURM_STATE%/*}/rap.log"
   local mflag=()
@@ -377,7 +377,7 @@ ss_run_pipeline() {
   # test (original user workflow in wf-mode + its rAP port) from crosstalking through
   # the shared mock. (Each arm must still use its own ss_new_workspace / state.)
   SS_WF_MODE= bash "$SMARTSLURM_ROOT/bin/runAsPipeline" \
-       --script "$script" --sbatch-options "$opts" --tmp noTmp "${mflag[@]}" \
+       --script "$script" --sbatch-options "$opts" --tmp noTmp "${mflag[@]}" ${SS_RAP_ARGS:-} \
        >"$LAST_RUN_LOG" 2>&1
 }
 

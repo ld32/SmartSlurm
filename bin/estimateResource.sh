@@ -6,7 +6,7 @@ usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time 
 
 #set -x
 
-# v2 jobRecords: schema SSOT (jrEmitV2 compat shim reads v1 or v2; JR_AWK_COLMAP
+# v2 jobRecords: schema SSOT (jobRecordsEmitV2 compat shim reads v1 or v2; JOB_RECORDS_AWK_COLMAP
 # gives name->index). Readers below parse v2 by name via the shim.
 . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
 
@@ -32,28 +32,28 @@ pipeline=${8:-unknown}
 # v2 grouping: fit per (pipeline, step, ref). refGroup allows optional size-class
 # pooling of similar-sized refs (P4c ref-class); for now it is the ref itself.
 # statKey names the per-group stats files. refRe matches the refs in this group.
-refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
-refRe=$(jrRefMatchRe "$ref" 2>/dev/null); [ -n "$refRe" ] || refRe="^$ref\$"
+refGroup=$(jobRecordsRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+refRe=$(jobRecordsRefMatchRe "$ref" 2>/dev/null); [ -n "$refRe" ] || refRe="^$ref\$"
 statKey="$pipeline.$program.$refGroup"
 
-# jrExtractBoth <memOutfile> <timeOutfile> : build BOTH the inputSize->mem and
+# jobRecordsExtractBoth <memOutfile> <timeOutfile> : build BOTH the inputSize->mem and
 # inputSize->time extracts for this (pipeline, step, refGroup) in a SINGLE pass over
-# jobRecord.txt (one jrEmitV2 + one awk emitting both). Fallback ladder: if the
+# jobRecord.txt (one jobRecordsEmitV2 + one awk emitting both). Fallback ladder: if the
 # pipeline-scoped history has fewer than 3 points (too thin to fit -- e.g. right
 # after migration, where old rows are pipeline=legacy), re-emit pooling across
 # pipelines for the same step + ref group. Then dedupe each by input size.
-jrExtractBoth() {
-    local memOut=$1 timeOut=$2 jr="$smartSlurmJobRecordDir/jobRecord.txt"
+jobRecordsExtractBoth() {
+    local memOut=$1 timeOut=$2 jobRecords="$smartSlurmJobRecordDir/jobRecord.txt"
     local rawM rawT; rawM=$(mktemp); rawT=$(mktemp)
     # $1 of the inner filter is the pipeline to match ("" = pool across NAMED
     # pipelines for the thin-group fallback). A query for standalone "unknown" also
-    # matches "legacy": pre-v2 (jR1) rows carried no pipeline, so on migration they
+    # matches "legacy": pre-v2 (v1) rows carried no pipeline, so on migration they
     # all became legacy and a v1 standalone run is indistinguishable from a v1
     # pipeline run -- default to inclusion so standalone estimation can use that
     # history (legacy is grouped by step/ref, exactly as before the pipeline column).
-    _jrEmitPair() {
-        jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
-            -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
+    _jobRecordsEmitPair() {
+        jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
+            -v mo="$rawM" -v to="$rawT" "$JOB_RECORDS_AWK_COLMAP"'
             $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && \
             $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])+0>0 {
                 print $(col["inputSize"]), $(col["memUsed"])  > mo
@@ -61,14 +61,14 @@ jrExtractBoth() {
             }'
     }
     : > "$rawM"; : > "$rawT"
-    _jrEmitPair "$pipeline"
+    _jobRecordsEmitPair "$pipeline"
     # Thin-group fallback relaxes ONLY the pipeline axis, and only across NAMED
     # pipelines: standalone unknown never pools a named pipeline's fit (and is never
     # pooled into one). unknown does not broaden here -- it already pools its own
     # data plus legacy in the first pass above, and goes no further.
     if [ "$pipeline" != unknown ] && [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
         : > "$rawM"; : > "$rawT"
-        _jrEmitPair ""
+        _jobRecordsEmitPair ""
     fi
     sort -r -k1,1 -k2,2 "$rawM" | sort -u -k1,1 > "$memOut"
     sort -r -k1,1 -k2,2 "$rawT" | sort -u -k1,1 > "$timeOut"
@@ -77,6 +77,77 @@ jrExtractBoth() {
 
 mem=""; min=""
 [ -z "$defaultMin" ] && usage && exit 1
+
+# Optional AI review of a freshly fitted curve. If the library or the ai_call
+# helper is missing, aiEnabled stays false and estimation runs exactly as before.
+if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
+    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
+    . "$(dirname $0)/aiHelper.sh" 2>/dev/null
+elif command -v aiHelper.sh >/dev/null 2>&1; then
+    . "$(command -v aiHelper.sh)" 2>/dev/null
+fi
+command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
+
+# Records needed before a fit is worth reviewing, and a short timeout because
+# this runs while a job is being submitted.
+[ -z "$smartSlurmAiMinRecords" ] && smartSlurmAiMinRecords=10
+[ -z "$smartSlurmAiReviewTimeout" ] && smartSlurmAiReviewTimeout=30
+
+aiReviewFile=$smartSlurmJobRecordDir/stats/$program.$ref.aiReview.txt
+
+# aiReviewFit <label> <dataFile> <statFile> [dataFile2] [statFile2]
+# Asks AI whether the linear fit is trustworthy and flags outliers or regime
+# changes. Writes only to $aiReviewFile and stderr, never to stdout, because
+# this script's stdout is parsed by the caller.
+aiReviewFit() {
+    aiEnabled || return 1
+
+    aiLabel=$1; aiData1=$2; aiStat1=$3; aiData2=$4; aiStat2=$5
+
+    [ -s "$aiData1" ] || return 1
+    aiRecords=`wc -l < "$aiData1"`
+    [ "$aiRecords" -ge "$smartSlurmAiMinRecords" ] || {
+        echoerr "Skipping AI review of the fit: only $aiRecords records, need $smartSlurmAiMinRecords."
+        return 1
+    }
+
+    aiReview=`smartSlurmAiTimeout=$smartSlurmAiReviewTimeout; {
+        echo "SmartSlurm just fitted a straight line to historical Slurm job records to predict memory and run-time. Review the fit in at most 10 lines: say whether the linear fit is trustworthy, and flag any outliers, non-linearity or regime change (for example a software or reference change) that would make predictions wrong. Name the specific data points that look wrong. Do not repeat the numbers back without a conclusion."
+        echo ""
+        echo "Program: $program   Reference: $ref   Data: $aiLabel"
+        echo "Record count: $aiRecords"
+        echo ""
+        echo "=== Fitted statistics ($aiStat1) ==="
+        cat "$aiStat1" 2>/dev/null
+        echo ""
+        echo "=== Data points ($aiData1) ==="
+        cat "$aiData1"
+        if [ -n "$aiData2" ] && [ -s "$aiData2" ]; then
+            echo ""
+            echo "=== Fitted statistics ($aiStat2) ==="
+            cat "$aiStat2" 2>/dev/null
+            echo ""
+            echo "=== Data points ($aiData2) ==="
+            cat "$aiData2"
+        fi
+    } | aiAsk`
+
+    if [ -n "$aiReview" ]; then
+        # Separate file on purpose: the .stat files are sourced by calculateMemTime.sh.
+        { echo "# AI review of $program.$ref ($aiLabel), `date`"
+          echo "$aiReview"; } > "$aiReviewFile"
+        echoerr "AI review of the fit saved to: $aiReviewFile"
+        # Kept out of resAjust: that string goes through echo -e, which would
+        # mangle backslashes in free text. Appended to the log verbatim instead.
+        aiReviewText="$aiReview"
+        aiReviewRecords="$aiRecords"
+        return 0
+    fi
+
+    echoerr "Skipping AI review of the fit: `aiWhyNot`"
+    return 1
+}
 
 [ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$defaultExtraMem
 
@@ -92,23 +163,28 @@ if [ $inputs == none ]; then
     if test `find $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSlurmJobRecordDir/stats/
 
-        # No-input history (percentile source). Mirror jrExtractBoth exactly: query
+        # No-input history (percentile source). Mirror jobRecordsExtractBoth exactly: query
         # this pipeline first -- and for standalone unknown also pull in legacy, so a
-        # migrated jR1 store still gives a percentile instead of the bare default.
+        # migrated v1 store still gives a percentile instead of the bare default.
         # Then, for NAMED pipelines only, if fewer than 3 records, re-query pooling
         # across named pipelines (+ legacy). unknown never broadens to a named
         # pipeline's history, matching the size-based path's isolation.
         noInAwk='$(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }'
         nif="$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"
-        jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+        jobRecordsEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JOB_RECORDS_AWK_COLMAP""$noInAwk" | uniq > "$nif"
         if [ "$pipeline" != unknown ] && [ "$( { wc -l < "$nif" 2>/dev/null || echo 0; } )" -lt 3 ]; then
-            jrEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+            jobRecordsEmitV2 "$smartSlurmJobRecordDir/jobRecord.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JOB_RECORDS_AWK_COLMAP""$noInAwk" | uniq > "$nif"
         fi
 
         # make plot and calculate statistics
         gnuplot -e 'set key outside; set key reverse; set key invert; set fit logfile "/dev/null"; set fit quiet; set term png; set output "'"$smartSlurmJobRecordDir/stats/$statKey.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; print "STDFIT=", FIT_STDFIT; stats "'"$smartSlurmJobRecordDir/stats/$statKey.memTime.noInput"'" u 1 ' 2>&1 | grep -E 'Final|STDFIT|Mean:|Minimum:|Maximum:|Median:' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$statKey.memTime.stat.noInput
 
         rows=`{ wc -l $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
+
+        # Only after a rebuild, so submissions are not slowed down by an AI call each time.
+        aiReviewFit "memory and run-time of a job without input" \
+            $smartSlurmJobRecordDir/stats/$statKey.memTime.noInput \
+            $smartSlurmJobRecordDir/stats/$statKey.memTime.stat.noInput
     fi
 
     # at least 3 records
@@ -174,8 +250,8 @@ else
             #filter by program and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref=${ref//\//-}
-            # single pass builds both extracts (see jrExtractBoth)
-            jrExtractBoth "$smartSlurmJobRecordDir/stats/$statKey.mem" "$smartSlurmJobRecordDir/stats/$statKey.time"
+            # single pass builds both extracts (see jobRecordsExtractBoth)
+            jobRecordsExtractBoth "$smartSlurmJobRecordDir/stats/$statKey.mem" "$smartSlurmJobRecordDir/stats/$statKey.time"
 
             echoerr "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$statKey.mem):"
             echoerr `cat $smartSlurmJobRecordDir/stats/$statKey.mem`
@@ -203,6 +279,13 @@ else
                 echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$statKey.time"'" using 1:2;' 2>&1| grep -i Correlation | awk '{print $NF * $NF}')" >> $smartSlurmJobRecordDir/stats/$statKey.time.stat
  
                 sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$statKey.time.stat
+
+                # Only after a rebuild, so submissions are not slowed down by an AI call each time.
+                aiReviewFit "input size vs memory, and input size vs run-time" \
+                    $smartSlurmJobRecordDir/stats/$statKey.mem \
+                    $smartSlurmJobRecordDir/stats/$statKey.mem.stat \
+                    $smartSlurmJobRecordDir/stats/$statKey.time \
+                    $smartSlurmJobRecordDir/stats/$statKey.time.stat
 
                 echoerr
                 echoerr You can see the plot using commands:
@@ -248,12 +331,12 @@ fi
 # proves this larger input needs more too), then escalate it with the SAME helper
 # auto-rerun uses. The final request is max(estimate, floor), so initial submit,
 # auto-rerun, and a fresh manual rerun can never drop below a known failure.
-command -v nextMemAfterFail >/dev/null 2>&1 || { _sjrd="$smartSlurmJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_sjrd" ] && smartSlurmJobRecordDir="$_sjrd"; }
-jr=$smartSlurmJobRecordDir/jobRecord.txt
-if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
-    recentFails=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
-    maxFailMem=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
-    maxFailTime=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
+command -v nextMemAfterFail >/dev/null 2>&1 || { _savedJobRecordDir="$smartSlurmJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_savedJobRecordDir" ] && smartSlurmJobRecordDir="$_savedJobRecordDir"; }
+jobRecords=$smartSlurmJobRecordDir/jobRecord.txt
+if [ -f "$jobRecords" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
+    recentFails=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
+    maxFailMem=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
+    maxFailTime=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
     if [ "${maxFailMem:-0}" -gt 0 ]; then
         memFloor=`nextMemAfterFail "$maxFailMem" "$recentFails"`
         if [ "${memFloor:-0}" -gt "${mem:-0}" ]; then
@@ -275,6 +358,13 @@ if [[ $adjust == "adjust" ]]; then
 fi  
 
 echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
+
+# Append the AI review verbatim, so backslashes in the text survive.
+if [ -n "$aiReviewText" ]; then
+    { echo "#AI review of the fitted curve for $program.$ref ($aiReviewRecords records):"
+      echo "$aiReviewText" | sed 's/^/#/'
+      echo "#Full review: $aiReviewFile"; } >> $smartSlurmLogDir/$flag.out
+fi
 
 echo $inputSize $mem $min $extraMem
 

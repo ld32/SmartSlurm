@@ -1,0 +1,282 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# convertToPipeline -- turn a hand-written Slurm submit script (sbatch calls
+# chained with --dependency=afterok:$jid) into a runAsPipeline script, and check
+# the result off-cluster in the slurmless sandbox before you run it for real.
+#
+# It drives the Migration Assistant tools in slurmless/skills/migration-assistant:
+#   1. record the job graph: your submit script runs against a fake sbatch that
+#      records each job and its dependencies but runs nothing (extract_dag.sh)
+#   2. ask AI (bin/aiHelper.sh -> ai_call) to group those jobs into pipeline steps
+#      (the "plan"). No AI? You write the plan yourself and pass --plan.
+#   3. render the plan into an annotated runAsPipeline script (emit_rap.sh)
+#   4. check it: runAsPipeline --lint, then a sandbox dry run. If a check fails,
+#      the error goes back to AI for another try (up to --tries).
+#   5. optional --compare: run the original and the new pipeline in the sandbox
+#      on a copy of your folder and compare the named output files.
+# Nothing is written to your folder until you say yes (or pass --yes).
+# ---------------------------------------------------------------------------
+set -o pipefail
+
+ME=${0##*/}
+BIN="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(dirname "$BIN")"
+SL="$ROOT/slurmless"
+TOOLS="$SL/skills/migration-assistant/tools"
+
+usage() {
+cat <<EOF
+Usage: $ME SUBMIT.sh [options] [-- SUBMIT_ARGS...]
+
+Convert a Slurm submit script into a runAsPipeline script and check it off-cluster.
+
+Options:
+  -o, --out FILE        where to write the pipeline (default: SUBMIT.rap.sh next to SUBMIT.sh)
+  --sbatch "OPTIONS"    default resources for every step
+                        (default: "sbatch -p short -c 1 --mem 2G -t 2:0:0")
+  --plan FILE           use this plan instead of asking AI (format:
+                        $SL/skills/migration-assistant/references/plan-format.md)
+  --compare "GLOBS"     also RUN the original and the new pipeline in the sandbox
+                        (on a copy of the folder) and compare these output files,
+                        e.g. --compare "results/*.txt summary.tsv". Runs your real
+                        commands locally -- only for small test data.
+  --tries N             AI attempts when a check fails (default 3)
+  -y, --yes             write the result without asking
+  -h, --help            show this help
+
+Without AI (ai_call missing, or smartSlurmAiEnabled=no) it stops after step 1 and
+writes the recorded job graph plus a plan template for you to fill in; then run
+  $ME SUBMIT.sh --plan PLAN.txt
+EOF
+exit "${1:-1}"
+}
+
+# ---- arguments ----
+SUBMIT=""; OUT=""; PLAN=""; COMPARE=""; TRIES=3; YES=""
+SBATCH_DEF="sbatch -p short -c 1 --mem 2G -t 2:0:0"
+SUBMIT_ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o|--out)    OUT="${2:?}"; shift 2 ;;
+        --sbatch)    SBATCH_DEF="${2:?}"; shift 2 ;;
+        --plan)      PLAN="${2:?}"; shift 2 ;;
+        --compare)   COMPARE="${2:?}"; shift 2 ;;
+        --tries)     TRIES="${2:?}"; shift 2 ;;
+        -y|--yes)    YES=1; shift ;;
+        -h|--help)   usage 0 ;;
+        --)          shift; SUBMIT_ARGS=("$@"); break ;;
+        -*)          echo "$ME: unknown option $1" >&2; usage ;;
+        *)           [ -z "$SUBMIT" ] && SUBMIT="$1" || SUBMIT_ARGS+=("$1"); shift ;;
+    esac
+done
+[ -n "$SUBMIT" ] || usage
+[ -f "$SUBMIT" ] || { echo "$ME: no such file: $SUBMIT" >&2; exit 1; }
+[[ "$TRIES" =~ ^[1-9][0-9]*$ ]] || { echo "$ME: --tries must be a positive number" >&2; exit 1; }
+[[ "$SBATCH_DEF" == sbatch* ]] || SBATCH_DEF="sbatch $SBATCH_DEF"
+[ -n "$PLAN" ] && { [ -f "$PLAN" ] || { echo "$ME: no such plan: $PLAN" >&2; exit 1; }; PLAN="$(cd "$(dirname "$PLAN")" && pwd)/$(basename "$PLAN")"; }
+for t in extract_dag.sh emit_rap.sh compare_outputs.sh; do
+    [ -f "$TOOLS/$t" ] || { echo "$ME: missing $TOOLS/$t (is slurmless/ in this checkout?)" >&2; exit 1; }
+done
+
+SRCDIR="$(cd "$(dirname "$SUBMIT")" && pwd)"
+SUBNAME="$(basename "$SUBMIT")"
+[ -n "$OUT" ] || OUT="$SRCDIR/${SUBNAME%.sh}.rap.sh"
+case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
+
+# ---- config + AI helper ----
+# smartSlurmAiEnabled from the environment (e.g. =no for one run) beats config.txt.
+_aiEnv="${smartSlurmAiEnabled:-}"
+if [ -f ~/.smartSlurm/config/config.txt ]; then . ~/.smartSlurm/config/config.txt
+elif [ -f "$ROOT/config/config.txt" ]; then . "$ROOT/config/config.txt"; fi
+[ -n "$_aiEnv" ] && smartSlurmAiEnabled="$_aiEnv"
+. "$BIN/aiHelper.sh"
+REALHOME="$HOME"   # the sandbox points HOME elsewhere; ai_call needs the real one
+
+# ---- private sandbox (never the shared test scratch) ----
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/convertToPipeline.XXXXXX")"
+KEEP=""
+cleanup() { [ -n "$KEEP" ] && echo "Work files kept in: $WORK" >&2 || rm -rf "$WORK"; }
+trap cleanup EXIT
+export SS_SCRATCH="$WORK/scratch" SS_NO_INSTALL=1 SMARTSLURM_ROOT="$ROOT"
+mkdir -p "$SS_SCRATCH"
+# shellcheck disable=SC1091
+. "$SL/test/lib/harness.sh" && ss_activate >/dev/null 2>&1 || { echo "$ME: could not start the slurmless sandbox" >&2; KEEP=1; exit 1; }
+set +e   # the harness may turn on errexit; this script checks results itself
+[ -n "$_aiEnv" ] && smartSlurmAiEnabled="$_aiEnv"   # the sandbox re-reads config.txt
+# Writing a whole plan takes longer than ssbatch's quick AI questions.
+[ "${smartSlurmAiTimeout:-90}" -lt 180 ] 2>/dev/null && smartSlurmAiTimeout=180
+
+# A workspace whose files are symlinks to the user's folder (cheap; nothing is run
+# in "record" or dry-run mode, so the originals are never written). --compare
+# runs real commands, so it uses real copies instead.
+mkws() {   # <name> <link|copy>
+    ss_new_workspace "$WORK/$1" >/dev/null 2>&1
+    if [ "$2" = copy ]; then cp -r "$SRCDIR"/. . 2>/dev/null
+    else cp -rs "$SRCDIR"/. . 2>/dev/null; fi
+}
+
+say() { echo -e "\n== $*"; }
+
+# =========================================================================
+# 1. record the job graph
+# =========================================================================
+say "Step 1: recording the jobs and dependencies in $SUBNAME (nothing is run)"
+mkws record link
+ss_wf_activate
+bash "./$SUBNAME" "${SUBMIT_ARGS[@]}" > "$WORK/record.log" 2>&1
+DAG="$WORK/dag.tsv"
+if ! bash "$TOOLS/extract_dag.sh" > "$DAG" 2> "$WORK/extract.err" || [ ! -s "$DAG" ]; then
+    echo "No sbatch jobs were recorded from $SUBNAME." >&2
+    echo "Output of the submit script:" >&2; tail -20 "$WORK/record.log" >&2
+    cat "$WORK/extract.err" >&2
+    exit 1
+fi
+unset SS_WF_MODE
+nNode=$(grep -c '^NODE' "$DAG"); nEdge=$(grep -c '^EDGE' "$DAG")
+echo "Recorded $nNode job(s) and $nEdge dependency link(s):"
+awk -F'\t' '$1=="NODE"{printf "  job  %-20s %s\n", $2, substr($4,1,90)} $1=="EDGE"{printf "  dep  %-20s waits for %s (%s)\n", $2, $4, $3}' "$DAG" | head -40
+[ "$((nNode + nEdge))" -gt 40 ] && echo "  ... (full list: dag.tsv)"
+
+# =========================================================================
+# 2-4. plan -> pipeline -> checks
+# =========================================================================
+PIPE="$WORK/pipeline.sh"
+render() {   # <plan> -> $PIPE; prints errors
+    bash "$TOOLS/emit_rap.sh" "$1" > "$PIPE" 2> "$WORK/emit.err" && [ -s "$PIPE" ] || { cat "$WORK/emit.err"; return 1; }
+}
+check() {   # validate $PIPE; prints the problem on failure
+    local log="$WORK/check.log"
+    mkws check link
+    cp "$PIPE" ./pipeline.rap.sh
+    bash "$BIN/runAsPipeline" --script "pipeline.rap.sh ${SUBMIT_ARGS[*]}" --tmp noTmp \
+        --sbatch-options "$SBATCH_DEF" --lint > "$log" 2>&1
+    if ! grep -q "Lint: OK" "$log"; then echo "runAsPipeline --lint failed:"; tail -15 "$log"; return 1; fi
+    ss_run_pipeline "pipeline.rap.sh ${SUBMIT_ARGS[*]}" "$SBATCH_DEF" --dryrun
+    if ! grep -q "Dry run finished" "$LAST_RUN_LOG" || grep -qE "error [1-9]|[Ee]rror[:!]|exited early|not submitted" "$LAST_RUN_LOG"; then
+        echo "Sandbox dry run failed:"; grep -E "error [1-9]|[Ee]rror|[Ww]arning|not submitted|exited" "$LAST_RUN_LOG" | head -15
+        return 1
+    fi
+    local nJobs; nJobs=$(awk 'NR>1 && NF>=3' smartSlurmLog/allJobs.txt 2>/dev/null | wc -l)
+    echo "Sandbox dry run OK: $nJobs job(s) planned (the original had $nNode)."
+}
+
+template() {   # a starting plan for writing by hand
+    echo "# Plan for $SUBNAME -- see $SL/skills/migration-assistant/references/plan-format.md"
+    echo "# Recorded jobs are listed below as comments; group repeated per-sample jobs"
+    echo "# into one STEP with fanout=yes and use \$s for the sample."
+    sed 's/^/# /' "$DAG"
+    echo "# SAMPLES s1 s2 s3"
+    echo "SBATCH  $SBATCH_DEF"
+    awk -F'\t' '$1=="EDGE"{d[$2]=$4} $1=="NODE" && !seen[$2]++ {n[++k]=$2; c[$2]=$4}
+        END{for(i=1;i<=k;i++){ printf "STEP %s dep=%s fanout=no in=none\n    %s\n", n[i], (n[i] in d ? d[n[i]] : "-"), c[n[i]] }}' "$DAG"
+}
+
+write_template() {   # no AI: hand the user a plan to fill in, then stop
+    local tpl="$SRCDIR/${SUBNAME%.sh}.plan.txt"
+    if [ -e "$tpl" ]; then tpl="$WORK/plan.template.txt"; KEEP=1; fi
+    template > "$tpl"
+    echo "Wrote a plan template to fill in: $tpl"
+    echo "Then run:  $ME $SUBMIT --plan $tpl"
+    exit 2
+}
+
+if [ -n "$PLAN" ]; then
+    say "Step 2: using your plan $PLAN"
+    cp "$PLAN" "$WORK/plan.txt"
+    say "Step 3-4: building and checking the pipeline"
+    if ! render "$WORK/plan.txt" || ! check; then
+        echo "The plan did not produce a working pipeline; fix it and run again." >&2; exit 1
+    fi
+elif ! aiEnabled; then
+    say "Step 2: AI is not available -- $(aiWhyNot)"
+    write_template
+else
+    say "Step 2: asking AI to group the jobs into pipeline steps"
+    # Context: the plan format, the recorded graph, the submit script and the small
+    # scripts it calls (each capped so the prompt stays under ai_call's limit).
+    ctx="$WORK/scripts.txt"; : > "$ctx"
+    for f in $(grep -oE '[A-Za-z0-9_./-]+\.(sh|py|R|pl)' "$SRCDIR/$SUBNAME" | sort -u); do
+        [ -f "$SRCDIR/$f" ] && [ "$(wc -c < "$SRCDIR/$f")" -lt 6000 ] || continue
+        [ "$(wc -c < "$ctx")" -gt 12000 ] && break
+        printf '\n----- %s -----\n' "$f" >> "$ctx"; cat "$SRCDIR/$f" >> "$ctx"
+    done
+    feedback=""; ok=""
+    for try in $(seq 1 "$TRIES"); do
+        {
+            echo "You convert Slurm submit scripts into a SmartSlurm runAsPipeline PLAN."
+            echo "Reply with ONLY the plan text, in the format below: no explanation, no code fences."
+            echo "Rules: keep every command exactly as the job runs it (same programs, arguments and"
+            echo "file names). Collapse jobs repeated per sample into one STEP with fanout=yes and use \$s"
+            echo "for the sample, with a SAMPLES line that lists or computes the samples. Each STEP has at"
+            echo "most one dep=; a step after a fanned-out step waits for all of its jobs (fan-in)."
+            echo "Use this SBATCH line unless a job clearly needs more: SBATCH $SBATCH_DEF"
+            echo; echo "===== PLAN FORMAT ====="
+            cat "$SL/skills/migration-assistant/references/plan-format.md"
+            echo; echo "===== RECORDED JOBS (NODE name kind command / EDGE job deptype dependsOn) ====="
+            head -c 16000 "$DAG"
+            echo; echo "===== SUBMIT SCRIPT $SUBNAME ====="
+            head -c 8000 "$SRCDIR/$SUBNAME"
+            [ -s "$ctx" ] && { echo; echo "===== SCRIPTS IT CALLS ====="; cat "$ctx"; }
+            [ -n "$feedback" ] && { echo; echo "===== YOUR PREVIOUS PLAN FAILED -- FIX IT ====="; cat "$WORK/plan.txt"; echo; echo "Problem:"; echo "$feedback"; }
+        } > "$WORK/prompt.txt"
+        if ! HOME="$REALHOME" aiAsk < "$WORK/prompt.txt" > "$WORK/answer.txt" 2> "$WORK/ai.err"; then
+            echo "AI call failed: $(HOME="$REALHOME" aiWhyNot)"; cat "$WORK/ai.err" >&2
+            [ "$try" = 1 ] && write_template   # never got a plan: fall back to writing one by hand
+            break
+        fi
+        # keep only plan lines (drop code fences / chatter before the first directive)
+        awk '/^```/{next} !started && !/^(#|SAMPLES|SBATCH|STEP)/{next} {started=1; print}' "$WORK/answer.txt" > "$WORK/plan.txt"
+        echo "Attempt $try: AI returned a plan with $(grep -c '^STEP' "$WORK/plan.txt") step(s)."
+        say "Step 3-4: building and checking the pipeline (attempt $try)"
+        if feedback=$(render "$WORK/plan.txt") && feedback=$(check); then
+            echo "$feedback"; ok=1; break
+        fi
+        echo "$feedback"
+    done
+    if [ -z "$ok" ]; then
+        tpl="$WORK/plan.txt"; KEEP=1
+        echo "Could not get a working pipeline from AI. The last plan is in $tpl;" >&2
+        echo "edit it and run:  $ME $SUBMIT --plan $tpl" >&2
+        exit 1
+    fi
+fi
+
+# =========================================================================
+# 5. optional: run both and compare outputs
+# =========================================================================
+if [ -n "$COMPARE" ]; then
+    say "Step 5: running the original and the new pipeline in the sandbox and comparing: $COMPARE"
+    mkws orig copy; ss_wf_activate
+    bash "./$SUBNAME" "${SUBMIT_ARGS[@]}" > "$WORK/orig.log" 2>&1
+    ss_wf_drain >> "$WORK/orig.log" 2>&1; unset SS_WF_MODE
+    mkws rap copy; cp "$PIPE" ./pipeline.rap.sh
+    ss_run_pipeline "pipeline.rap.sh ${SUBMIT_ARGS[*]}" "$SBATCH_DEF"
+    for g in $COMPARE; do echo "FILE $g"; done > "$WORK/contract.txt"
+    if bash "$TOOLS/compare_outputs.sh" "$WORK/orig" "$WORK/rap" "$WORK/contract.txt"; then
+        echo "Outputs match."
+    else
+        KEEP=1
+        echo "Outputs DIFFER (see above). Both runs are kept in $WORK (orig/, rap/)." >&2
+        [ -n "$YES" ] || { echo "Not writing $OUT." >&2; exit 1; }
+    fi
+fi
+
+# =========================================================================
+# sign-off
+# =========================================================================
+say "Result: runAsPipeline script"
+cat "$PIPE"
+if [ -z "$YES" ]; then
+    if [ -t 0 ]; then
+        read -r -p $'\n'"Write it to $OUT? [y/N] " ans
+        [[ "$ans" =~ ^[Yy] ]] || { echo "Not written."; exit 0; }
+    else
+        echo -e "\nNot written (no terminal to ask; pass --yes to write $OUT)."; exit 0
+    fi
+fi
+[ -e "$OUT" ] && cp "$OUT" "$OUT.bak.$(date +%Y%m%d%H%M%S)" && echo "Backed up the existing $OUT"
+cp "$WORK/plan.txt" "${OUT%.sh}.plan.txt" 2>/dev/null
+cp "$PIPE" "$OUT" && chmod +x "$OUT"
+echo "Wrote $OUT (plan: ${OUT%.sh}.plan.txt)"
+scr="$(basename "$OUT")${SUBMIT_ARGS[*]:+ ${SUBMIT_ARGS[*]}}"
+echo "Next: runAsPipeline --script \"$scr\" --sbatch-options \"$SBATCH_DEF\" --tmp noTmp --mode dryrun"

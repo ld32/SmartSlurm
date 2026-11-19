@@ -18,7 +18,7 @@
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
 
 # todo:
-# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecords.txt.
+# Forjob with breaking-point. Need more work to adjust how job record the run time and memory to jobRecord.txt.
 
 # the logic:
 # If job does not depends on other job, and has input, estimate mem/timed and submit
@@ -40,12 +40,12 @@ if [ -f .command.sh ] && [ -f .command.run ]; then
     exec 2>>../../../.nextflow.log
     echoerr() { echo "$@" >> ../../../.nextflow.log; }
 
-# runAsPipeline
+# pipeline mode (parent is a slurmPipeLine script)
 elif [ -z "$runningSingleJob" ]; then
     echoerr() { echo "$@" >&2; }
     echoerr1() { echo "$@" >> .smartSlurm.log; }
 
-# single job without runAsPipeline
+# single job
 else 
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
     echoerr1() { echo "$@" >> .smartSlurm.log; }
@@ -69,7 +69,7 @@ done
 echoerr1 "$output"
 #echoerr() { echo "$@" >&2; }
 
-usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [-dryrun]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [-dryrun, optional: build the job script and show the estimate and sbatch command without submitting. Without it the job is submitted.]"; exit 1; }
 
 [[ "$1" == "-h" || "$1" == "--help" ]] && usage
 
@@ -88,12 +88,14 @@ fi
 mkdir -p $smartSlurmJobRecordDir/stats
 
 . "$(dirname "$0")/jobRecordSchema.sh"
-# A dry run (runAsPipeline appends the literal "dryrun" as the last arg; see the
-# $dryrun test below) must not mutate the jobRecord store. jrEnsureHeader migrates
-# an existing v1 store (jrMigrateStore: rewrite + .back backup), which would
-# violate the "dryrun/--lint is read-only on the store" contract. Real runs still
-# ensure the v2 header here, and runAsPipeline migrates up front before the driver.
-[ "${@: -1}" = dryrun ] || jrEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
+# A dry run (runAsPipeline appends the literal "dryrun" as the last arg; a user
+# passes -dryrun/--dryrun) must not mutate the jobRecord store.
+# jobRecordsEnsureHeader migrates an existing v1 store (rewrite + .back backup),
+# which would violate the "dryrun/--lint is read-only on the store" contract. Real
+# runs still ensure the v2 header here; runAsPipeline migrates up front.
+_ssDry=; [ "${@: -1}" = dryrun ] && _ssDry=1
+for _a in "$@"; do case "$_a" in -dryrun|--dryrun) _ssDry=1;; esac; done
+[ -n "$_ssDry" ] || jobRecordsEnsureHeader "$smartSlurmJobRecordDir/jobRecord.txt"   # v2 header from the schema SSOT
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -174,6 +176,7 @@ for (( i=0; i<$(($#)); i++ )); do
   	    --dependency=* 	)   deps="${array[$i]}" && deps="${deps/--dependency=/}";;
         "test"          )   [ $i -eq $(($#)) ] && continue;;
         "run"           )   [ $i -eq $(($#)) ] && continue;;
+        -dryrun|--dryrun|"dryrun" )   dryrun=dryrun;;
         "--wrap"        )   wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
         *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -P -t -F -w -x -B -G --nice --export " != *" ${arrayC[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
@@ -339,8 +342,33 @@ mem="${mem^^}"; mem1="${mem1^^}"
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
 
-# todo: figure out how to find program name and input automatically
-if [ -z "$program" ]; then 
+# Let AI fill in program/reference/inputs the user did not give (-P/-R/-I).
+# Results are cached in $smartSlurmJobRecordDir/aiCache, so repeated jobs of
+# the same shape make no AI call. Explicit flags always win.
+aiDetectMsg=""
+aiNote=""   # goes to the notes column of jobRecord.txt
+if [ "$smartSlurmAiDetect" != "no" ] && [ "$smartSlurmAiEnabled" != "no" ] && { [ -z "$program" ] || [ -z "$ref" ] || [ -z "$inputs" ]; }; then
+    if [ ! -z "$wrapCMD" ]; then
+        aiOut=`python3 $(dirname $0)/aiDetectJob.py "$smartSlurmJobRecordDir" "$core" wrap "$wrapCMD" 2>/dev/null`
+    elif [ ! -z "$slurmScript" ]; then
+        aiOut=`python3 $(dirname $0)/aiDetectJob.py "$smartSlurmJobRecordDir" "$core" script "$slurmScript" $slurmScriptParas 2>/dev/null`
+    fi
+    IFS=$'\t' read -r aiProgram aiRef aiInputs aiSource aiKey <<< "$aiOut"
+    if [[ "$aiSource" == cache || "$aiSource" == ai ]]; then
+        aiFound=""
+        [ -z "$program" ] && [ "$aiProgram" != "-" ] && program=$aiProgram && aiFound="$aiFound+program"
+        # a reference of "none" is not a finding, so it is not credited in the note
+        [ -z "$ref" ] && [ "$aiRef" != "-" ] && ref=$aiRef && [ "$aiRef" != none ] && aiFound="$aiFound+ref"
+        [ -z "$inputs" ] && [ "$aiInputs" != "-" ] && inputs=$aiInputs && aiFound="$aiFound+inputs"
+        [ -z "$aiFound" ] || aiNote="AI-found:${aiFound#+}($aiSource)"
+        [ "$aiSource" == cache ] && aiDetectMsg="#AI detect (cache $aiKey, no AI call):" || aiDetectMsg="#AI detect (new AI query, saved as $aiKey):"
+        aiDetectMsg="$aiDetectMsg program=$program ref=${ref:-none} inputs=${inputs:-none}\n#Wrong? Edit or delete $smartSlurmJobRecordDir/aiCache/$aiKey.json, or pass -P/-R/-I."
+        echoerr ${aiDetectMsg//\\n/ }
+    fi
+fi
+
+# Fallback when the user and AI did not name the program
+if [ -z "$program" ]; then
     if [ ! -z "$wrapCMD" ]; then
         arr=($wrapCMD)
         # need remove the parameters, to get unique name for job types
@@ -428,6 +456,7 @@ else
 fi
 
 resAjust="#Depend on: $depsID\n"
+[ -z "$aiDetectMsg" ] || resAjust="$resAjust$aiDetectMsg\n"
 
 # check job done before or not
 #if [[ "$dryrun" == "run" ]]; then
@@ -593,7 +622,7 @@ realSbatch=`which -a sbatch | grep -v SmartSlurm | head -n 1`
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -607,7 +636,7 @@ else
 
     # has --wrap
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
+        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
 
         # testing without trap
         #echo -e "#!/bin/bash\ndate\n" > $job
@@ -666,7 +695,7 @@ else
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
             else 
 
-                # !!! runAsPipeline jobs will land here !!!
+                # !!! pipeline-mode jobs will land here !!!
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
                 # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
             fi 
@@ -677,7 +706,7 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
-        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
+        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
@@ -792,8 +821,29 @@ if [[ "$dryrun" != "dryrun" ]]; then
 
     #touch $submitFlag
 else
-    jobID=0$(date +"%4N")
-    echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
+    # Dry run: report what would happen and stop. Standalone: summary on stdout, no
+    # allJobs.txt row. Pipeline (--pipeline=): summary on stderr, fake ID below.
+    dryrunFd=1; [ "$pipeline" != unknown ] && dryrunFd=2
+    echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
+    echoerr1 "Dry run: no job submitted."
+    {
+        echo "Dry run: no job submitted."
+        echo "  program: $program   reference: $ref   inputs: $inputs"
+        [ -z "$inputSize" ] || echo "  input size: $inputSize K"
+        echo "  memory: $mem M   time: $min min   partition: $partition   cores: $core"
+        echo "  job script: $job"
+        echo "  sbatch command: $cmd"
+        [ -s "$outFlag" ] && { echo "  estimate notes:"; grep '^#' "$outFlag" | sed 's/^/    /'; }
+    } >&$dryrunFd
+    # Called from runAsPipeline: hand back a fake job ID and record it in
+    # allJobs.txt so later steps can "depend" on it and the dry run continues.
+    if [ "$pipeline" != unknown ]; then
+        jobID=0$(date +"%4N")
+        [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
+        printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs dryrun >> $smartSlurmLogDir/allJobs.txt
+        echo Submitted batch job $jobID
+    fi
+    exit 0
 fi
 
 # not sure why we need this  but just in case, we will keep it here for now.

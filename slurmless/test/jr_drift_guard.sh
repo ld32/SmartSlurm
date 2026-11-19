@@ -10,13 +10,13 @@
 #
 # Exit 0 = clean; non-zero = at least one violation (printed with file:line).
 # The store-management layer itself is exempt: jobRecordSchema.sh (the API) and
-# jrRepair.sh (the sanctioned manual low-level repair tool).
+# jobRecordsRepair.sh (the sanctioned manual low-level repair tool).
 # ---------------------------------------------------------------------------
 set -u
 ROOT="${SMARTSLURM_ROOT:-}"
 [ -n "$ROOT" ] && [ -d "$ROOT/bin" ] || { echo "jr_drift_guard: set SMARTSLURM_ROOT to a SmartSlurm checkout" >&2; exit 2; }
 BIN="$ROOT/bin"
-EXEMPT='jobRecordSchema.sh jrRepair.sh'
+EXEMPT='jobRecordSchema.sh jobRecordsRepair.sh'
 
 viol=0
 # scan <awk-regex> <message> [file-glob] -- print non-comment offending lines.
@@ -37,17 +37,17 @@ scan() {
 }
 
 # 1) No tool but the API may REDIRECT to a jobRecord store (append, truncate, or a
-#    .new temp). Writers must use jrAppendLine/jrAppendRow; rewrites use jrRewrite.
+#    .new temp). Writers must use jobRecordsAppendLine/jobRecordsAppendRow; rewrites use jobRecordsRewrite.
 scan '>[[:space:]]*"?\$(smartSlurmJobRecordDir|\{smartSlurmJobRecordDir\})/jobRecord' \
-     'raw redirect to a jobRecord store -- use jrAppendLine/jrAppendRow/jrRewrite'
+     'raw redirect to a jobRecord store -- use jobRecordsAppendLine/jobRecordsAppendRow/jobRecordsRewrite'
 
-# 2) No tool but the API may write a HEADER literal. Use JR_HEADER_V2/jrEnsureHeader.
+# 2) No tool but the API may write a HEADER literal. Use JOB_RECORDS_HEADER_V2/jobRecordsEnsureHeader.
 scan '1jobID,2inputSize|pipeline,step,ref,sample,jobID' \
-     'jobRecord header written as a literal -- use jrEnsureHeader (JR_HEADER_V2)'
+     'jobRecord header written as a literal -- use jobRecordsEnsureHeader (JOB_RECORDS_HEADER_V2)'
 
 # 3) No positional read of the store date/epoch columns ($20/$21) in cleanUp -- the
 #    exact drift that let the prune mis-read a hybrid row. Readers address by name
-#    via jrEmitV2 + JR_AWK_COLMAP (col["epoch"], col["status"], ...).
+#    via jobRecordsEmitV2 + JOB_RECORDS_AWK_COLMAP (col["epoch"], col["status"], ...).
 scan '\$2[01]([^0-9]|$)' \
      'positional $20/$21 (date/epoch) read -- address by name via col["..."]' cleanUp.sh
 

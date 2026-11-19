@@ -328,7 +328,7 @@ Optional. When enabled (the `checkpoint` mode in `runAsPipeline`, or a `.Checkpo
 A CSV of resource records for every job, one row per job, with a header line. Its location is set by `smartSlurmJobRecordDir` in [`config.txt`](configuration.md#configtxt) and defaults to `~/.smartSlurm/jobRecord.txt`. The schema is **named** — tools read columns by header name, not position — so the column order can evolve without breaking readers. (The schema is defined in exactly one place, [`jobRecordSchema.sh`](tools.md#under-the-hood-tools).)
 
 ```text
-pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
+pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes
 ```
 
 | Col | Name | Col | Name | Col | Name |
@@ -338,37 +338,49 @@ pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAlloc
 | 3 | **ref** ⭐ | 9 | **timeUsed** ⭐ | 15 | epoch |
 | 4 | sample | 10 | timeAllocated | 16 | isoDate |
 | 5 | jobID | 11 | cores | 17 | flag |
-| 6 | **inputSize** ⭐ | 12 | **status** ⭐ | | |
+| 6 | **inputSize** ⭐ | 12 | **status** ⭐ | 18 | notes |
 
-<sub>⭐ = used directly by resource estimation. `pipeline` comes from `runAsPipeline --pipeline NAME` (default: the pipeline-script basename); `sample` and `flag` identify the per-sample job; `node`/`epoch`/`isoDate` are provenance.</sub>
+<sub>⭐ = used directly by resource estimation. `pipeline` comes from `runAsPipeline --pipeline NAME` (default: the pipeline-script basename); `sample` and `flag` identify the per-sample job; `node`/`epoch`/`isoDate` are provenance; `notes` is free text about how the row was made (see below).</sub>
 
-The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JR_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
+**`notes`** records anything worth knowing about how a row was produced. When [AI detection](ai-assistance.md#automatic-program-and-input-detection) filled in part of the job, it says what and how: `AI-found:program+inputs(ai)` (a fresh AI call) or `AI-found:program+ref+inputs(cache)` (answered from the cache). It is empty when you gave `-P`/`-R`/`-I` yourself. Files written before this column existed (17 columns) are upgraded automatically on the next write: the header gains `notes` and old rows get an empty value (a backup is made first).
+
+The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JOB_RECORDS_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
 
 Example rows:
 
 ```text
-rnaseq,findNumber,none,,46531,1465,3,2048,1,120,1,COMPLETED,ld32,node01,1719830400,2024-07-01T10:00:00,1.0.findNumber
-rnaseq,findNumber,none,,46535,2930,6,2048,2,120,1,COMPLETED,ld32,node01,1719830700,2024-07-01T10:05:00,1.0.findNumber
-rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,1719831000,2024-07-01T10:10:00,1.0.findNumber
+rnaseq,findNumber,none,,46531,1465,3,2048,1,120,1,COMPLETED,ld32,node01,1719830400,2024-07-01T10:00:00,1.0.findNumber,
+rnaseq,findNumber,none,,46535,2930,6,2048,2,120,1,COMPLETED,ld32,node01,1719830700,2024-07-01T10:05:00,1.0.findNumber,
+unknown,bwa-mem-4core,hg38,A_R1.fq.gz,46590,1339,5210,8192,42,120,4,COMPLETED,ld32,node02,1719834000,2024-07-01T11:00:00,bwa-mem-4core.A_R1.fq.gz,AI-found:program+ref+inputs(ai)
 ```
 
 > [!IMPORTANT]
-> **Upgrading from the old format.** Earlier SmartSlurm wrote a different, position-based `jobRecord.txt`. The tools read both, but to convert an existing store to the current schema once (recommended), run [`jrRepair.sh`](tools.md#under-the-hood-tools):
+> **Upgrading from the old format.** Earlier SmartSlurm wrote a different, position-based `jobRecord.txt` (21 columns), and later versions had 17 columns without `notes`. You do not need to do anything: the first job that writes a record converts the file in place to the current format, after saving a backup as `jobRecord.txt.back.<timestamp>.txt` (your rollback). To check or convert a store yourself:
 > ```bash
-> jrRepair.sh            # converts the records in $smartSlurmJobRecordDir in place
-> jrRepair.sh --dry-run  # preview only, writes nothing
-> jrRepair.sh --check    # health report only (schema + row census); writes nothing
+> jobRecordsRepair.sh --check    # report the format and any rows that do not fit it; changes nothing
+> jobRecordsRepair.sh --dry-run  # preview the conversion, writes nothing
+> jobRecordsRepair.sh            # convert $smartSlurmJobRecordDir/jobRecord.txt now
 > ```
-> It backs the original up to `jobRecord.back.<timestamp>.txt` (your rollback) before rewriting. Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own.
+> Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own. Rows that match no known format are never dropped silently: they are saved to `jobRecord.txt.unrecognized.<timestamp>.txt`.
 
 ## Notifications (emails)
 
-Slurm's own email is only a subject line. SmartSlurm instead sends **consolidated, text-only** notifications, so a many-sample pipeline no longer floods your inbox (and no longer litters `smartSlurmLog` with per-job plot pngs):
+Slurm's own email is only a subject line. SmartSlurm sends its own emails instead, and you choose how many with `runAsPipeline --email MODE`:
 
-- **Per sample** — one **warning** the first time a step in that sample fails (telling you to re-run the same command), and one **confirmation** when the sample's last step completes.
-- **Per run** — a single **efficiency summary** when the whole run finishes successfully, carrying the per-sample [efficiency](monitoring.md#resource-efficiency) table and pointing you to `checkRun` (press `e`) for the per-step breakdown.
+| Mode | What you get |
+|------|--------------|
+| `emailPerSample` (default) | One **warning** the first time a step in a sample fails (telling you to re-run the same command), one **confirmation** when a sample's last step completes, and one **efficiency summary** when the whole run succeeds. Text only. |
+| `allJobs` | One email **per job**, success or failure, with the job's memory/CPU plots attached, plus the efficiency summary. |
+| `successJobOnly` | Per-job emails for **successful** jobs only. |
+| `failedJobOnly` | Per-job emails for **failed** jobs only. (`noSuccEmail` still works as the old name.) |
+| `requeueOnly` | An email only when SmartSlurm **auto-resubmits** a job: after running out of memory or time, or after a bad node. |
+| `noEmail` | No email at all. |
 
-Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots (the per-job/barchart gnuplot pngs and their CSVs) are no longer generated — efficiency now lives in `efficiency.tsv` and `checkRun` (press `e`), so nothing clutters `smartSlurmLog`.
+The efficiency summary carries the per-sample [efficiency](monitoring.md#resource-efficiency) table and points you to `checkRun` (press `e`) for the per-step breakdown. It is sent only when every job in the run succeeded.
+
+Per-job memory/CPU plots are made only in the per-job modes (`allJobs`, `successJobOnly`, `failedJobOnly`); set `ssMakePlots=no` to skip them there too. In `allJobs` and `successJobOnly`, `ssEmailSkipMemPct=N` skips the success email of a job that used at least N% of its reserved memory (a well-sized job needs no attention). If outlier records were moved aside for a step, that job's email is always sent, except in `noEmail` and `requeueOnly`.
+
+For a standalone `ssbatch` job, set the mode with `export lessEmail=MODE` before submitting.
 
 ---
 

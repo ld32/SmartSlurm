@@ -70,7 +70,7 @@ Yes — dot-join them in the marker (`#@2,1,find,,input1.input2,...`) or use a s
 <details>
 <summary><b>Fewer or no emails?</b></summary>
 
-Add `noSuccEmail` (failures only) or `noEmail` (none) with `--email`.
+Pick a mode with `--email`: `failedJobOnly` (failures only), `requeueOnly` (only automatic resubmits) or `noEmail` (none). See [Notifications](core-concepts.md#notifications-emails) for all modes.
 </details>
 
 <details>

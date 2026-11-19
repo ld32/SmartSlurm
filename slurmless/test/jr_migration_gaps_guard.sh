@@ -5,14 +5,12 @@
 # passes on the current fix/jobrecord-v2-recognition tree. Run it under BOTH awks:
 #
 #   SMARTSLURM_ROOT=/path/to/smartslurm test/jr_migration_gaps_guard.sh
-#   d=$(mktemp -d); ln -sf "$(command -v mawk)" "$d/awk"; \
-#     PATH="$d:$PATH" SMARTSLURM_ROOT=/path/to/smartslurm test/jr_migration_gaps_guard.sh
 #
 # Covered gaps (adversary pass, 2026-11):
 #   1. Case-2 dup/collision header diverted to .unrecognized during MIGRATION
-#      (jrLint reporting was guarded; the migrate-time diversion+warning was not).
-#   2. _jrLock stale-lock reclaim by jrMigrateStore (crashed holder must not wedge).
-#   3. jrMigrateStore skips (does not corrupt/hang) when a FRESH lock is held.
+#      (jobRecordsLint reporting was guarded; the migrate-time diversion+warning was not).
+#   2. _jobRecordsLock stale-lock reclaim by jobRecordsMigrateStore (crashed holder must not wedge).
+#   3. jobRecordsMigrateStore skips (does not corrupt/hang) when a FRESH lock is held.
 #   4. A leftover .v2.PID/.rw.PID crash temp does not break the next migration.
 #   5. Estimate-equivalence across migration: the fit inputs the estimator reads
 #      (inputSize/memUsed/timeUsed per step/ref) are byte-identical v1-on-the-fly
@@ -40,47 +38,47 @@ echo "== gap 1: duplicate/collision header is diverted to .unrecognized DURING m
 # and preserve it in a .unrecognized file (not drop it, not count it as data).
 f="$TMP/dup.txt"
 { echo "$H_V1_21"; v1r21 100; echo "$H_V1_21"; v1r21 101; } > "$f"
-err=$(jrMigrateStore "$f" 2>&1 1>/dev/null)
-chk "[ \"\$(jrSchemaVersion '$f')\" = 2 ]"               "gap1: store migrates to v2"
+err=$(jobRecordsMigrateStore "$f" 2>&1 1>/dev/null)
+chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ]"               "gap1: store migrates to v2"
 chk "echo \"\$err\" | grep -qi 'identical to the jobRecord header'" "gap1: migration WARNS about the extra header-shaped line"
 uf=$(ls "$f".unrecognized.*.txt 2>/dev/null | head -1)
 chk "[ -n '$uf' ] && grep -q '1jobID' '$uf'"            "gap1: the extra header line is saved to a .unrecognized file"
 # the two real data rows still survive as v2
-got=$(awk -F, 'NR>1 && NF==17 && $1 !~ /^[0-9]+$/{print $5}' "$f" | sort -n | xargs)
+got=$(awk -F, 'NR>1 && NF==18 && $1 !~ /^[0-9]+$/{print $5}' "$f" | sort -n | xargs)
 chk "[ '$got' = '100 101' ]"                            "gap1: both real data rows survive (want '100 101' got '$got')"
 
-echo "== gap 2: jrMigrateStore reclaims a STALE lock (crashed holder must not wedge) =="
+echo "== gap 2: jobRecordsMigrateStore reclaims a STALE lock (crashed holder must not wedge) =="
 f="$TMP/stale.txt"; v1r21 200 > "$f"
 mkdir "$f.lock"; touch -d '120 seconds ago' "$f.lock"
-JR_LOCK_STALE=30 JR_LOCK_TRIES=5 jrMigrateStore "$f" 2>/dev/null
-chk "[ \"\$(jrSchemaVersion '$f')\" = 2 ]"              "gap2: stale lock reclaimed -> store migrated to v2"
+JOB_RECORDS_LOCK_STALE=30 JOB_RECORDS_LOCK_TRIES=5 jobRecordsMigrateStore "$f" 2>/dev/null
+chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ]"              "gap2: stale lock reclaimed -> store migrated to v2"
 chk "[ ! -d '$f.lock' ]"                                "gap2: lock released after reclaim"
 
-echo "== gap 3: jrMigrateStore SKIPS (no corrupt, no hang) when a FRESH lock is held =="
+echo "== gap 3: jobRecordsMigrateStore SKIPS (no corrupt, no hang) when a FRESH lock is held =="
 f="$TMP/held.txt"; v1r21 300 > "$f"; cp "$f" "$f.orig"
 mkdir "$f.lock"   # fresh (not stale)
-JR_LOCK_STALE=99999 JR_LOCK_TRIES=3 jrMigrateStore "$f" 2>/dev/null
+JOB_RECORDS_LOCK_STALE=99999 JOB_RECORDS_LOCK_TRIES=3 jobRecordsMigrateStore "$f" 2>/dev/null
 chk "diff -q '$f' '$f.orig' >/dev/null"                 "gap3: held-lock migrate left the store byte-identical"
-chk "[ \"\$(jrSchemaVersion '$f')\" = 1 ]"              "gap3: store still v1 (migration correctly skipped)"
+chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 1 ]"              "gap3: store still v1 (migration correctly skipped)"
 rmdir "$f.lock" 2>/dev/null
 
 echo "== gap 4: a leftover crash temp (.v2.PID / .rw.PID) does not break the next migration =="
 f="$TMP/crash.txt"; v1r21 400 > "$f"
 : > "$f.v2.99999"; : > "$f.rw.88888"           # litter from a killed writer
-jrMigrateStore "$f" 2>/dev/null
+jobRecordsMigrateStore "$f" 2>/dev/null
 got=$(awk -F, 'NR>1{print $5}' "$f" | xargs)
-chk "[ \"\$(jrSchemaVersion '$f')\" = 2 ] && [ '$got' = 400 ]" "gap4: migration succeeds despite leftover temp litter"
+chk "[ \"\$(jobRecordsSchemaVersion '$f')\" = 2 ] && [ '$got' = 400 ]" "gap4: migration succeeds despite leftover temp litter"
 
 echo "== gap 5: estimate-equivalence across migration (fit inputs unchanged) =="
-# The estimator reads (inputSize, memUsed, timeUsed) per step/ref via jrEmitV2.
+# The estimator reads (inputSize, memUsed, timeUsed) per step/ref via jobRecordsEmitV2.
 # A v1 store read on the fly MUST yield the identical fit inputs as the same store
 # after it is persisted to v2 -- otherwise migration silently shifts estimates.
 f="$TMP/est.txt"
 for i in 1 2 3 4 5; do v1r21 $((500+i)) $((1000*i)) $((300*i)) COMPLETED bwa hg38 2 >> "$f"; done
-fitpull(){ jrEmitV2 "$1" | awk -F, 'NR==1{for(i=1;i<=NF;i++)c[$i]=i;next}
+fitpull(){ jobRecordsEmitV2 "$1" | awk -F, 'NR==1{for(i=1;i<=NF;i++)c[$i]=i;next}
   $(c["step"])=="bwa" && $(c["ref"])=="hg38" && $(c["status"])=="COMPLETED" && $(c["inputSize"])~/^[0-9]+$/ \
   {print $(c["inputSize"]),$(c["memUsed"]),$(c["timeUsed"])}' | sort -n; }
-pre=$(fitpull "$f"); jrMigrateStore "$f" 2>/dev/null; post=$(fitpull "$f")
+pre=$(fitpull "$f"); jobRecordsMigrateStore "$f" 2>/dev/null; post=$(fitpull "$f")
 chk "[ -n \"\$pre\" ]"                                   "gap5: pre-migration fit inputs are non-empty"
 chk "[ \"\$pre\" = \"\$post\" ]"                        "gap5: fit inputs identical pre/post migration (no estimate drift)"
 

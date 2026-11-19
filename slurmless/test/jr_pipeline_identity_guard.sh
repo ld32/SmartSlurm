@@ -7,13 +7,10 @@
 #
 #   SMARTSLURM_ROOT=/path/to/smartslurm bash test/jr_pipeline_identity_guard.sh
 #
-# Validate under BOTH awks:
-#   SD=$(mktemp -d); ln -sf "$(command -v mawk)" "$SD/awk"
-#   PATH="$SD:$PATH" SMARTSLURM_ROOT=... bash test/jr_pipeline_identity_guard.sh
 #
 # SECTION A (must be GREEN -- these had NO harness coverage before this guard;
 #   a mutation that removes the all-digit/reserved/header-collision rejection in
-#   runAsPipeline left the whole jR suite green, yet such a name makes jrEmitV2
+#   runAsPipeline left the whole jR suite green, yet such a name makes jobRecordsEmitV2
 #   silently drop EVERY row of that pipeline. Exit code reflects Sections A and B.):
 #     A1 an invalid --pipeline (all-digit / reserved / header-collision) is
 #        rejected with rc!=0 AND the store is left UNMIGRATED (validation must run
@@ -25,11 +22,11 @@
 #
 # SECTION B (hard asserts -- dryrun / lint must be read-only on the store):
 #     B1 `runAsPipeline --mode dryrun` MUST NOT mutate the store. The per-step
-#        `ssbatch ... dryrun` path used to call jrEnsureHeader (ssbatch:91) BEFORE
+#        `ssbatch ... dryrun` path used to call jobRecordsEnsureHeader (ssbatch:91) BEFORE
 #        checking the trailing `dryrun` arg, so a dry run migrated a v1 store
 #        v1->v2 and wrote a .back file -- contradicting runAsPipeline's own
 #        gate+comment ("a --lint / --mode dryrun must not mutate the store").
-#        Fixed on feat/pipeline-and-curation: ssbatch skips jrEnsureHeader when
+#        Fixed on feat/pipeline-and-curation: ssbatch skips jobRecordsEnsureHeader when
 #        its last arg is `dryrun` (real runs still ensure the header, and
 #        runAsPipeline migrates up front). This assert pins that fix across the
 #        full matrix of real store shapes (absent, empty, v1 21-col/20-col, mixed
@@ -45,7 +42,7 @@ if [ -z "$ROOT" ] || [ ! -x "$ROOT/bin/runAsPipeline" ] || [ ! -r "$ROOT/bin/job
 fi
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 sch="$ROOT/bin/jobRecordSchema.sh"
-jrver() { ( . "$sch"; jrSchemaVersion "$1" ); }
+jrver() { ( . "$sch"; jobRecordsSchemaVersion "$1" ); }
 
 SB="$(mktemp -d)"; trap 'rm -rf "$SB"' EXIT
 export SS_SCRATCH="$SB/scratch"; mkdir -p "$SS_SCRATCH"
@@ -102,7 +99,7 @@ mk_shape() {
 # Dry-run read-only assertion for the shape currently in $jr: a `runAsPipeline
 # --mode dryrun` must leave the store byte-for-byte unchanged -- no migration, no
 # .back, no .unrecognized, and an absent store must STAY absent (pre-fix,
-# jrEnsureHeader created a header file here). Asserts only on store state, not on
+# jobRecordsEnsureHeader created a header file here). Asserts only on store state, not on
 # the dry run's exit code (a dry run may legitimately warn while mutating nothing).
 check_readonly() {
     local label="$1" pre post prebk postbk postun ex_pre ex_post
@@ -116,7 +113,7 @@ check_readonly() {
     if [ "$ex_pre" = "$ex_post" ] && [ "$pre" = "$post" ] && [ "$postbk" -eq "$prebk" ] && [ "$postun" -eq 0 ]; then
         ok "B1[$label] dryrun read-only (md5 $pre, backups $postbk, unrecognized 0)"
     else
-        bad "B1[$label] dryrun MUTATED store: exists $ex_pre->$ex_post, md5 $pre->$post, backups $prebk->$postbk, unrecognized=$postun -- ssbatch dryrun guard regressed (must skip jrEnsureHeader when last arg is 'dryrun')"
+        bad "B1[$label] dryrun MUTATED store: exists $ex_pre->$ex_post, md5 $pre->$post, backups $prebk->$postbk, unrecognized=$postun -- ssbatch dryrun guard regressed (must skip jobRecordsEnsureHeader when last arg is 'dryrun')"
     fi
 }
 

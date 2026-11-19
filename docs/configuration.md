@@ -28,7 +28,7 @@ adjustPartition() { ...; }
 Other settings referenced elsewhere in this document:
 
 - `effLowPct` (default **25**) — efficiency at or below this percent turns a [resource-efficiency](monitoring.md#resource-efficiency) bar red.
-- `JR_REF_CLASS` — controls [ref pooling](core-concepts.md#jobrecords) (default pools `mm*`/`hg*`/`GRC*`; set to `""` to disable).
+- `JOB_RECORDS_REF_CLASS` — controls [ref pooling](core-concepts.md#jobrecords) (default pools `mm*`/`hg*`/`GRC*`; set to `""` to disable).
 
 > [!IMPORTANT]
 > **`firstBatchCount` (5) and the "3 records" rule are different things.**

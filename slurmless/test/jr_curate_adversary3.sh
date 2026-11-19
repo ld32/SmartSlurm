@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# jr_curate_adversary3.sh -- third-pass adversarial guard for bin/jrCurate.sh
+# jr_curate_adversary3.sh -- third-pass adversarial guard for bin/jobRecordsCurate.sh
 # (SmartSlurm feat/curation-fixes @ f2dc474). Run:
 #
 #   SMARTSLURM_ROOT=/path/to/smartslurm bash test/jr_curate_adversary3.sh
@@ -9,7 +9,7 @@
 #   cmd_import's post-apply integrity gate re-reads the store and flags a failure
 #   for ANY row whose jobID is in the assignment map but whose pipeline != the
 #   chosen name:
-#       NR>1 && ($5 in want){ seen[$5]=1; if($1!=want[$5]) wrong++ }   (jrCurate.sh:278)
+#       NR>1 && ($5 in want){ seen[$5]=1; if($1!=want[$5]) wrong++ }   (jobRecordsCurate.sh:278)
 #   But the relabel only touches rows that are pipeline==legacy. If a NON-legacy
 #   row happens to share a jobID with an assigned legacy row (job-id counter reset,
 #   multi-cluster pooled store, merged history), that non-legacy row legitimately
@@ -32,12 +32,12 @@
 # ---------------------------------------------------------------------------
 set -u
 ROOT="${SMARTSLURM_ROOT:-}"
-if [ -z "$ROOT" ] || [ ! -r "$ROOT/bin/jrCurate.sh" ]; then
-    echo "jr_curate_adversary3: set SMARTSLURM_ROOT to a checkout with bin/jrCurate.sh" >&2
+if [ -z "$ROOT" ] || [ ! -r "$ROOT/bin/jobRecordsCurate.sh" ]; then
+    echo "jr_curate_adversary3: set SMARTSLURM_ROOT to a checkout with bin/jobRecordsCurate.sh" >&2
     exit 2
 fi
 . "$ROOT/bin/jobRecordSchema.sh"
-CURATE(){ bash "$ROOT/bin/jrCurate.sh" "$@"; }
+CURATE(){ bash "$ROOT/bin/jobRecordsCurate.sh" "$@"; }
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); printf '  ok  : %s\n' "$1"; }
 no(){ FAIL=$((FAIL+1)); printf '  FAIL: %s\n' "$1"; }
@@ -46,7 +46,7 @@ V2(){ printf '%s,%s,%s,%s,%s,100,1000,2000,10,20,1,COMPLETED,u,n,%s,2026-01-01,%
 
 echo "FINDING C: a non-legacy row sharing a jobID with an assigned legacy row must not false-fail import"
 d="$TMP/C"; mkdir -p "$d"; jr="$d/jobRecord.txt"
-printf '%s\n' "$JR_HEADER_V2" > "$jr"
+printf '%s\n' "$JOB_RECORDS_HEADER_V2" > "$jr"
 V2 legacy align hg38 sA 500 1735700500 2.1.align.sA >> "$jr"   # legacy row, jobID 500
 V2 rnaseq count hg38 sB 500 1735700501 3.2.count.sB >> "$jr"   # NON-legacy, SAME jobID 500
 CURATE export "$d" >/dev/null 2>&1

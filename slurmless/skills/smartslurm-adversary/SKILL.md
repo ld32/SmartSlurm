@@ -27,7 +27,7 @@ the repo root). `$SMARTSLURM_ROOT` = the tool checkout under review.
 
 ## The three highest-value bug classes here (learned the hard way)
 
-1. **Silent data loss — rows that vanish with exit 0.** `jrEmitV2` dropping rows
+1. **Silent data loss — rows that vanish with exit 0.** `jobRecordsEmitV2` dropping rows
    (all-digit pipeline id, header-vs-datarow collision), `cleanUp` pruning COMPLETED
    history it should keep, migration losing records. A tool that "runs fine" and
    quietly eats history is *the* canonical SmartSlurm bug. These never show up in a
@@ -72,22 +72,20 @@ regression if `master` is green on it.
    section). This is where the real bugs are.
 4. **Back-compat matrix.** v1 / v2 / hybrid / headerless / mis-ordered / CRLF /
    all-digit / reserved-id stores — migrate and prune each; assert zero loss + backup.
-5. **Portability.** Every awk-bearing path under **gawk AND mawk** (shim below) —
-   they diverge on `printf`, `length`, uninitialised vars, `gsub`.
-6. **Fuzz / property.** Extend `test/jr_conversion_stress.sh` (randomised store
+5. **Fuzz / property.** Extend `test/jr_conversion_stress.sh` (randomised store
    shapes → strong invariants, not row counts). Run many seeds.
-7. **Mutation check.** Prove the suite would actually *catch* a bug (below). A green
+6. **Mutation check.** Prove the suite would actually *catch* a bug (below). A green
    suite on mutated code is a coverage gap, not a passing tool.
-8. **Regression guard.** Turn every confirmed finding into a permanent block
+7. **Regression guard.** Turn every confirmed finding into a permanent block
    (the `test/jr_drift_guard.sh` pattern) so the bug can never silently return.
 
 ## Silent-failure invariants — assert these regardless of exit code
 
-- **Row conservation.** After any migrate/prune, `jrCountRecognized` out ≥ in minus
+- **Row conservation.** After any migrate/prune, `jobRecordsCountRecognized` out ≥ in minus
   *only* rows provably meant to drop; anything dropped is in a `.back`/`.skipped`
   file. A store never shrinks to the header alone.
 - **Round-trip fidelity.** v1→v2 preserves every field (no silent `0`/empty for
-  mem/time/size); v2→v2 is identity; `jrLint` / `jrSchemaVersion` agree before and
+  mem/time/size); v2→v2 is identity; `jobRecordsLint` / `jobRecordsSchemaVersion` agree before and
   after.
 - **Prune conservatism.** A fail-prune removes ONLY the offending program's
   disproven rows (size ≥ failing size AND mem ≤ proven-insufficient alloc). Unrelated
@@ -107,7 +105,6 @@ regression if `master` is green on it.
 
 - **schema:** all-digit / empty / CRLF / reserved pipeline ids; header line vs a data
   row whose pipeline is literally `pipeline`; column-count drift (17 v2 vs 20/21 v1).
-- **awk portability:** gawk vs mawk divergence anywhere awk parses or emits records.
 - **identity:** `--pipeline` > `#@pipeline` > basename precedence; reserved-name
   rejection; numeric-only step / dot-joined dep grammar.
 - **estimation:** zero / numerically-tiny slope; < 3 records; far extrapolation;
@@ -128,10 +125,6 @@ regression if `master` is green on it.
 # in PARALLEL (watch peak procs when attacking the runner). Run from $SL with
 # SMARTSLURM_ROOT exported (see "First moves").
 cd "$SL" && ./test/run_tests.sh <block>
-
-# gawk + mawk: shim mawk onto PATH and re-run
-SD=$(mktemp -d); mkdir -p "$SD/awkshim"; ln -sf "$(command -v mawk)" "$SD/awkshim/awk"
-PATH="$SD/awkshim:$PATH" ./test/run_tests.sh <block>
 
 # fuzz the conversion/prune invariants harder (more seeds = more coverage)
 for s in 1 7 42 99 1234; do SMARTSLURM_ROOT=$SMARTSLURM_ROOT ./test/jr_conversion_stress.sh $s || break; done
@@ -157,7 +150,7 @@ mutates a tool **to validate the test, then reverts** — it does not violate th
 ## Green-light gate (ALL must hold before on-cluster testing or an upstream push)
 
 - [ ] `bootstrap.sh` baseline green.
-- [ ] Full suite green under **gawk AND mawk**.
+- [ ] Full suite green.
 - [ ] A new adversarial block / fuzz seed exists for **every** behaviour the change
       touches, and it would fail without the change.
 - [ ] **Differential vs master** run: every remaining red is pre-existing drift,
