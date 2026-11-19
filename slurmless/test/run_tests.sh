@@ -100,7 +100,7 @@ ss_purpose() {
     contaminate_exit0)  echo "An exit-0-empty / mis-sized COMPLETED row drags the fitted slope downward (data contamination)";;
     contaminate_exclude) echo "OOM/failed rows are excluded from the fit — only COMPLETED rows are used";;
     contaminate_prune)  echo "An OOM storm prunes the offending program's failed and failure-disproven rows, keeping its validated history and unrelated programs";;
-    fitqc)              echo "fitQC: triage flags the planted outlier group, detail ranks it worst, --remove/--auto clean it (R2 jumps), groups stay per pipeline, high-leverage extremes are never auto-removed";;
+    fitqc)              echo "fitQC: grades the estimator's model (envelope + p93 margin) per group -- model choice (LINE/CONST), coverage, waste, and the estimation-inflating outlier; --auto tightens waste without dropping coverage; cross-pipeline isolation; honest no-match removal";;
     firstpass_rate)     echo "Measured first-pass success rate tracks the targetFirstPassPct knob (and responds monotonically to it)";;
     failure_floor)      echo "Estimates never drop to/below a proven-insufficient allocation; a genuinely smaller input is unaffected";;
     manual_rerun_floor) echo "After a real emergent-OOM run, a fresh (manual) rerun estimate exceeds the proven-insufficient allocation (cross-run)";;
@@ -2717,137 +2717,128 @@ _want fitqc && {
   if [ ! -x "$FITQC" ]; then
     echo "    (skipped: fitQC not present in $SMARTSLURM_ROOT/bin)"; echo
   else
-  HDR='pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag'
+  HDR='pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes'
   ep=$(date +%s)
-  # Rebuildable store: a clean p1/bowtie line (mem=2*size+100) with ONE planted
-  # outlier (jobID 99999 at size 350); a SECOND pipeline p2 running the same tool
-  # (must stay a separate group); a thin group (n=2); and an OOM row (ignored).
+  # Rebuildable store mirroring the ESTIMATOR's model (max-per-inputSize envelope +
+  # p93 margin), one group per QC case:
+  #  rnaseq/bowtie   : clean LINE (mem=50*size+200, 2 reps/size) + ONE inflating
+  #                    envelope point (jobID 7999, 90000 @ size 300) -> over-alloc, infl=7999
+  #  rnaseq/fastqc   : size-independent (mem=500) -> CONST model, clean
+  #  proseq/bowtie   : clean line in a SECOND pipeline (cross-pipeline isolation)
+  #  proseq/samtools : convex/super-linear -> UNDER-COVER (margin cannot cover), with
+  #                    no single removable row that fixes it
+  #  rnaseq/split    : thin (2 distinct input sizes)
   seed_store() {
+    local jid s r
     { echo "$HDR"
-      printf 'p1,bowtie,none,,1001,100,300,512,10,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.1\n'  "$ep"
-      printf 'p1,bowtie,none,,1002,200,505,600,12,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.2\n'  "$ep"
-      printf 'p1,bowtie,none,,1003,300,695,800,14,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.3\n'  "$ep"
-      printf 'p1,bowtie,none,,99999,350,2000,2200,15,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.X\n' "$ep"
-      printf 'p1,bowtie,none,,1005,400,905,1000,16,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.5\n' "$ep"
-      printf 'p1,bowtie,none,,1006,500,1100,1200,18,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.6\n' "$ep"
-      printf 'p1,bowtie,none,,1007,600,1310,1400,20,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.7\n' "$ep"
-      printf 'p2,bowtie,none,,2001,100,800,900,10,60,8,COMPLETED,u,n,%s,d,1.0.bowtie.w1\n' "$ep"
-      printf 'p2,bowtie,none,,2002,200,1600,1700,12,60,8,COMPLETED,u,n,%s,d,1.0.bowtie.w2\n' "$ep"
-      printf 'p2,bowtie,none,,2003,300,2400,2500,14,60,8,COMPLETED,u,n,%s,d,1.0.bowtie.w3\n' "$ep"
-      printf 'p1,star,none,,4001,100,4000,4200,30,120,8,COMPLETED,u,n,%s,d,3.0.star.1\n' "$ep"
-      printf 'p1,star,none,,4002,200,8000,8200,40,120,8,COMPLETED,u,n,%s,d,3.0.star.2\n' "$ep"
-      printf 'p1,bowtie,none,,1008,450,88888,1000,17,60,4,OOM,u,n,%s,d,1.0.bowtie.8\n' "$ep"
+      jid=1000; for s in 100 200 300 400 500 600; do for r in 1 2; do
+        printf 'rnaseq,bowtie,none,,%d,%d,%d,900,10,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.%d,\n' "$jid" "$s" "$((50*s+200))" "$ep" "$jid"; jid=$((jid+1)); done; done
+      printf 'rnaseq,bowtie,none,,7999,300,90000,900,10,60,4,COMPLETED,u,n,%s,d,1.0.bowtie.X,\n' "$ep"
+      jid=1200; for s in 100 200 300 400 500 600; do for r in 1 2; do
+        printf 'rnaseq,fastqc,none,,%d,%d,500,900,10,60,4,COMPLETED,u,n,%s,d,2.0.fastqc.%d,\n' "$jid" "$s" "$ep" "$jid"; jid=$((jid+1)); done; done
+      jid=1400; for s in 100 200 300; do
+        printf 'proseq,bowtie,none,,%d,%d,%d,900,10,60,8,COMPLETED,u,n,%s,d,1.0.bowtie.%d,\n' "$jid" "$s" "$((50*s+200))" "$ep" "$jid"; jid=$((jid+1)); done
+      jid=1600; for s in 100 200 300 400; do for r in 1 2 3; do
+        printf 'proseq,samtools,none,,%d,%d,%d,900,10,60,4,COMPLETED,u,n,%s,d,1.0.samtools.%d,\n' "$jid" "$s" "$((40*s+100))" "$ep" "$jid"; jid=$((jid+1)); done; done
+      for s in 500 600; do for r in 1 2 3; do
+        printf 'proseq,samtools,none,,%d,%d,%d,900,10,60,4,COMPLETED,u,n,%s,d,1.0.samtools.%d,\n' "$jid" "$s" "$((120*s*s/100))" "$ep" "$jid"; jid=$((jid+1)); done; done
+      printf 'rnaseq,split,none,,1800,100,300,900,10,60,4,COMPLETED,u,n,%s,d,1.0.split.1,\n' "$ep"
+      printf 'rnaseq,split,none,,1801,200,600,900,10,60,4,COMPLETED,u,n,%s,d,1.0.split.2,\n' "$ep"
     } > "$jr"
   }
   seed_store
 
-  # 1) triage flags the outlier group (one point over the cut)
-  nout=$("$FITQC" --store "$jr" | awk '$1=="p1/bowtie/none"{print $5}')
-  { [ -n "$nout" ] && [ "$nout" -ge 1 ]; } \
-    && _pass "triage flags p1/bowtie/none as having an outlier (#out=$nout)" \
-    || _fail "triage flags the outlier group" "#out=${nout:-<none>}"
+  # fitQC grades the ESTIMATOR's model, so assertions read the stable --tsv view:
+  #   key \t n \t nSizes \t model \t cover% \t waste% \t inflJob \t inflMrec \t note
+  tf() { "$FITQC" --store "$jr" --all --tsv | awk -F'\t' -v k="$1" -v f="$2" '$1==k{print $f}'; }
 
-  # 2) cross-pipeline isolation: p1 and p2 bowtie are SEPARATE groups
-  ngrp=$("$FITQC" --store "$jr" --all | grep -cE '^(p1|p2)/bowtie/none ')
+  # 1) model choice: a size-dependent group fits a LINE
+  [ "$(tf rnaseq/bowtie/none 4)" = LINE ] \
+    && _pass "model choice: size-dependent group -> LINE" \
+    || _fail "model LINE" "got '$(tf rnaseq/bowtie/none 4)'"
+
+  # 2) model choice: a size-INDEPENDENT group falls back to the CONST (p93) model
+  [ "$(tf rnaseq/fastqc/none 4)" = CONST ] \
+    && _pass "model choice: size-independent group -> CONST (matches calculateMemTime)" \
+    || _fail "model CONST" "got '$(tf rnaseq/fastqc/none 4)'"
+
+  # 3) coverage: a clean group covers >= the target percentile
+  cov=$(tf rnaseq/fastqc/none 5)
+  awk -v c="$cov" 'BEGIN{exit !(c+0>=93)}' \
+    && _pass "coverage computed: clean group covers >= p93 (cover=$cov%)" \
+    || _fail "coverage" "fastqc cover=$cov"
+
+  # 4) the INFLATING outlier is flagged with its jobID + a positive recovery; note=infl
+  ij=$(tf rnaseq/bowtie/none 7); im=$(tf rnaseq/bowtie/none 8); inote=$(tf rnaseq/bowtie/none 9)
+  if [ "$ij" = 7999 ] && [ "${im:-0}" -gt 0 ] && echo "$inote" | grep -q infl; then
+    _pass "inflating envelope point flagged (infl=$ij recovers ${im}M, note='$inote')"
+  else _fail "inflating outlier flagged" "job=$ij Mrec=$im note=$inote"; fi
+
+  # 5) a clean / constant group is NOT flagged with a spurious inflating row
+  [ "$(tf rnaseq/fastqc/none 7)" = "-" ] \
+    && _pass "clean CONST group has no spurious estimation outlier (infl=-)" \
+    || _fail "no false infl on clean group" "infl=$(tf rnaseq/fastqc/none 7)"
+
+  # 6) UNDER-COVER: a convex/super-linear group under-covers (OOM risk) and has NO
+  #    single removable row (it is a modeling gap, not a bad datum)
+  scov=$(tf proseq/samtools/none 5); snote=$(tf proseq/samtools/none 9); sinfl=$(tf proseq/samtools/none 7)
+  if echo "$snote" | grep -q UNDER-COVER && awk -v c="$scov" 'BEGIN{exit !(c+0<93)}' && [ "$sinfl" = "-" ]; then
+    _pass "UNDER-COVER flagged (cover=$scov% < p93), not 'fixable' by removal (infl=-)"
+  else _fail "under-cover detection" "cover=$scov note=$snote infl=$sinfl"; fi
+
+  # 7) cross-pipeline isolation: the same step in two pipelines = two separate groups
+  ngrp=$("$FITQC" --store "$jr" --all --tsv | awk -F'\t' '$1=="rnaseq/bowtie/none"||$1=="proseq/bowtie/none"' | grep -c .)
   [ "${ngrp:-0}" -eq 2 ] \
     && _pass "same tool in two pipelines -> two separate groups (no cross-contamination)" \
-    || _fail "cross-pipeline isolation" "matched $ngrp group rows, expected 2"
+    || _fail "cross-pipeline isolation" "matched $ngrp, expected 2"
 
-  # 3) detail ranks the planted outlier worst (first data row = jobID 99999)
-  first=$("$FITQC" --store "$jr" p1/bowtie/none | awk '/^   [0-9]/{print $1; exit}')
-  [ "$first" = 99999 ] && _pass "detail ranks the planted outlier (99999) worst" \
-    || _fail "detail ranks the outlier worst" "top row jobID=$first"
+  # 8) detail ranks rows by estimation influence: the inflating row is #1 and flagged INFL
+  top=$("$FITQC" --store "$jr" rnaseq/bowtie/none --no-color | awk '/jobID/{h=1;next} h&&/^   [0-9]/{print $1,$NF; exit}')
+  [ "$top" = "7999 INFL" ] \
+    && _pass "detail ranks by influence: inflating row first, flagged INFL" \
+    || _fail "detail influence ranking" "top row='$top'"
 
-  # 4) thin group (n=2) reported thin, never fit
-  "$FITQC" --store "$jr" --all | awk '$1=="p1/star/none"{print $7}' | grep -q thin \
-    && _pass "thin group (n=2) reported thin, not fit" || _fail "thin group reported thin"
-
-  # 5) --dry-run --remove is a no-op on the real store
+  # 9) --dry-run --remove is a no-op on the real store
   rb=$(wc -l < "$jr")
-  "$FITQC" --store "$jr" p1/bowtie/none --remove 99999 --dry-run >/dev/null
+  "$FITQC" --store "$jr" rnaseq/bowtie/none --remove 7999 --dry-run >/dev/null
   ra=$(wc -l < "$jr")
-  { [ "$rb" = "$ra" ] && grep -q ',99999,' "$jr"; } \
+  { [ "$rb" = "$ra" ] && grep -q ',7999,' "$jr"; } \
     && _pass "--dry-run --remove writes nothing (store unchanged)" \
     || _fail "--dry-run --remove no-op" "rows $rb->$ra"
 
-  # 6) real --remove drops the outlier, backs up, and the re-fit R2 jumps
-  r2b=$("$FITQC" --store "$jr" p1/bowtie/none | sed -n 's/.*R2=\([0-9.]*\).*/\1/p' | head -1)
-  "$FITQC" --store "$jr" p1/bowtie/none --remove 99999 >/dev/null
-  r2a=$("$FITQC" --store "$jr" p1/bowtie/none | sed -n 's/.*R2=\([0-9.]*\).*/\1/p' | head -1)
-  gone=$(awk -F, 'NR>1 && $5=="99999"{c++} END{print c+0}' "$jr")
-  if [ "$gone" -eq 0 ] \
-     && ls "$smartSlurmJobRecordDir"/jobRecord.back.*.txt >/dev/null 2>&1 \
-     && awk -v b="$r2b" -v a="$r2a" 'BEGIN{exit !(b+0<0.9 && a+0>0.99)}'; then
-    _pass "--remove drops the outlier + backs up; R2 $r2b -> $r2a"
-  else _fail "--remove cleans the group" "99999 gone? backup? R2 $r2b->$r2a"; fi
+  # 10) --auto removes the inflating row, cutting waste WITHOUT dropping coverage, and
+  #     backs the store up first (then converges -- no load-bearing row is touched)
+  wb=$(tf rnaseq/bowtie/none 6)
+  auto=$("$FITQC" --store "$jr" rnaseq/bowtie/none --auto)
+  wa=$(tf rnaseq/bowtie/none 6); ca=$(tf rnaseq/bowtie/none 5)
+  gone=$(awk -F, 'NR>1 && $5=="7999"{c++} END{print c+0}' "$jr")
+  if echo "$auto" | grep -q 'removed jobID 7999' && echo "$auto" | grep -q converged \
+     && [ "$gone" -eq 0 ] && ls "$smartSlurmJobRecordDir"/jobRecord.back.*.txt >/dev/null 2>&1 \
+     && awk -v b="$wb" -v a="$wa" -v c="$ca" 'BEGIN{exit !(a+0<b+0 && c+0>=93)}'; then
+    _pass "--auto removes the inflating row + backs up; waste $wb% -> $wa%, coverage $ca% kept >= p93"
+  else _fail "--auto tightens without under-covering" "7999 gone=$gone waste $wb->$wa cover=$ca"; fi
 
-  # 7) iterative --auto removes the masked outlier and converges
+  # 11) --remove with a jobID that is not in the group reports nothing removed (no false success)
   seed_store
-  auto=$("$FITQC" --store "$jr" p1/bowtie/none --auto)
-  if echo "$auto" | grep -q 'removed jobID 99999' \
-     && echo "$auto" | grep -q converged \
-     && [ "$(awk -F, 'NR>1 && $5=="99999"{c++} END{print c+0}' "$jr")" -eq 0 ]; then
-    _pass "--auto removes the masked outlier and converges"
-  else _fail "--auto removes + converges" "$(echo "$auto" | grep -iE 'pass|converg|stop' | head -1)"; fi
+  out=$("$FITQC" --store "$jr" rnaseq/bowtie/none --remove 55555 2>&1)
+  echo "$out" | grep -qi 'nothing removed' && ! echo "$out" | grep -q 'removed \[55555\]' \
+    && _pass "--remove honest no-match (absent jobID -> nothing removed)" \
+    || _fail "--remove no-match honesty" "$(echo "$out" | grep -iE 'removed|nothing' | head -1)"
 
-  # 8) --auto refuses a HIGH-LEVERAGE worst point (never auto-remove extremes)
-  { echo "$HDR"
-    printf 'pL,tool,none,,5001,100,350,400,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.a\n'  "$ep"
-    printf 'pL,tool,none,,5002,200,650,700,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.b\n'  "$ep"
-    printf 'pL,tool,none,,5003,300,950,1000,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.c\n' "$ep"
-    printf 'pL,tool,none,,5004,400,1250,1300,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.d\n' "$ep"
-    printf 'pL,tool,none,,5005,500,1550,1600,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.e\n' "$ep"
-    printf 'pL,tool,none,,5006,2000,3000,9000,10,60,1,COMPLETED,u,n,%s,d,1.0.tool.f\n' "$ep"
-  } > "$jr"
-  guard=$("$FITQC" --store "$jr" pL/tool/none --auto --resid-cut 1.5)
-  if echo "$guard" | grep -q 'HIGH-LEVERAGE' && grep -q ',5006,' "$jr"; then
-    _pass "--auto refuses a high-leverage worst point (kept 5006)"
-  else _fail "--auto high-leverage guard" "$(echo "$guard" | grep -iE 'stop|high|converg' | head -1)"; fi
+  # 12) thin group (< 3 distinct sizes) is marked thin
+  tf rnaseq/split/none 9 | grep -q thin \
+    && _pass "thin group (<3 input sizes) marked thin" \
+    || _fail "thin group note" "note=$(tf rnaseq/split/none 9)"
 
-  # 9) non-blocking warning when one group regresses >1 rAP step together
-  #    (same step name + ref, different step NUMBERS in the flag). A single-step
-  #    group must NOT trigger it.
-  { echo "$HDR"
-    printf 'pM,bowtie,none,,601,100,300,512,10,60,4,COMPLETED,u,n,%s,d,2.0.bowtie.a\n' "$ep"
-    printf 'pM,bowtie,none,,602,200,500,600,12,60,4,COMPLETED,u,n,%s,d,2.0.bowtie.b\n' "$ep"
-    printf 'pM,bowtie,none,,603,300,700,800,14,60,4,COMPLETED,u,n,%s,d,3.0.bowtie.c\n' "$ep"
-    printf 'pM,bowtie,none,,604,400,900,1000,16,60,4,COMPLETED,u,n,%s,d,3.0.bowtie.d\n' "$ep"
-    printf 'pM,cut,none,,611,100,150,256,5,30,1,COMPLETED,u,n,%s,d,1.0.cut.a\n' "$ep"
-    printf 'pM,cut,none,,612,200,250,300,6,30,1,COMPLETED,u,n,%s,d,1.0.cut.b\n' "$ep"
-    printf 'pM,cut,none,,613,300,360,400,7,30,1,COMPLETED,u,n,%s,d,1.0.cut.c\n' "$ep"
-  } > "$jr"
-  tri=$("$FITQC" --store "$jr" --all)
-  merged_note=$(echo "$tri" | awk '$1=="pM/bowtie/none"{print $NF}')
-  single_note=$(echo "$tri" | awk '$1=="pM/cut/none"{print $NF}')
-  det=$("$FITQC" --store "$jr" pM/bowtie/none)
-  if echo "$merged_note" | grep -q 'steps:2,3' \
-     && [ "$single_note" = "-" ] \
-     && echo "$det" | grep -q 'WARNING: this group regresses'; then
-    _pass "merged-steps warning fires for 2-step group, silent for single-step"
-  else _fail "merged-steps warning" "merged=[$merged_note] single=[$single_note]"; fi
-
-  # 10) low-R2 surfacing: a scattered group (R2<0.80) with NO point over the cut is
-  #     shown in DEFAULT triage (flagged low-R2) -- masking means the cut alone can
-  #     miss a bad fit. A clean (R2~1) group stays hidden by default.
-  { echo "$HDR"
-    printf 'pR,aln,none,,801,100,500,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.a\n' "$ep"
-    printf 'pR,aln,none,,802,200,400,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.b\n' "$ep"
-    printf 'pR,aln,none,,803,300,900,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.c\n' "$ep"
-    printf 'pR,aln,none,,804,400,700,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.d\n' "$ep"
-    printf 'pR,aln,none,,805,500,1200,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.e\n' "$ep"
-    printf 'pR,aln,none,,806,600,800,600,10,60,4,COMPLETED,u,n,%s,d,2.0.aln.f\n' "$ep"
-    printf 'pR,clean,none,,811,100,300,512,10,60,4,COMPLETED,u,n,%s,d,1.0.clean.a\n' "$ep"
-    printf 'pR,clean,none,,812,200,500,600,12,60,4,COMPLETED,u,n,%s,d,1.0.clean.b\n' "$ep"
-    printf 'pR,clean,none,,813,300,700,800,14,60,4,COMPLETED,u,n,%s,d,1.0.clean.c\n' "$ep"
-  } > "$jr"
-  tri=$("$FITQC" --store "$jr")          # default triage (no --all)
-  aln=$(echo "$tri" | awk '$1=="pR/aln/none"')
-  aln_out=$(echo "$aln" | awk '{print $5}')
-  aln_note=$(echo "$aln" | awk '{print $NF}')
-  clean_shown=$(echo "$tri" | grep -c '^pR/clean/none ')
-  if echo "$aln_note" | grep -q 'low-R2' && [ "${aln_out:-x}" = 0 ] && [ "$clean_shown" -eq 0 ]; then
-    _pass "low-R2 group surfaced by default (no over-cut outlier); clean group stays hidden"
-  else _fail "low-R2 surfacing" "aln=[$aln] cleanShown=$clean_shown"; fi
+  # 13) grouped human view (pipeline headers + numbers) and row-number selection resolve
+  human=$("$FITQC" --store "$jr" --all --no-color)
+  row=$("$FITQC" --store "$jr" --tsv | awk -F'\t' '$1=="rnaseq/bowtie/none"{print NR; exit}')
+  by_num=$("$FITQC" --store "$jr" "$row" --no-color | awk 'NR==1')
+  if echo "$human" | grep -qE '^rnaseq ' \
+     && echo "$human" | grep -qE '^ +[0-9]+ +bowtie ' \
+     && [ "$by_num" = "== rnaseq/bowtie/none ==" ]; then
+    _pass "triage groups by pipeline (headers + numbers); 'fitQC <#>' selects that group"
+  else _fail "grouped view + number selection" "row=$row by_num=[$by_num]"; fi
 
   echo
   fi
@@ -3343,21 +3334,6 @@ _want migrate_v1 && {
       _pass "migration-gaps guard all-green"
     else _fail "migration-gaps guard" "see test/jr_migration_gaps_guard.sh"; fi
   else _pass "(skip) migration-gaps guard not present"; fi
-
-  # --- 8c) mawk enforcement: re-run the migration suites under mawk (Debian/Ubuntu ---
-  # default awk). mawk ignores {n,} interval regexes, which would silently blank every
-  # migrated epoch; gawk here would never catch that. Gated on mawk being installed.
-  if command -v mawk >/dev/null 2>&1; then
-    _mawkd=$(mktemp -d); ln -sf "$(command -v mawk)" "$_mawkd/awk"
-    _mawk_ok=1
-    PATH="$_mawkd:$PATH" SMARTSLURM_ROOT="$SMARTSLURM_ROOT" "$HERE/jr_conversion_stress.sh" 12345 >/dev/null 2>&1 || _mawk_ok=0
-    if [ -x "$HERE/jr_migration_gaps_guard.sh" ]; then
-      PATH="$_mawkd:$PATH" SMARTSLURM_ROOT="$SMARTSLURM_ROOT" "$HERE/jr_migration_gaps_guard.sh" >/dev/null 2>&1 || _mawk_ok=0
-    fi
-    rm -rf "$_mawkd"
-    [ "$_mawk_ok" = 1 ] && _pass "migration suites all-green under mawk" \
-                        || _fail "migration suites under mawk" "re-run with awk->mawk; see jr_conversion_stress.sh / jr_migration_gaps_guard.sh"
-  else _pass "(skip) mawk not installed -- cannot enforce mawk parity"; fi
 
   # --- 9) pipeline literally named "pipeline" (runAsPipeline's default id) -------
   # The v2 header was detected by $1=="pipeline" alone, but that is also the

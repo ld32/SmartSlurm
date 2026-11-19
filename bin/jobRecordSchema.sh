@@ -326,8 +326,14 @@ jobRecordsAppendRow() {
 # callers (cleanUp) ignore the status and safely skip on contention; a caller that
 # reports success to a user (e.g. a curation import) MUST check it, because a false
 # "applied" on a silent skip is a data-integrity trap (adversary Finding 1).
+# After a 0 return, JOB_RECORDS_REWRITE_DROPPED holds how many data rows this call actually
+# dropped: a user-facing caller distinguishing "removed N" from "nothing matched"
+# (fitQC --remove) MUST read it -- "applied" alone does NOT mean a row was dropped.
 jobRecordsRewrite() {
     local f=$1 prog=$2; shift 2
+    JOB_RECORDS_REWRITE_DROPPED=0                            # data rows this call actually dropped; for callers
+                                                    # that report to a user (0 return + 0 dropped = honest
+                                                    # no-match, NOT "removed"). A report field, never a gate.
     [ -s "$f" ] || return 0                        # nothing to rewrite -> honest no-op
     _jobRecordsLock "$f" || return 1                        # could NOT take the lock -> did NOT write
     local rc=1                                      # "did not apply" until a successful rename
@@ -338,7 +344,11 @@ jobRecordsRewrite() {
                 NR==1 { for(i=1;i<=NF;i++) col[$i]=i; print; next }
                 { '"$prog"' }
             ' "$f" > "$tmp" && [ -s "$tmp" ]; then
-            mv "$tmp" "$f" && rc=0                  # applied iff the atomic rename succeeded
+            # Count rows dropped, still UNDER THE LOCK (f is stable here), before committing.
+            # The prog can only keep or `next` a row, so out-data <= in-data (never negative).
+            local _in _out
+            _in=$(awk 'END{print NR-1}' "$f"); _out=$(awk 'END{print NR-1}' "$tmp")
+            mv "$tmp" "$f" && { rc=0; JOB_RECORDS_REWRITE_DROPPED=$(( _in - _out )); }   # applied iff the rename succeeded
         else
             rm -f "$tmp"
         fi

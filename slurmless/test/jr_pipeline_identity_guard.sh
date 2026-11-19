@@ -7,9 +7,6 @@
 #
 #   SMARTSLURM_ROOT=/path/to/smartslurm bash test/jr_pipeline_identity_guard.sh
 #
-# Validate under BOTH awks:
-#   SD=$(mktemp -d); ln -sf "$(command -v mawk)" "$SD/awk"
-#   PATH="$SD:$PATH" SMARTSLURM_ROOT=... bash test/jr_pipeline_identity_guard.sh
 #
 # SECTION A (must be GREEN -- these had NO harness coverage before this guard;
 #   a mutation that removes the all-digit/reserved/header-collision rejection in

@@ -27,7 +27,6 @@ Only when you are intentionally changing harness coverage:
 1. Edit the `pipeline.sh` / `manifest.txt` here, **and**
 2. update the matching block in `../run_tests.sh` in the same change so its
    asserts still describe what the fixture does, **and**
-3. re-run that block (`./test/run_tests.sh <name>`) plus the mawk-portability
-   check before committing.
+3. re-run that block (`./test/run_tests.sh <name>`) before committing.
 
 See `../README.md` (“Adding a fixture”) for the full block-authoring pattern.

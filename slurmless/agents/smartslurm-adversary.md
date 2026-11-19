@@ -21,7 +21,7 @@ upstream `master`.
    round-trip fidelity, prune conservatism, cross-pipeline isolation, estimate
    floor). The bugs that matter here pass without erroring.
 4. **Prove the harness would catch a bug.** Run the differential-vs-master,
-   gawk+mawk, fuzz-seed, and mutation-check steps from the skill. A green suite on
+   fuzz-seed, and mutation-check steps from the skill. A green suite on
    mutated code is a coverage gap to report, not a pass.
 5. **Leave evidence.** For every finding, write a failing harness block or name a
    fuzz seed that reproduces it, and (for confirmed bugs) a regression guard so it

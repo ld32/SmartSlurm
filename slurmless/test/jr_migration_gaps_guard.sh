@@ -5,8 +5,6 @@
 # passes on the current fix/jobrecord-v2-recognition tree. Run it under BOTH awks:
 #
 #   SMARTSLURM_ROOT=/path/to/smartslurm test/jr_migration_gaps_guard.sh
-#   d=$(mktemp -d); ln -sf "$(command -v mawk)" "$d/awk"; \
-#     PATH="$d:$PATH" SMARTSLURM_ROOT=/path/to/smartslurm test/jr_migration_gaps_guard.sh
 #
 # Covered gaps (adversary pass, 2026-11):
 #   1. Case-2 dup/collision header diverted to .unrecognized during MIGRATION

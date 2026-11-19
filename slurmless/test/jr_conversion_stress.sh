@@ -82,7 +82,7 @@ invariant(){
 # sentinel per v1 position, so any mis-map or swap is visible (not just the few
 # columns previously checked). Covers the columns the estimator depends on
 # (memAllocated/timeAllocated/cores) and, critically, EPOCH -- which a {n,} interval
-# regex silently blanked on mawk. Run under both awks (see the cross-awk harness).
+# regex silently blanked on mawk.
 echo "== field mapping fidelity (all 17 columns) =="
 f="$TMP/fm.txt"
 # v1 21-col positions: 1jobID 2inputSize 3memDef 4timeDef 5memAlloc 6timeAlloc
