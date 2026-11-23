@@ -567,6 +567,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         #echo name is $name
         cmd=""
         rawBody=""            # M4: raw multi-line body (for #@end scripts-on-disk)
+        vbody=""              # T2: VERBATIM body for #@end (no escaping; quoted here-doc)
         blockClosedBy=""      # M4: "blank" (legacy) or "end" (#@end)
 
     elif [ ! -z $findjob ]; then
@@ -578,6 +579,15 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             echolog1 "    Found #@end (explicit block close)"
             # fall through to finalize below (do not accumulate this line)
         else
+        if [ "$BLOCK_MODE" = end ]; then
+            # T2: capture the #@end body VERBATIM from the raw line ($t) -- comments,
+            # blank lines, backslash continuations and leading indentation are all
+            # preserved, so a bash chunk pasted from elsewhere round-trips byte-for-byte
+            # into cmd.sh. Only #@end (handled above) closes the block.
+            [[ "$i" == ssbatch* ]] && { echolog Error! Please remove ssbatch command from $PIPELINE_SPEC.; exit 1; }
+            vbody="$vbody$t"$'\n'
+            continue
+        fi
         [[ "$i" == \#* ]] && { echo "$t" >> $run; continue; }
         #echolog
         echolog1 "    find job: $i"
@@ -621,29 +631,32 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         echolog1 "    $cmd" --after parseing
         space="$oldspace"
 
-        # M4: build the escaped MULTI-LINE body for scripts-on-disk (#@end blocks).
-        # Same variable-scope rule as the --wrap path (a variable ASSIGNED inside
-        # the block is escaped so it expands on the node; submit-scope variables
-        # are left to expand at submission, when the driver's here-doc writes the
-        # per-job script). Quotes are left untouched -- a here-doc preserves them
-        # literally, which is the whole point (no more quote/heredoc mangling).
+        # T2: the #@end body is emitted VERBATIM (quoted here-doc, see below), so no
+        # per-line escaping is done here. Instead we enumerate the submit-scope
+        # variables the body references, to bake their values into cmd.sh at driver
+        # runtime. We bake every referenced NAME that is set at driver runtime and is
+        # not a dynamic/per-node or Slurm-job variable (those must reflect the node,
+        # not the submit host). In-block assignments in the verbatim body naturally
+        # override a baked value, so names serving double duty still behave correctly.
         if [ "$blockClosedBy" = end ]; then
-            mlBody=""; mlAssigned=" "
-            while IFS= read -r bl; do
-                seg="$bl"
-                vs=$(echo "$seg" | grep -oP '\$\w+|\$\{\w+\}|\$\{\w+\#|\$\{\w+\%|\$\{\w+\/' | tr -d '${}#%/' | sort -u)
-                IFS=$' \t\n'   # conversion runs with IFS=''; restore splitting here
-                for v in $vs; do
-                    [[ "$mlAssigned" == *" $v="* ]] && { seg=${seg//\$$v/\\\$$v}; seg=${seg//\${$v/\\\$\{$v}; }
-                done
-                for a in $(echo "$seg" | grep -oE '(^|[; ])[A-Za-z_][A-Za-z0-9_]*=' | tr -d '; '); do
-                    mlAssigned="$mlAssigned${a%=}= "
-                done
-                IFS=''
-                seg=${seg//\$(/\\\$(}     # command substitution runs on the node
-                seg=${seg//\`/\\\`}
-                mlBody="$mlBody$seg"$'\n'
-            done <<< "$rawBody"
+            bakeList=""; bakePos=""
+            # Per-node / environment / shell vars: never bake -- these must reflect the
+            # NODE the job runs on, not the submit host. (Baking is visible in cmd.sh, so
+            # a miss here is an auditable wrong-value, never silent body corruption.)
+            _t2deny=" HOME USER LOGNAME SHELL SHLVL TERM PATH LD_LIBRARY_PATH MANPATH PYTHONPATH TMPDIR TMP TEMP HOSTNAME HOSTTYPE OSTYPE MACHTYPE UID EUID GROUPS IFS COLUMNS LINES PWD OLDPWD RANDOM SRANDOM SECONDS LINENO BASHPID PPID EPOCHSECONDS EPOCHREALTIME PIPESTATUS FUNCNAME BASH_SUBSHELL BASH_COMMAND BASH_LINENO BASH_SOURCE "
+            # driver-internal names: never bake, so a pasted body reusing one of these as
+            # its own variable gets node scope rather than inheriting SmartSlurm state.
+            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev "
+            _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?//' | sort -u)
+            IFS=$' \t\n'
+            for _n in $_t2names; do
+                [[ "$_t2deny" == *" $_n "* ]] && continue
+                [[ "$_n" == SLURM_* ]] && continue
+                bakeList="$bakeList $_n"
+            done
+            # positional params / $@ / $* / $# referenced -> bake via 'set --'
+            printf '%s' "$vbody" | grep -qE '[$]([0-9]|[@*#])' && bakePos=yes
+            IFS=''
         fi
         #
 
@@ -769,19 +782,25 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         echo "${space}ssStart \"\$ssKey\" \"\$ssLabel\" \"$step\"" >> $run
 
         if [ "$blockClosedBy" = end ]; then
-            # ---- M4 scripts-on-disk (explicit #@end block) ----
-            # Phase 2 instantiation: the driver writes a per-job script under
-            # jobs/<flag>/cmd.sh via a here-doc, so submit-scope vars (incl. loop
-            # variables) are baked now and in-block vars expand on the node. The
-            # exact bytes that run are persisted per job (conflict-free reruns),
-            # and the file is submitted instead of a flattened --wrap string.
+            # ---- T2 scripts-on-disk (explicit #@end block) ----
+            # The driver writes a per-job script jobs/<flag>/cmd.sh as:
+            #   [shebang] [submit-scope var bakes] [VERBATIM body]
+            # The body goes through a QUOTED here-doc (<<'EOF'), so arbitrary bash --
+            # nested quotes, embedded here-docs, backslashes, $(...), backticks --
+            # round-trips byte-for-byte with no escaping. Submit-scope values (loop
+            # variables, pre-block vars) are resolved NOW via %q-safe assignments
+            # prepended to the script; in-block assignments in the body override them.
+            # The exact bytes that run are persisted per job (conflict-free reruns).
             [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run
             echo "${space}mkdir -p \$smartSlurmLogDir/jobs/\$flag" >> $run
-            echo "${space}cat > \$smartSlurmLogDir/jobs/\$flag/cmd.sh <<SMARTSLURM_CMD_EOF" >> $run
-            echo "#!/bin/bash" >> $run
-            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "rsyncToTmp ${ref//./ \$}" >> $run
-            printf '%s\n' "$mlBody" >> $run
+            echo "${space}{ echo '#!/bin/bash'" >> $run
+            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}echo \"rsyncToTmp ${ref//./ \$}\"" >> $run
+            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do [ -z \"\${!__ssbakev+x}\" ] || printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\"; done" >> $run
+            [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; printf ' %q' \"\$@\"; printf '\\n'; }" >> $run
+            echo "${space}cat <<'SMARTSLURM_CMD_EOF'" >> $run
+            printf '%s' "$vbody" >> $run
             echo "SMARTSLURM_CMD_EOF" >> $run
+            echo "${space}} > \$smartSlurmLogDir/jobs/\$flag/cmd.sh" >> $run
             if [[ "$RUN_MODE" == dryrun ]]; then
                 echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh dryrun)" >> $run
             else
