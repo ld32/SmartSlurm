@@ -133,6 +133,8 @@ if [ -n "${PIPELINE_NAME:-}" ]; then
     PIPELINE_NAME=$(_ssNormPipe "$PIPELINE_NAME")
 else
     PIPELINE_NAME=$(awk '
+        /^[[:space:]]*#@[0-9]/ { exit }   # stop at the first step marker: a #@pipeline
+                                          # inside a block body must not set identity
         /^[[:space:]]*#@pipeline([[:space:]]|=)/ {
             s=$0; sub(/^[[:space:]]*#@pipeline[[:space:]]*=?[[:space:]]*/,"",s); print s; exit
         }' "$PIPELINE_SCRIPT")
@@ -475,6 +477,10 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
     # ever this directive (real step markers start with a digit, e.g. '#@1,...'), so
     # skip the valid form and reject a malformed one (e.g. '#@pipelineFoo') with a
     # clear message instead of letting it fail as a bogus step marker below.
+    # Only treat '#@pipeline' as a header directive when NOT inside an open block;
+    # inside a block body it is ordinary content (it falls through to the verbatim
+    # capture below), so a pasted heredoc/comment line can contain it safely.
+    if [ -z "$findjob" ]; then
     case "$i" in
       '#@pipeline'*)
         if [[ "$i" =~ ^#@pipeline([[:space:]=]|$) ]]; then
@@ -484,6 +490,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             touch "$smartSlurmLogDir/.conversionError"; exit 1
         fi ;;
     esac
+    fi
 
     if [[ "$i" == \#@* ]] && [[ "$i" != \#@end* ]]; then
 
@@ -647,7 +654,8 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             # driver-internal names: never bake, so a pasted body reusing one of these as
             # its own variable gets node scope rather than inheriting SmartSlurm state.
             _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev "
-            _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?//' | sort -u)
+            # match $name, ${name, ${#name (length), ${!name (indirect), ${name[...]}
+            _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[#!]?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?[#!]?//' | sort -u)
             IFS=$' \t\n'
             for _n in $_t2names; do
                 [[ "$_t2deny" == *" $_n "* ]] && continue
@@ -795,8 +803,12 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             echo "${space}mkdir -p \$smartSlurmLogDir/jobs/\$flag" >> $run
             echo "${space}{ echo '#!/bin/bash'" >> $run
             [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}echo \"rsyncToTmp ${ref//./ \$}\"" >> $run
-            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do [ -z \"\${!__ssbakev+x}\" ] || printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\"; done" >> $run
-            [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; printf ' %q' \"\$@\"; printf '\\n'; }" >> $run
+            # bake each set submit-scope var: arrays/assoc via 'declare -p' (so the full
+            # value survives, not just element 0), scalars via %q. Unset vars are skipped.
+            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do [ -z \"\${!__ssbakev+x}\" ] && continue; if declare -p \"\$__ssbakev\" 2>/dev/null | grep -q '^declare -[aA]'; then declare -p \"\$__ssbakev\"; else printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\"; fi; done" >> $run
+            # positional params: only emit values when the driver actually has some, so a
+            # no-arg pipeline does not fabricate an empty 'set -- '"''"' (which made $# == 1).
+            [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; ((\$#)) && printf ' %q' \"\$@\"; printf '\\n'; }" >> $run
             # Pick a here-doc terminator that does NOT appear as a standalone line in the
             # body, so a body line that happens to equal it cannot close the here-doc
             # early (which would silently truncate cmd.sh and leak the rest into the driver).
