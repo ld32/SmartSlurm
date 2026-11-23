@@ -653,8 +653,12 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             _t2deny=" HOME USER LOGNAME SHELL SHLVL TERM PATH LD_LIBRARY_PATH MANPATH PYTHONPATH TMPDIR TMP TEMP HOSTNAME HOSTTYPE OSTYPE MACHTYPE UID EUID GROUPS IFS COLUMNS LINES PWD OLDPWD RANDOM SRANDOM SECONDS LINENO BASHPID PPID EPOCHSECONDS EPOCHREALTIME PIPESTATUS FUNCNAME BASH_SUBSHELL BASH_COMMAND BASH_LINENO BASH_SOURCE "
             # driver-internal names: never bake, so a pasted body reusing one of these as
             # its own variable gets node scope rather than inheriting SmartSlurm state.
-            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd "
+            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd __ssf __ssnv "
             # match $name, ${name, ${#name (length), ${!name (indirect), ${name[...]}
+            # KNOWN LIMIT: for an indirect ref ${!ptr} we bake 'ptr' but not the variable
+            # it names, so a body that reads a submit-scope var ONLY through ${!ptr} sees it
+            # empty on the node. Indirect expansion of a submit pointer is rare in step
+            # bodies; use a direct reference (or a helper script) if you need it.
             _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[#!]?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?[#!]?//' | sort -u)
             IFS=$' \t\n'
             for _n in $_t2names; do
@@ -804,11 +808,14 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             echo "${space}{ echo '#!/bin/bash'" >> $run
             [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}echo \"rsyncToTmp ${ref//./ \$}\"" >> $run
             # bake each set submit-scope var. Gate on `declare -p` success (true for ANY
-            # set var, incl. associative and sparse arrays that have no index/key 0 -- a
-            # ${!v+x} test would wrongly skip those). Arrays/assoc (declare -p output
-            # contains '=(') are emitted whole via declare -p so the full value survives;
-            # scalars via %q for a readable assignment.
-            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do __ssd=\$(declare -p \"\$__ssbakev\" 2>/dev/null) || continue; case \"\$__ssd\" in *'=('*) printf '%s\\n' \"\$__ssd\";; *) printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\";; esac; done" >> $run
+            # set var, incl. associative and sparse arrays with no index/key 0 -- a
+            # ${!v+x} test would wrongly skip those). Classify by the declare FLAGS, not by
+            # '=(' in the text (a scalar value may contain '=('): a flag string with a/A is
+            # an array -> re-emit as bare 'declare -a/-A name=(...)', dropping other
+            # attributes (-i/-r/-x/-n) so the node copy carries submit-host VALUE but not
+            # submit-host attributes (e.g. an integer array must not coerce an in-body
+            # string assignment on the node). Scalars bake readably via %q.
+            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do __ssd=\$(declare -p \"\$__ssbakev\" 2>/dev/null) || continue; __ssf=\${__ssd#declare -}; __ssf=\${__ssf%% *}; case \$__ssf in *[aA]*) __ssnv=\${__ssd#declare -* }; case \$__ssf in *A*) printf 'declare -A %s\\n' \"\$__ssnv\";; *) printf 'declare -a %s\\n' \"\$__ssnv\";; esac;; *) printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\";; esac; done" >> $run
             # positional params: only emit values when the driver actually has some, so a
             # no-arg pipeline does not fabricate an empty 'set -- '"''"' (which made $# == 1).
             [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; ((\$#)) && printf ' %q' \"\$@\"; printf '\\n'; }" >> $run
