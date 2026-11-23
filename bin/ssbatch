@@ -83,7 +83,10 @@ if [ -z "$smartSlurmJobRecordDir" ]; then
     fi
 fi
 
-[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+# runAsPipeline exports an absolute per-pipeline log dir. When ssbatch is run
+# directly, a relative (or unset) log dir goes under the home folder, so jobs
+# submitted from different folders share one log dir.
+[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$HOME/.smartSlurm/${smartSlurmLogDir:-smartSlurmLog}
 
 mkdir -p $smartSlurmJobRecordDir/stats
 
@@ -386,19 +389,31 @@ if [ -z "$program" ]; then
     fi 
 fi         
 
-if [ -z "$flag" ]; then   
-    tm=`mktemp XXXXXXXX --dry-run` 
-    
+if [ -z "$flag" ]; then
     # todo: should creat a link to slurm-40468559.out
     #[ -z "$out" ] && out="slurm-\$SLURM_JOBID.out"
     #[ -z "$err" ] && err="slurm-\$SLURM_JOBID.err"
 
-    if [ ! -z "$program" ]; then 
-        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm  
-    elif [ ! -z "$name" ]; then 
-        flag=$name.$tm
-    else 
-        [ ! -z "$inputs" ] && flag=$program.${inputs##*/} || flag=$program.$tm 
+    # A job is identified by its working folder, its command and its inputs
+    # (full paths). Hash them, so the same submission from the same folder
+    # gets the same flag (re-run detection works) and any difference gets a
+    # new one. A script file is hashed by path, not contents: an edited script
+    # is the same job (piped-in scripts are the exception, see below).
+    inputPaths=""
+    for fx in $inputs; do inputPaths="$inputPaths `realpath -m -- "$fx"`"; done
+    if [ ! -z "$wrapCMD" ]; then
+        jobCmd="wrap: $wrapCMD"
+    elif [[ "${slurmScript##*/}" == cmd.pipedin.* ]]; then
+        # piped-in script: its temp file name is random, so use its contents
+        jobCmd="pipedin: `md5sum < "$slurmScript"` $slurmScriptParas"
+    else
+        jobCmd="script: `realpath -m -- "$slurmScript"` $slurmScriptParas"
+    fi
+    jobHash=`printf '%s\n' "$PWD" "$jobCmd" "$inputPaths" | md5sum | cut -c1-8`
+    if [ ! -z "$inputs" ]; then
+        flag=${program:-$name}.${inputs##*/}.$jobHash
+    else
+        flag=${program:-$name}.$jobHash
     fi
 fi
 
