@@ -678,28 +678,37 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         # not the submit host). In-block assignments in the verbatim body naturally
         # override a baked value, so names serving double duty still behave correctly.
         if [ "$blockClosedBy" = end ]; then
-            bakeList=""; bakePos=""
+            bakeList=""; bakePos=""; bakeInd=""
             # Per-node / environment / shell vars: never bake -- these must reflect the
             # NODE the job runs on, not the submit host. (Baking is visible in cmd.sh, so
             # a miss here is an auditable wrong-value, never silent body corruption.)
             _t2deny=" HOME USER LOGNAME SHELL SHLVL TERM PATH LD_LIBRARY_PATH MANPATH PYTHONPATH TMPDIR TMP TEMP HOSTNAME HOSTTYPE OSTYPE MACHTYPE UID EUID GROUPS IFS COLUMNS LINES PWD OLDPWD RANDOM SRANDOM SECONDS LINENO BASHPID PPID EPOCHSECONDS EPOCHREALTIME PIPESTATUS FUNCNAME BASH_SUBSHELL BASH_COMMAND BASH_LINENO BASH_SOURCE "
             # driver-internal names: never bake, so a pasted body reusing one of these as
             # its own variable gets node scope rather than inheriting SmartSlurm state.
-            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd __ssf __ssnv "
+            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd __ssf __ssnv __ssptr __sstgt __ssnames "
             # persistent driver globals (not local-izable): a body reusing one of these
             # names must get node scope, not the driver's submit-time value.
             _t2deny+=" cwd early_exit xsubd ssV ssW ssCur ssRowOpen ssLastStep ssSub ssKept ssErr ssHdr "
             # match $name, ${name, ${#name (length), ${!name (indirect), ${name[...]}
-            # KNOWN LIMIT: for an indirect ref ${!ptr} we bake 'ptr' but not the variable
-            # it names, so a body that reads a submit-scope var ONLY through ${!ptr} sees it
-            # empty on the node. Indirect expansion of a submit pointer is rare in step
-            # bodies; use a direct reference (or a helper script) if you need it.
             _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[#!]?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?[#!]?//' | sort -u)
             IFS=$' \t\n'
             for _n in $_t2names; do
                 [[ "$_t2deny" == *" $_n "* ]] && continue
                 [[ "$_n" == SLURM_* ]] && continue
                 bakeList="$bakeList $_n"
+            done
+            # Indirect expansion ${!ptr}: the pointer name 'ptr' is baked above, but the
+            # variable it NAMES must be frozen at submit time too (master expanded ${!ptr}
+            # at submit time; a verbatim body would otherwise read it empty on the node).
+            # We can't resolve the pointer here -- its value is only known at driver
+            # runtime -- so we collect the pointer names used as a TRUE indirect ref
+            # ${!name} (brace closes right after the name) and let the driver resolve +
+            # bake their targets (see the emit below). ${!arr[@]} (keys) and ${!pre*} /
+            # ${!pre@} (name-match) are deliberately excluded: those are not value refs.
+            for _p in $(printf '%s' "$vbody" | grep -oE '[$][{]![A-Za-z_][A-Za-z0-9_]*[}]' | sed -E 's/^[$][{]!//; s/[}]$//' | sort -u); do
+                [[ "$_t2deny" == *" $_p "* ]] && continue
+                [[ "$_p" == SLURM_* ]] && continue
+                bakeInd="$bakeInd $_p"
             done
             # positional params / $@ / $* / $# referenced -> bake via 'set --'
             printf '%s' "$vbody" | grep -qE '[$]([0-9]|[@*#])' && bakePos=yes
@@ -853,7 +862,13 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             # attributes (-i/-r/-x/-n) so the node copy carries submit-host VALUE but not
             # submit-host attributes (e.g. an integer array must not coerce an in-body
             # string assignment on the node). Scalars bake readably via %q.
-            [ -n "$bakeList" ] && echo "${space}for __ssbakev in$bakeList; do __ssd=\$(declare -p \"\$__ssbakev\" 2>/dev/null) || continue; __ssf=\${__ssd#declare -}; __ssf=\${__ssf%% *}; case \$__ssf in *[aA]*) __ssnv=\${__ssd#declare -* }; case \$__ssf in *A*) printf 'declare -A %s\\n' \"\$__ssnv\";; *) printf 'declare -a %s\\n' \"\$__ssnv\";; esac;; *) printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\";; esac; done" >> $run
+            if [ -n "$bakeList" ] || [ -n "$bakeInd" ]; then
+                # the bake set = statically-enumerated names, plus (resolved at driver
+                # runtime) the target each indirect pointer ${!ptr} names.
+                echo "${space}__ssnames='$bakeList'" >> $run
+                [ -n "$bakeInd" ] && echo "${space}for __ssptr in$bakeInd; do __sstgt=\${!__ssptr}; [[ \$__sstgt =~ ^[A-Za-z_][A-Za-z0-9_]*\$ ]] && __ssnames=\"\$__ssnames \$__sstgt\"; done" >> $run
+                echo "${space}for __ssbakev in \$__ssnames; do __ssd=\$(declare -p \"\$__ssbakev\" 2>/dev/null) || continue; __ssf=\${__ssd#declare -}; __ssf=\${__ssf%% *}; case \$__ssf in *[aA]*) __ssnv=\${__ssd#declare -* }; case \$__ssf in *A*) printf 'declare -A %s\\n' \"\$__ssnv\";; *) printf 'declare -a %s\\n' \"\$__ssnv\";; esac;; *) printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\";; esac; done" >> $run
+            fi
             # positional params: only emit values when the driver actually has some, so a
             # no-arg pipeline does not fabricate an empty 'set -- '"''"' (which made $# == 1).
             [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; ((\$#)) && printf ' %q' \"\$@\"; printf '\\n'; }" >> $run

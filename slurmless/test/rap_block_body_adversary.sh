@@ -22,6 +22,7 @@ ss_activate >/dev/null 2>&1
 fails=0
 pass() { echo "    PASS - $1"; }
 fail() { echo "    FAIL - $1"; [ -n "${2:-}" ] && echo "           $2"; fails=$((fails+1)); }
+xfail() { echo "    XFAIL (known limit, pre-existing, deferred) - $1"; [ -n "${2:-}" ] && echo "           $2"; }
 
 _convert_run() {  # $1=workspace tag ; stdin = full pipeline.sh
   ss_new_workspace "$WORK_ADV/$1" >/dev/null 2>&1 || ss_new_workspace "/tmp/ss-adv/$1" >/dev/null 2>&1
@@ -125,6 +126,51 @@ if [ "$got" = "d=[myvalue]" ]; then
 else
   fail "G5: submit-scope var 'd' clobbered by driver helper global (silent)" \
        "want 'd=[myvalue]'  got '$got'  (ssHeader's unscoped 'd=' pollutes it)"
+fi
+
+# --- G6: indirect ${!ptr} to a submit-scope var resolves on the node (FIXED) -------
+# Was a silent REGRESSION vs ld32/master: master's unquoted here-doc expanded ${!ptr}
+# at submit time, but the T2 bake baked the POINTER 'ptr' and never the variable it
+# names (target), so ${!ptr} was empty on the node while the job exited 0. Fixed --
+# the driver now resolves each true-indirect pointer and bakes its target too. This
+# guard protects the fix against re-regression.
+_convert_run g6_indirect <<'PIPE'
+#!/bin/sh
+target=secretvalue
+ptr=target
+#@1,0,t,,,sbatch -p short -t 5
+echo "indirect=[${!ptr}]" > ind.out
+printf 'ran\n' > ran.txt
+#@end
+PIPE
+got="$(cat ind.out 2>/dev/null)"
+if [ "$got" = "indirect=[secretvalue]" ]; then
+  pass "G6: indirect \${!ptr} to a submit-scope var resolves on the node"
+else
+  fail "G6: indirect \${!ptr} silently empty on node (REGRESSION vs master, exit 0)" \
+       "want 'indirect=[secretvalue]'  got '$got'  (bake baked 'ptr' but not its target)"
+fi
+
+# --- G7: submit-scope var referenced ONLY inside $(( )) -> SILENT WRONG ------------
+# NOT a regression (master was equally wrong: it escaped '$(' -> arithmetic ran on the
+# node). Pinned here because it is a latent silent bug the T2 bake does not close and
+# the fuzz corpus does not cover (05_arrays_arith uses only literal operands). The bake
+# regex requires a '$' sigil; a bare arithmetic operand (count in $((count+1))) is not
+# detected, so count is unset on the node and $((count+1)) evaluates to 1, exit 0.
+_convert_run g7_arith <<'PIPE'
+#!/bin/sh
+count=5
+#@1,0,t,,,sbatch -p short -t 5
+echo "arith=$((count+1))" > ar.out
+printf 'ran\n' > ran.txt
+#@end
+PIPE
+got="$(cat ar.out 2>/dev/null)"
+if [ "$got" = "arith=6" ]; then
+  pass "G7: (now fixed!) submit-scope var used only in \$(( )) resolves on the node -- promote this to a hard assert"
+else
+  xfail "G7: arithmetic-only submit-scope var not baked -> \$((count+1)) == 1 (F2; pre-existing, NOT a regression; deferred by decision)" \
+        "got '$got'  (bake regex needs a \$ sigil; a bare \$((count)) operand is missed). Fix = bake bare identifiers inside \$((...))."
 fi
 
 echo

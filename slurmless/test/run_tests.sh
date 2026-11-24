@@ -3673,6 +3673,15 @@ _want rap_block_body && {
     && _pass "raw-byte: Latin-1 0xE9 kept verbatim in cmd.sh" || _fail "raw-byte: Latin-1 0xE9 kept verbatim in cmd.sh"
   assert_file "smartSlurmLog/1.0.t.success" "raw-byte: body with a raw non-ASCII byte still runs to success"
 
+  # (13) indirect expansion ${!ptr} of a submit-scope pointer: BOTH the pointer and
+  # the variable it names are frozen at submit time (regression guard -- master
+  # expanded ${!ptr} at submit time; the verbatim+bake path resolves the target too).
+  ss_new_workspace "$WORK/rbb_indirect" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'tgt=secretval' 'p=tgt' '#@1,0,t,,,sbatch -p short -t 5' 'echo "ind=${!p}" > i.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "i.out" "ind=secretval" "indirect: \${!ptr} to a submit-scope var resolves on the node (pointer + target baked)"
+
   # (9) FUZZ: nasty-but-valid bodies round-trip BYTE-FOR-BYTE into cmd.sh and RUN.
   # Oracle: every non-blank body line appears verbatim (grep -F) in cmd.sh (no
   # mangling of quotes/backslashes/heredocs), the job succeeds, and ran.txt is written.
