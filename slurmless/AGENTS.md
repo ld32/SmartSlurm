@@ -171,6 +171,11 @@ to keep in sync between them.
 - Never edit SmartSlurm `bin/` to force a green test (see startup #2).
 - Never point the harness at a real `~/.smartSlurm` or a real cluster; scratch
   only (`$SS_SCRATCH`, default `/tmp/ss-scratch`).
+- **Harness changes travel with the code they test — same branch, same PR.** A tool
+  change and the harness/test change that exercises it land together on one branch and
+  merge together, never split across branches. In-tree they already share one commit;
+  this rule keeps a fix and the test that guards it from drifting apart (a fix without
+  its test, or a test landed separately from the fix it guards, is incomplete).
 - **A change to the runner needs an out-of-band check.** When you touch the parallel
   dispatch, `ss_parallel_run`, scratch/RAM selection, or `ss_activate`, prove it with
   something the runner can't fake: a bounded **process-count ceiling** under a real

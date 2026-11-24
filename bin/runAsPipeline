@@ -6,6 +6,35 @@ echolog() { echo -e "$@\n"; echo $@ >>.smartSlurm.log; }
 
 echolog1() { echo "$@" >> .smartSlurm.log; }
 
+# T2: detect invisible "paste gremlin" bytes in a verbatim #@end block body and
+# WARN loudly (never auto-fix). These bytes are kept byte-for-byte (by design) but
+# almost always break on the compute node -- e.g. a trailing CR makes a redirect
+# write to a mis-named file while the job still exits 0 (green-but-broken). The
+# scan is byte-based (LC_ALL=C grep), so it needs no awk and behaves identically
+# on mawk-only clusters. It only flags INVISIBLE artifacts, never legitimate
+# visible non-ASCII (accented letters, CJK, emoji), which round-trip fine.
+_ssGremlinWarn() {  # $1=step label  $2=human name  $3=raw bytes ; body in $_SS_GREM_BODY
+    local lines
+    lines=$(LC_ALL=C grep -nF -- "$3" <<<"$_SS_GREM_BODY" 2>/dev/null | cut -d: -f1 | paste -sd, -)
+    [ -n "$lines" ] && echolog "Warning: #@ block '$1' body contains $2 (an invisible paste artifact) on block line(s) $lines. It is kept verbatim and will likely break on the compute node while the job still reports success. Re-type the affected line(s) or re-paste as plain ASCII."
+}
+_ssGremlinScan() {  # $1 = step label ; verbatim body on stdin
+    local _SS_GREM_BODY; _SS_GREM_BODY="$(cat)"
+    _ssGremlinWarn "$1" "a carriage return (CRLF / Windows line ending)"        $'\r'
+    _ssGremlinWarn "$1" "a byte-order mark / zero-width no-break space (U+FEFF)" $'\xef\xbb\xbf'
+    _ssGremlinWarn "$1" "a non-breaking space (U+00A0)"                          $'\xc2\xa0'
+    _ssGremlinWarn "$1" "a narrow no-break space (U+202F)"                       $'\xe2\x80\xaf'
+    _ssGremlinWarn "$1" "a zero-width space (U+200B)"                            $'\xe2\x80\x8b'
+    _ssGremlinWarn "$1" "a zero-width non-joiner (U+200C)"                       $'\xe2\x80\x8c'
+    _ssGremlinWarn "$1" "a zero-width joiner (U+200D)"                           $'\xe2\x80\x8d'
+    _ssGremlinWarn "$1" "a word joiner (U+2060)"                                 $'\xe2\x81\xa0'
+    _ssGremlinWarn "$1" "a thin space (U+2009)"                                  $'\xe2\x80\x89'
+    _ssGremlinWarn "$1" "a hair space (U+200A)"                                  $'\xe2\x80\x8a'
+    _ssGremlinWarn "$1" "an ideographic space (U+3000)"                          $'\xe3\x80\x80'
+    _ssGremlinWarn "$1" "a Unicode line separator (U+2028)"                      $'\xe2\x80\xa8'
+    _ssGremlinWarn "$1" "a Unicode paragraph separator (U+2029)"                 $'\xe2\x80\xa9'
+}
+
 output="Running: `realpath $0`"
 
 for param in "$@"; do
@@ -133,6 +162,8 @@ if [ -n "${PIPELINE_NAME:-}" ]; then
     PIPELINE_NAME=$(_ssNormPipe "$PIPELINE_NAME")
 else
     PIPELINE_NAME=$(awk '
+        /^[[:space:]]*#@[0-9]/ { exit }   # stop at the first step marker: a #@pipeline
+                                          # inside a block body must not set identity
         /^[[:space:]]*#@pipeline([[:space:]]|=)/ {
             s=$0; sub(/^[[:space:]]*#@pipeline[[:space:]]*=?[[:space:]]*/,"",s); print s; exit
         }' "$PIPELINE_SCRIPT")
@@ -315,22 +346,24 @@ cat >> $run <<'SSHELPERS'
 ssV="${ssV:-normal}"
 ssW="${ssSampleW:-48}"   # sample-column width; set ssSampleW to widen/narrow
 ssCur=''; ssRowOpen=0; ssLastStep=''
-ssSub=0; ssKept=0; ssErr=0; ssHdr=0
+ssSub=0; ssKept=0; ssErr=0; ssHdr=0; ssDryRun="${ssDryRun:-0}"
 ssG() { case "$1" in
-    +) g=$'\033[32m\342\234\223\033[0m' ;;
-    X) g=$'\033[31m\342\234\227\033[0m' ;;
-    -) g=$'\033[2m-\033[0m' ;;
-    *) g="$1" ;; esac; }
+    +) __ssg=$'\033[32m\342\234\223\033[0m' ;;
+    X) __ssg=$'\033[31m\342\234\227\033[0m' ;;
+    -) __ssg=$'\033[2m-\033[0m' ;;
+    *) __ssg="$1" ;; esac; }
 ssFmt() {  # $1 label -> exactly ssW display cols. Long paths keep their tail (the
   # distinguishing part) with a leading … so the steps still line up in a column.
   local s="$1" n=${#1}
   if [ "$n" -gt "$ssW" ]; then printf '…%s' "${s:$((n-ssW+1))}"
   else printf '%-*s' "$ssW" "$s"; fi; }
-ssHeader() { [ "$ssHdr" = 1 ] && return 0; ssHdr=1; [ "$ssV" = normal ] || return 0
+ssHeader() { [ "$ssHdr" = 1 ] && return 0; ssHdr=1; [ "$ssDryRun" = 1 ] && return 0; [ "$ssV" = normal ] || return 0
+  local d                       # scoped: must not clobber a user submit-scope var 'd'
   printf '  %-*s   %s\n' "$ssW" sample steps
   d=$(printf '%*s' "$((ssW+30))" ''); printf '  %s\n' "${d// /-}"; }
 ssStart() {  # key label step -- print the step number BEFORE the submit (live "working on N")
-  [ "$ssV" = normal ] || return 0
+  local x grp lbl               # scoped: must not clobber user submit-scope vars
+  { [ "$ssV" = normal ] && [ "$ssDryRun" != 1 ]; } || return 0
   ssHeader
   if [ "$1" = __final ]; then grp=__final; else x="${1#.}"; grp=".${x%%.*}"; fi
   if [ "$grp" != "$ssCur" ]; then
@@ -344,9 +377,10 @@ ssStart() {  # key label step -- print the step number BEFORE the submit (live "
   return 0
 }
 ssMark() {  # glyph -- append the outcome glyph once submission returns; tally
+  local __ssg                   # scoped channel for ssG, so a user var 'g' is untouched
   case "$1" in +) ssSub=$((ssSub+1)) ;; -) ssKept=$((ssKept+1)) ;; X) ssErr=$((ssErr+1)) ;; esac
-  [ "$ssV" = normal ] || return 0
-  ssG "$1"; printf '%s' "$g"
+  { [ "$ssV" = normal ] && [ "$ssDryRun" != 1 ]; } || return 0
+  ssG "$1"; printf '%s' "$__ssg"
   return 0
 }
 ssSummary() {
@@ -356,6 +390,10 @@ ssSummary() {
 }
 SSHELPERS
 
+# dry-run: suppress the compact per-sample progress row. A dry run prints a full
+# per-step detail block (from `ssbatch ... dryrun`) that would otherwise interleave
+# with and scatter the one-line row; the tallies and the final summary are unaffected.
+[[ "$RUN_MODE" == dryrun ]] && echo "ssDryRun=1" >> $run
 
 echo "rm \$smartSlurmLogDir/keepRunningJobs.txt 2>/dev/null" >> $run
 echo "if [ -f \$smartSlurmLogDir/allJobs.txt ]; then" >> $run
@@ -475,6 +513,10 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
     # ever this directive (real step markers start with a digit, e.g. '#@1,...'), so
     # skip the valid form and reject a malformed one (e.g. '#@pipelineFoo') with a
     # clear message instead of letting it fail as a bogus step marker below.
+    # Only treat '#@pipeline' as a header directive when NOT inside an open block;
+    # inside a block body it is ordinary content (it falls through to the verbatim
+    # capture below), so a pasted heredoc/comment line can contain it safely.
+    if [ -z "$findjob" ]; then
     case "$i" in
       '#@pipeline'*)
         if [[ "$i" =~ ^#@pipeline([[:space:]=]|$) ]]; then
@@ -484,6 +526,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             touch "$smartSlurmLogDir/.conversionError"; exit 1
         fi ;;
     esac
+    fi
 
     if [[ "$i" == \#@* ]] && [[ "$i" != \#@end* ]]; then
 
@@ -567,6 +610,7 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         #echo name is $name
         cmd=""
         rawBody=""            # M4: raw multi-line body (for #@end scripts-on-disk)
+        vbody=""              # T2: VERBATIM body for #@end (no escaping; quoted here-doc)
         blockClosedBy=""      # M4: "blank" (legacy) or "end" (#@end)
 
     elif [ ! -z $findjob ]; then
@@ -578,6 +622,15 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             echolog1 "    Found #@end (explicit block close)"
             # fall through to finalize below (do not accumulate this line)
         else
+        if [ "$BLOCK_MODE" = end ]; then
+            # T2: capture the #@end body VERBATIM from the raw line ($t) -- comments,
+            # blank lines, backslash continuations and leading indentation are all
+            # preserved, so a bash chunk pasted from elsewhere round-trips byte-for-byte
+            # into cmd.sh. Only #@end (handled above) closes the block.
+            [[ "$i" == ssbatch* ]] && { echolog Error! Please remove ssbatch command from $PIPELINE_SPEC.; exit 1; }
+            vbody="$vbody$t"$'\n'
+            continue
+        fi
         [[ "$i" == \#* ]] && { echo "$t" >> $run; continue; }
         #echolog
         echolog1 "    find job: $i"
@@ -621,29 +674,52 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         echolog1 "    $cmd" --after parseing
         space="$oldspace"
 
-        # M4: build the escaped MULTI-LINE body for scripts-on-disk (#@end blocks).
-        # Same variable-scope rule as the --wrap path (a variable ASSIGNED inside
-        # the block is escaped so it expands on the node; submit-scope variables
-        # are left to expand at submission, when the driver's here-doc writes the
-        # per-job script). Quotes are left untouched -- a here-doc preserves them
-        # literally, which is the whole point (no more quote/heredoc mangling).
+        # T2: the #@end body is emitted VERBATIM (quoted here-doc, see below), so no
+        # per-line escaping is done here. Instead we enumerate the submit-scope
+        # variables the body references, to bake their values into cmd.sh at driver
+        # runtime. We bake every referenced NAME that is set at driver runtime and is
+        # not a dynamic/per-node or Slurm-job variable (those must reflect the node,
+        # not the submit host). In-block assignments in the verbatim body naturally
+        # override a baked value, so names serving double duty still behave correctly.
         if [ "$blockClosedBy" = end ]; then
-            mlBody=""; mlAssigned=" "
-            while IFS= read -r bl; do
-                seg="$bl"
-                vs=$(echo "$seg" | grep -oP '\$\w+|\$\{\w+\}|\$\{\w+\#|\$\{\w+\%|\$\{\w+\/' | tr -d '${}#%/' | sort -u)
-                IFS=$' \t\n'   # conversion runs with IFS=''; restore splitting here
-                for v in $vs; do
-                    [[ "$mlAssigned" == *" $v="* ]] && { seg=${seg//\$$v/\\\$$v}; seg=${seg//\${$v/\\\$\{$v}; }
-                done
-                for a in $(echo "$seg" | grep -oE '(^|[; ])[A-Za-z_][A-Za-z0-9_]*=' | tr -d '; '); do
-                    mlAssigned="$mlAssigned${a%=}= "
-                done
-                IFS=''
-                seg=${seg//\$(/\\\$(}     # command substitution runs on the node
-                seg=${seg//\`/\\\`}
-                mlBody="$mlBody$seg"$'\n'
-            done <<< "$rawBody"
+            bakeList=""; bakePos=""; bakeInd=""
+            # Per-node / environment / shell vars: never bake -- these must reflect the
+            # NODE the job runs on, not the submit host. (Baking is visible in cmd.sh, so
+            # a miss here is an auditable wrong-value, never silent body corruption.)
+            _t2deny=" HOME USER LOGNAME SHELL SHLVL TERM PATH LD_LIBRARY_PATH MANPATH PYTHONPATH TMPDIR TMP TEMP HOSTNAME HOSTTYPE OSTYPE MACHTYPE UID EUID GROUPS IFS COLUMNS LINES PWD OLDPWD RANDOM SRANDOM SECONDS LINENO BASHPID PPID EPOCHSECONDS EPOCHREALTIME PIPESTATUS FUNCNAME BASH_SUBSHELL BASH_COMMAND BASH_LINENO BASH_SOURCE "
+            # driver-internal names: never bake, so a pasted body reusing one of these as
+            # its own variable gets node scope rather than inheriting SmartSlurm state.
+            _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd __ssf __ssnv __ssptr __sstgt __ssnames "
+            # persistent driver globals (not local-izable): a body reusing one of these
+            # names must get node scope, not the driver's submit-time value.
+            _t2deny+=" cwd early_exit xsubd ssV ssW ssCur ssRowOpen ssLastStep ssSub ssKept ssErr ssHdr "
+            # match $name, ${name, ${#name (length), ${!name (indirect), ${name[...]}
+            _t2names=$(printf '%s' "$vbody" | grep -oE '[$]\{?[#!]?[A-Za-z_][A-Za-z0-9_]*' | sed -E 's/^[$]\{?[#!]?//' | sort -u)
+            IFS=$' \t\n'
+            for _n in $_t2names; do
+                [[ "$_t2deny" == *" $_n "* ]] && continue
+                [[ "$_n" == SLURM_* ]] && continue
+                bakeList="$bakeList $_n"
+            done
+            # Indirect expansion ${!ptr}: the pointer name 'ptr' is baked above, but the
+            # variable it NAMES must be frozen at submit time too (master expanded ${!ptr}
+            # at submit time; a verbatim body would otherwise read it empty on the node).
+            # We can't resolve the pointer here -- its value is only known at driver
+            # runtime -- so we collect the pointer names used as a TRUE indirect ref
+            # ${!name} (brace closes right after the name) and let the driver resolve +
+            # bake their targets (see the emit below). ${!arr[@]} (keys) and ${!pre*} /
+            # ${!pre@} (name-match) are deliberately excluded: those are not value refs.
+            for _p in $(printf '%s' "$vbody" | grep -oE '[$][{]![A-Za-z_][A-Za-z0-9_]*[}]' | sed -E 's/^[$][{]!//; s/[}]$//' | sort -u); do
+                [[ "$_t2deny" == *" $_p "* ]] && continue
+                [[ "$_p" == SLURM_* ]] && continue
+                bakeInd="$bakeInd $_p"
+            done
+            # positional params / $@ / $* / $# referenced -> bake via 'set --'
+            printf '%s' "$vbody" | grep -qE '[$]([0-9]|[@*#])' && bakePos=yes
+            # T2: warn (never auto-fix) on invisible paste-gremlin bytes kept
+            # verbatim in the body -- CRLF/NBSP/zero-width/BOM/exotic spaces, etc.
+            _ssGremlinScan "$step" <<<"$vbody"
+            IFS=''
         fi
         #
 
@@ -769,19 +845,46 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
         echo "${space}ssStart \"\$ssKey\" \"\$ssLabel\" \"$step\"" >> $run
 
         if [ "$blockClosedBy" = end ]; then
-            # ---- M4 scripts-on-disk (explicit #@end block) ----
-            # Phase 2 instantiation: the driver writes a per-job script under
-            # jobs/<flag>/cmd.sh via a here-doc, so submit-scope vars (incl. loop
-            # variables) are baked now and in-block vars expand on the node. The
-            # exact bytes that run are persisted per job (conflict-free reruns),
-            # and the file is submitted instead of a flattened --wrap string.
+            # ---- T2 scripts-on-disk (explicit #@end block) ----
+            # The driver writes a per-job script jobs/<flag>/cmd.sh as:
+            #   [shebang] [submit-scope var bakes] [VERBATIM body]
+            # The body goes through a QUOTED here-doc (<<'EOF'), so arbitrary bash --
+            # nested quotes, embedded here-docs, backslashes, $(...), backticks --
+            # round-trips byte-for-byte with no escaping. Submit-scope values (loop
+            # variables, pre-block vars) are resolved NOW via %q-safe assignments
+            # prepended to the script; in-block assignments in the body override them.
+            # The exact bytes that run are persisted per job (conflict-free reruns).
             [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}setPath $ref" >> $run
             echo "${space}mkdir -p \$smartSlurmLogDir/jobs/\$flag" >> $run
-            echo "${space}cat > \$smartSlurmLogDir/jobs/\$flag/cmd.sh <<SMARTSLURM_CMD_EOF" >> $run
-            echo "#!/bin/bash" >> $run
-            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "rsyncToTmp ${ref//./ \$}" >> $run
-            printf '%s\n' "$mlBody" >> $run
-            echo "SMARTSLURM_CMD_EOF" >> $run
+            echo "${space}{ echo '#!/bin/bash'" >> $run
+            [[ "$TMP_MODE" == "useTmp" ]] && [[ "$ref" != none ]] && echo "${space}echo \"rsyncToTmp ${ref//./ \$}\"" >> $run
+            # bake each set submit-scope var. Gate on `declare -p` success (true for ANY
+            # set var, incl. associative and sparse arrays with no index/key 0 -- a
+            # ${!v+x} test would wrongly skip those). Classify by the declare FLAGS, not by
+            # '=(' in the text (a scalar value may contain '=('): a flag string with a/A is
+            # an array -> re-emit as bare 'declare -a/-A name=(...)', dropping other
+            # attributes (-i/-r/-x/-n) so the node copy carries submit-host VALUE but not
+            # submit-host attributes (e.g. an integer array must not coerce an in-body
+            # string assignment on the node). Scalars bake readably via %q.
+            if [ -n "$bakeList" ] || [ -n "$bakeInd" ]; then
+                # the bake set = statically-enumerated names, plus (resolved at driver
+                # runtime) the target each indirect pointer ${!ptr} names.
+                echo "${space}__ssnames='$bakeList'" >> $run
+                [ -n "$bakeInd" ] && echo "${space}for __ssptr in$bakeInd; do __sstgt=\${!__ssptr}; [[ \$__sstgt =~ ^[A-Za-z_][A-Za-z0-9_]*\$ ]] && __ssnames=\"\$__ssnames \$__sstgt\"; done" >> $run
+                echo "${space}for __ssbakev in \$__ssnames; do __ssd=\$(declare -p \"\$__ssbakev\" 2>/dev/null) || continue; __ssf=\${__ssd#declare -}; __ssf=\${__ssf%% *}; case \$__ssf in *[aA]*) __ssnv=\${__ssd#declare -* }; case \$__ssf in *A*) printf 'declare -A %s\\n' \"\$__ssnv\";; *) printf 'declare -a %s\\n' \"\$__ssnv\";; esac;; *) printf '%s=%q\\n' \"\$__ssbakev\" \"\${!__ssbakev}\";; esac; done" >> $run
+            fi
+            # positional params: only emit values when the driver actually has some, so a
+            # no-arg pipeline does not fabricate an empty 'set -- '"''"' (which made $# == 1).
+            [ -n "$bakePos" ] && echo "${space}{ printf 'set --'; ((\$#)) && printf ' %q' \"\$@\"; printf '\\n'; }" >> $run
+            # Pick a here-doc terminator that does NOT appear as a standalone line in the
+            # body, so a body line that happens to equal it cannot close the here-doc
+            # early (which would silently truncate cmd.sh and leak the rest into the driver).
+            EOFMARK=SMARTSLURM_CMD_EOF
+            while printf '%s' "$vbody" | grep -qxF "$EOFMARK"; do EOFMARK="SMARTSLURM_CMD_EOF_${RANDOM}${RANDOM}"; done
+            echo "${space}cat <<'$EOFMARK'" >> $run
+            printf '%s' "$vbody" >> $run
+            echo "$EOFMARK" >> $run
+            echo "${space}} > \$smartSlurmLogDir/jobs/\$flag/cmd.sh" >> $run
             if [[ "$RUN_MODE" == dryrun ]]; then
                 echo "${space}id=\$(ssbatch $excludeFailedNode -P $name --pipeline=$PIPELINE_NAME -R ${ref//./$} -F \$flag -I ${inputs//./,$} $userEmail \$deps $slurmAccount \${xsub#sbatch } \$smartSlurmLogDir/jobs/\$flag/cmd.sh dryrun)" >> $run
             else
