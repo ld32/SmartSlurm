@@ -6,6 +6,35 @@ echolog() { echo -e "$@\n"; echo $@ >>.smartSlurm.log; }
 
 echolog1() { echo "$@" >> .smartSlurm.log; }
 
+# T2: detect invisible "paste gremlin" bytes in a verbatim #@end block body and
+# WARN loudly (never auto-fix). These bytes are kept byte-for-byte (by design) but
+# almost always break on the compute node -- e.g. a trailing CR makes a redirect
+# write to a mis-named file while the job still exits 0 (green-but-broken). The
+# scan is byte-based (LC_ALL=C grep), so it needs no awk and behaves identically
+# on mawk-only clusters. It only flags INVISIBLE artifacts, never legitimate
+# visible non-ASCII (accented letters, CJK, emoji), which round-trip fine.
+_ssGremlinWarn() {  # $1=step label  $2=human name  $3=raw bytes ; body in $_SS_GREM_BODY
+    local lines
+    lines=$(LC_ALL=C grep -nF -- "$3" <<<"$_SS_GREM_BODY" 2>/dev/null | cut -d: -f1 | paste -sd, -)
+    [ -n "$lines" ] && echolog "Warning: #@ block '$1' body contains $2 (an invisible paste artifact) on block line(s) $lines. It is kept verbatim and will likely break on the compute node while the job still reports success. Re-type the affected line(s) or re-paste as plain ASCII."
+}
+_ssGremlinScan() {  # $1 = step label ; verbatim body on stdin
+    local _SS_GREM_BODY; _SS_GREM_BODY="$(cat)"
+    _ssGremlinWarn "$1" "a carriage return (CRLF / Windows line ending)"        $'\r'
+    _ssGremlinWarn "$1" "a byte-order mark / zero-width no-break space (U+FEFF)" $'\xef\xbb\xbf'
+    _ssGremlinWarn "$1" "a non-breaking space (U+00A0)"                          $'\xc2\xa0'
+    _ssGremlinWarn "$1" "a narrow no-break space (U+202F)"                       $'\xe2\x80\xaf'
+    _ssGremlinWarn "$1" "a zero-width space (U+200B)"                            $'\xe2\x80\x8b'
+    _ssGremlinWarn "$1" "a zero-width non-joiner (U+200C)"                       $'\xe2\x80\x8c'
+    _ssGremlinWarn "$1" "a zero-width joiner (U+200D)"                           $'\xe2\x80\x8d'
+    _ssGremlinWarn "$1" "a word joiner (U+2060)"                                 $'\xe2\x81\xa0'
+    _ssGremlinWarn "$1" "a thin space (U+2009)"                                  $'\xe2\x80\x89'
+    _ssGremlinWarn "$1" "a hair space (U+200A)"                                  $'\xe2\x80\x8a'
+    _ssGremlinWarn "$1" "an ideographic space (U+3000)"                          $'\xe3\x80\x80'
+    _ssGremlinWarn "$1" "a Unicode line separator (U+2028)"                      $'\xe2\x80\xa8'
+    _ssGremlinWarn "$1" "a Unicode paragraph separator (U+2029)"                 $'\xe2\x80\xa9'
+}
+
 output="Running: `realpath $0`"
 
 for param in "$@"; do
@@ -674,6 +703,9 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             done
             # positional params / $@ / $* / $# referenced -> bake via 'set --'
             printf '%s' "$vbody" | grep -qE '[$]([0-9]|[@*#])' && bakePos=yes
+            # T2: warn (never auto-fix) on invisible paste-gremlin bytes kept
+            # verbatim in the body -- CRLF/NBSP/zero-width/BOM/exotic spaces, etc.
+            _ssGremlinScan "$step" <<<"$vbody"
             IFS=''
         fi
         #

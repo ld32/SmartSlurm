@@ -56,7 +56,7 @@ ss_group() {
 ss_purpose() {
   case "$1" in
     clean_2step)        echo "Baseline: convert a 2-step pipeline, submit under mock Slurm, and wire afterok dependencies end-to-end";;
-    rap_block_body)     echo "T2 verbatim #@end body: arbitrary pasted bash (backslash continuations, nested quotes, here-docs, awk) copied byte-for-byte to cmd.sh + submit-scope var baking; fuzz corpus asserts no mangling and real output";;
+    rap_block_body)     echo "T2 verbatim #@end body: arbitrary pasted bash (backslash continuations, nested quotes, here-docs incl. doubly-nested, awk, raw non-ASCII bytes) copied byte-for-byte to cmd.sh + submit-scope var baking; fuzz corpus asserts no mangling and real output; invisible paste-gremlins (CRLF/NBSP/BOM/zero-width) kept verbatim but WARNED loudly (detect-and-warn, no auto-fix)";;
     pipeline_tag)       echo "runAsPipeline #@pipeline directive: a script hardcodes its pipeline id in the header (precedence --pipeline flag > #@pipeline > basename); the directive sets the recorded pipeline id and is NOT parsed as a step marker (steps still convert + run); a generic unnamed script warns but a non-interactive run never hangs. Skipped when the tool lacks #@pipeline support";;
     pipeline_fuzz)      echo "#@ marker hardening (bulletproofing): pipeline id normalized (CR stripped, first token, sanitized) + validated (all-digit/empty/reserved/malformed rejected; flag too); AND step markers -- a step is a strict integer, a dependency is dot-joined integers (dots = join syntax only), so 'foo'/'1x'/'1.5' steps and 'xy' deps are REJECTED with a clear error (not silently accepted or leaking a bash arithmetic error), while '1.2' dep-joins are accepted. Skipped when the tool lacks #@pipeline support";;
     legacy_curation)    echo "jobRecordsCurate guided legacy curation: export clusters legacy rows into candidate pipelines by sample-chain shape (sharing a step name stays separate; free-form flags -> unknown) and writes a tiny MANIFEST template (one line per candidate); the user fills names in the manifest (or edits the CSV directly), and import reassigns by jobID through the locked API with backup + integrity gate (refuses a non-legacy jobID or a bad/all-digit name, leaves the store untouched). Skipped when jobRecordsCurate.sh is absent";;
@@ -3621,6 +3621,57 @@ _want rap_block_body && {
   ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
   assert_file     "smartSlurmLog/1.0.t.success" "ident: body mentioning #@pipeline mid-line runs"
   assert_contains "note.txt" "see #@pipeline in docs" "ident: mid-line #@pipeline kept verbatim"
+
+  # (10) PASTE GREMLINS: invisible bytes (CRLF, NBSP, BOM, zero-width space) are
+  # kept VERBATIM (no auto-fix) but trigger a LOUD warning at conversion time, so a
+  # green-but-broken run can't happen silently. Detect-and-warn (not sanitize/reject).
+  _grem() {  # $1=tag  $2=printf-format body (may embed raw gremlin bytes via \xNN / \r)
+    ss_new_workspace "$WORK/rbb_grem_$1" >/dev/null 2>&1
+    { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5'; printf "$2"; printf '%s\n' '#@end'; } > pipeline.sh
+    chmod +x pipeline.sh
+    ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true; }
+
+  _grem crlf 'echo a > g.out\r\nprintf "ran\\n" > ran.txt\r\n'
+  assert_contains "$LAST_RUN_LOG" "carriage return"   "gremlin/CRLF: conversion warns about a carriage return"
+  LC_ALL=C grep -q "$(printf '\r')" "$_CMD" \
+    && _pass "gremlin/CRLF: CR kept verbatim in cmd.sh (no auto-fix)" \
+    || _fail "gremlin/CRLF: CR kept verbatim in cmd.sh (no auto-fix)" "no CR in cmd.sh"
+
+  _grem nbsp 'echo \xc2\xa0nbsp > g.out\nprintf "ran\\n" > ran.txt\n'
+  assert_contains "$LAST_RUN_LOG" "non-breaking space" "gremlin/NBSP: conversion warns about a non-breaking space"
+  LC_ALL=C grep -qF "$(printf '\xc2\xa0')" "$_CMD" \
+    && _pass "gremlin/NBSP: NBSP kept verbatim in cmd.sh" || _fail "gremlin/NBSP: NBSP kept verbatim in cmd.sh"
+
+  _grem bom '\xef\xbb\xbfecho hi > g.out\nprintf "ran\\n" > ran.txt\n'
+  assert_contains "$LAST_RUN_LOG" "byte-order mark"    "gremlin/BOM: conversion warns about a byte-order mark"
+  LC_ALL=C grep -qF "$(printf '\xef\xbb\xbf')" "$_CMD" \
+    && _pass "gremlin/BOM: BOM kept verbatim in cmd.sh" || _fail "gremlin/BOM: BOM kept verbatim in cmd.sh"
+
+  _grem zwsp 'echo zwsp\xe2\x80\x8bword > g.out\nprintf "ran\\n" > ran.txt\n'
+  assert_contains "$LAST_RUN_LOG" "zero-width space"   "gremlin/ZWSP: conversion warns about a zero-width space"
+  LC_ALL=C grep -qF "$(printf '\xe2\x80\x8b')" "$_CMD" \
+    && _pass "gremlin/ZWSP: ZWSP kept verbatim in cmd.sh" || _fail "gremlin/ZWSP: ZWSP kept verbatim in cmd.sh"
+
+  # (10b) a CLEAN body must produce NO gremlin warning (no false positives) and run
+  _grem clean 'echo plain > g.out\nprintf "ran\\n" > ran.txt\n'
+  assert_lacks "$LAST_RUN_LOG" "invisible paste artifact" "gremlin/clean: no false-positive warning on clean ASCII"
+  assert_file  "smartSlurmLog/1.0.t.success"              "gremlin/clean: clean body still runs to success"
+
+  # (11) doubly/triply nested here-doc resolves correctly on the node (the fuzz loop
+  # below also round-trips it byte-for-byte; here we assert the SEMANTIC result).
+  _rbb nesthd "$HERE/fixtures/rap_block_body/bodies/10_nested_heredoc.sh"
+  assert_contains "nest.out" "before"   "nested-heredoc: outer heredoc body present"
+  assert_contains "nest.out" "mid=DEEP" "nested-heredoc: inner heredoc + command-subst resolved on node"
+  assert_contains "nest.out" "after"    "nested-heredoc: outer heredoc continues after the inner one"
+
+  # (12) a LEGITIMATE raw non-ASCII byte (Latin-1 'é' = 0xE9, invalid stand-alone
+  # UTF-8) is kept verbatim, must NOT trip the gremlin scan (it flags only INVISIBLE
+  # artifacts, never visible data), and the job still runs.
+  _grem latin1 'echo caf\xe9 > g.out\nprintf "ran\\n" > ran.txt\n'
+  assert_lacks "$LAST_RUN_LOG" "invisible paste artifact" "raw-byte: legit Latin-1 0xE9 does NOT trigger a gremlin warning"
+  LC_ALL=C grep -qF "$(printf '\xe9')" "$_CMD" \
+    && _pass "raw-byte: Latin-1 0xE9 kept verbatim in cmd.sh" || _fail "raw-byte: Latin-1 0xE9 kept verbatim in cmd.sh"
+  assert_file "smartSlurmLog/1.0.t.success" "raw-byte: body with a raw non-ASCII byte still runs to success"
 
   # (9) FUZZ: nasty-but-valid bodies round-trip BYTE-FOR-BYTE into cmd.sh and RUN.
   # Oracle: every non-blank body line appears verbatim (grep -F) in cmd.sh (no
