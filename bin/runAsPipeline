@@ -657,6 +657,9 @@ rm -f "$smartSlurmLogDir/.conversionError" 2>/dev/null   # M4: fresh per convers
             # driver-internal names: never bake, so a pasted body reusing one of these as
             # its own variable gets node scope rather than inheriting SmartSlurm state.
             _t2deny+=" flag deps id xsub ssKey ssLabel nJobsInSameStep alljobs green red green1 red1 jobID jobIDs depWasUsed __ssbakev __ssd __ssf __ssnv "
+            # persistent driver globals (not local-izable): a body reusing one of these
+            # names must get node scope, not the driver's submit-time value.
+            _t2deny+=" cwd early_exit xsubd ssV ssW ssCur ssRowOpen ssLastStep ssSub ssKept ssErr ssHdr "
             # match $name, ${name, ${#name (length), ${!name (indirect), ${name[...]}
             # KNOWN LIMIT: for an indirect ref ${!ptr} we bake 'ptr' but not the variable
             # it names, so a body that reads a submit-scope var ONLY through ${!ptr} sees it
