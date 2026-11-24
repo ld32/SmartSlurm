@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every block, in run order, and a one-line functional description of what it
 # verifies. This is the single source of truth for block purposes: _begin looks
 # the text up here, and --list prints it.
-ALL_BLOCKS="clean_2step parallel_worker_isolation rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
+ALL_BLOCKS="clean_2step rap_block_body pipeline_tag pipeline_fuzz legacy_curation parallel_worker_isolation rap_self_location wf_afterok wf_scriptargs wf_depgrammar wf_arrays wf_wait wf_scancel wf_inject wf_tiered wf_pipeline wf_isolation wf_jobseq wf_exit0_empty ma_extract_dag ma_emit_rap ma_parse_dag ma_compare ma_differential nested_fanout ragged_axes rap_shapes fail_exit0_empty known_broken_swallowed_done \
 loop_detection oom_injection tool_stderr diagnose fate_reconcile hardkill oomoot_escalate rerun rerun_lifecycle end_block verbosity scaling_linear \
 noise_fit scaling_exp contaminate_exit0 contaminate_exclude contaminate_prune firstpass_rate \
 failure_floor manual_rerun_floor constant_model negslope_robust \
@@ -56,6 +56,10 @@ ss_group() {
 ss_purpose() {
   case "$1" in
     clean_2step)        echo "Baseline: convert a 2-step pipeline, submit under mock Slurm, and wire afterok dependencies end-to-end";;
+    rap_block_body)     echo "T2 verbatim #@end body: arbitrary pasted bash (backslash continuations, nested quotes, here-docs, awk) copied byte-for-byte to cmd.sh + submit-scope var baking; fuzz corpus asserts no mangling and real output";;
+    pipeline_tag)       echo "runAsPipeline #@pipeline directive: a script hardcodes its pipeline id in the header (precedence --pipeline flag > #@pipeline > basename); the directive sets the recorded pipeline id and is NOT parsed as a step marker (steps still convert + run); a generic unnamed script warns but a non-interactive run never hangs. Skipped when the tool lacks #@pipeline support";;
+    pipeline_fuzz)      echo "#@ marker hardening (bulletproofing): pipeline id normalized (CR stripped, first token, sanitized) + validated (all-digit/empty/reserved/malformed rejected; flag too); AND step markers -- a step is a strict integer, a dependency is dot-joined integers (dots = join syntax only), so 'foo'/'1x'/'1.5' steps and 'xy' deps are REJECTED with a clear error (not silently accepted or leaking a bash arithmetic error), while '1.2' dep-joins are accepted. Skipped when the tool lacks #@pipeline support";;
+    legacy_curation)    echo "jobRecordsCurate guided legacy curation: export clusters legacy rows into candidate pipelines by sample-chain shape (sharing a step name stays separate; free-form flags -> unknown) and writes a tiny MANIFEST template (one line per candidate); the user fills names in the manifest (or edits the CSV directly), and import reassigns by jobID through the locked API with backup + integrity gate (refuses a non-legacy jobID or a bad/all-digit name, leaves the store untouched). Skipped when jobRecordsCurate.sh is absent";;
     parallel_worker_isolation) echo "Parallel-dispatch self-test: a -jN worker runs EXACTLY its one block, serially, never re-entering the dispatcher, so a block name that is a substring of another (rerun vs manual_rerun_floor) cannot fork-recurse; drives the REAL ss_parallel_run to confirm it exports SS_ONLY per worker, and checks top-level substring filtering is preserved";;
     rap_self_location)  echo "rAP self-location contract: in submit scope \$bashScriptPath is the pipeline script's OWN dir (dirname of --script) so a driver finds its repo/sibling assets, while \$0 / BASH_SOURCE point at the generated copy under smartSlurmLog/ (so self-locating via those silently resolves to the wrong dir)";;
     wf_afterok)         echo "Migration Assistant: an UNMODIFIED hand-rolled SLURM afterok script runs invisibly end-to-end via register-don't-run + topological drain";;
@@ -3489,5 +3493,431 @@ _want jr_drift_guard && {
 }
 
 # ===========================================================================
+# ===========================================================================
+_want rap_block_body && {
+  _begin rap_block_body
+  # T2: a #@end block body is copied into cmd.sh VERBATIM (quoted here-doc), with
+  # submit-scope vars baked as prepended assignments. Prove arbitrary pasted bash
+  # survives byte-for-byte AND runs correctly. Assert real OUTPUT, never just rc.
+  _CMD=smartSlurmLog/jobs/1.0.t/cmd.sh
+  # run a one-step pipeline whose body is the file $2 (verbatim); $1 = workspace tag
+  _rbb() { ss_new_workspace "$WORK/rbb_$1" >/dev/null 2>&1
+    { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5'; cat "$2"; printf '%s\n' '#@end'; } > pipeline.sh
+    chmod +x pipeline.sh
+    ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true; }
+
+  # (1) backslash continuation + multi-stage pipe -> ONE command (the reported bug)
+  _rbb backslash "$HERE/fixtures/rap_block_body/bodies/02_backslash_pipe.sh"
+  assert_file     "smartSlurmLog/1.0.t.success" "backslash: job ran to success"
+  assert_contains "first.out" "alpha" "backslash: continued pipeline ran as one (sort|head)"
+  assert_lacks    "first.out" "delta" "backslash: head -1 applied to whole pipeline, not line 1"
+
+  # (2) unquoted here-doc in body: $(...) runs on node, escaped \$x stays literal
+  _rbb heredoc "$HERE/fixtures/rap_block_body/bodies/03_heredoc_unquoted.sh"
+  assert_contains "hd.out" "sub=RAN"              "heredoc(unq): \$(...) ran on node"
+  assert_contains "hd.out" 'literal=$notexpanded' "heredoc(unq): escaped \$ stayed literal"
+
+  # (3) quoted here-doc in body: everything literal
+  _rbb heredocq "$HERE/fixtures/rap_block_body/bodies/04_heredoc_quoted.sh"
+  assert_contains "hdq.out" 'no expand $(echo X)' "heredoc(quoted): nothing expands"
+
+  # (4) awk single-quoted program + a literal $(...) that must NOT run
+  _rbb awk "$HERE/fixtures/rap_block_body/bodies/08_awk_literal.sh"
+  assert_contains "awk.out" "sum=6"                 "awk: single-quoted program ran (fields intact)"
+  assert_contains "awk.out" 'literal $(DO NOT RUN)' "awk: single-quoted \$(...) stayed literal"
+
+  # (4b) a body line equal to the here-doc terminator must NOT truncate cmd.sh
+  # (silent corruption + driver-side code execution in the old fixed-terminator design)
+  _rbb termcollide "$HERE/fixtures/rap_block_body/bodies/09_terminator_collision.sh"
+  assert_contains "coll.out" "one" "termcollide: body ran before the collision line"
+  assert_contains "coll.out" "two" "termcollide: body continued AFTER collision line (no truncation)"
+
+  # (5) var scope: submit-scope baked; in-block + env NOT baked; all resolve on node
+  ss_new_workspace "$WORK/rbb_scope" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'PROJ=/data/proj' '#@1,0,t,,,sbatch -p short -t 5' \
+      'nodev=NODE' 'echo "proj=$PROJ nodev=$nodev home=\$HOME" > s.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "$_CMD" '^PROJ=/data/proj$' "scope: submit-scope PROJ baked as assignment"
+  assert_lacks    "$_CMD" '^HOME='            "scope: env HOME NOT baked (stays node scope)"
+  # in-block nodev must appear ONCE (its verbatim body assignment), never ALSO baked
+  [ "$(grep -c '^nodev=' "$_CMD")" = 1 ] && _pass "scope: in-block nodev appears once (not baked)" || _fail "scope: in-block nodev appears once (not baked)" "baked copy present"
+  assert_contains "s.out" 'proj=/data/proj nodev=NODE home=$HOME' "scope: submit baked, in-block + \$HOME resolve on node"
+
+  # (6) submit-scope ARRAY must bake fully (declare -p), not collapse to element 0
+  ss_new_workspace "$WORK/rbb_array" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'files=(a.txt b.txt c.txt)' '#@1,0,t,,,sbatch -p short -t 5' \
+      'printf "[%s]\n" "${files[@]}" > arr.out; echo "n=${#files[@]}" >> arr.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "$_CMD" '^declare -a files=' "array: submit-scope array baked via declare -p"
+  assert_contains "arr.out" "n=3"   "array: all elements survive on the node"
+  assert_contains "arr.out" "c.txt" "array: last element present (not truncated to element 0)"
+
+  # (6b) associative array (no index 0) must bake fully -- the ${!v+x} gate skipped these
+  ss_new_workspace "$WORK/rbb_assoc" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'declare -A m=([red]=apple [green]=lime)' '#@1,0,t,,,sbatch -p short -t 5' \
+      'echo "red=${m[red]} n=${#m[@]}" > m.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "m.out" "red=apple n=2" "assoc: associative array resolves fully (no index-0 skip)"
+
+  # (6c) sparse indexed array (no index 0) must bake fully
+  ss_new_workspace "$WORK/rbb_sparse" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'declare -a sp=([3]=three [7]=seven)' '#@1,0,t,,,sbatch -p short -t 5' \
+      'echo "n=${#sp[@]} e3=${sp[3]}" > sp.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "sp.out" "n=2 e3=three" "sparse: sparse indexed array resolves fully"
+
+  # (6d) submit-scope array attributes (-i/-r/-x) must NOT travel to the node: the node
+  # copy carries the VALUE, not the attribute (an integer array must not coerce an
+  # in-body string assignment to 0). Baked as bare 'declare -a', not 'declare -ai'.
+  ss_new_workspace "$WORK/rbb_intarr" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'declare -ai nums=(1 2 3)' '#@1,0,t,,,sbatch -p short -t 5' \
+      'nums[0]="hello"; echo "after0=${nums[0]} n=${#nums[@]}" > ia.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "$_CMD" '^declare -a nums='  "intarr: integer array baked without the -i attribute"
+  assert_contains "ia.out" "after0=hello n=3"  "intarr: no -i coercion of an in-body string assignment on the node"
+
+  # (6e) a submit-scope var whose name collides with a driver progress-helper local
+  # (d/x/g/grp/lbl) must survive -- those helpers are now local-scoped in the driver
+  ss_new_workspace "$WORK/rbb_collide" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' 'd=myD; x=myX; g=myG; grp=myGRP; lbl=myLBL' '#@1,0,t,,,sbatch -p short -t 5' \
+      'echo "d=$d x=$x g=$g grp=$grp lbl=$lbl" > v.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "v.out" "d=myD x=myX g=myG grp=myGRP lbl=myLBL" "collide: submit vars survive driver progress-helper locals"
+
+  # (6f) persistent driver globals (cwd/early_exit/xsubd) must NOT leak into a body that
+  # references them: they are denylisted, so such a reference resolves to node scope.
+  ss_new_workspace "$WORK/rbb_leak" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5' \
+      'echo "cwd=[$cwd] ee=[$early_exit] xd=[$xsubd]" > leak.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_lacks    "$_CMD" '^cwd='                "leak: driver cwd not baked into the body"
+  assert_contains "leak.out" 'cwd=\[\] ee=\[\] xd=\[\]' "leak: driver globals resolve node-scope in the body"
+
+  # (7) positional params: a no-arg pipeline must leave \$# at 0 (no fabricated 'set -- ')
+  ss_new_workspace "$WORK/rbb_pos" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5' 'echo "count=$#" > pos.out' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_contains "pos.out" "count=0" "positional: no-arg pipeline leaves \$# == 0"
+
+  # (8) known limit, must fail LOUDLY (never silent): a '#@'-prefixed body line
+  ss_new_workspace "$WORK/rbb_hashat" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5' 'cat <<DOC > d.txt' '#@pipeline docs' 'DOC' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" --dryrun >/dev/null 2>&1 || true
+  if grep -qi 'Error:' "$LAST_RUN_LOG"; then _pass "hashat: a '#@'-prefixed body line is rejected loudly (not silently dropped)"; else _fail "hashat: a '#@'-prefixed body line is rejected loudly"; fi
+  # a '#@pipeline' mentioned INSIDE a string/command (not at column 0) is ordinary
+  # body: it round-trips verbatim and runs (the common "pasted code mentions it" case)
+  ss_new_workspace "$WORK/rbb_ident" >/dev/null 2>&1
+  { printf '%s\n' '#!/bin/sh' '#@1,0,t,,,sbatch -p short -t 5' 'echo "see #@pipeline in docs" > note.txt' '#@end'; } > pipeline.sh
+  chmod +x pipeline.sh
+  ss_run_pipeline "./pipeline.sh" "sbatch -p short -t 5" >/dev/null 2>&1 || true
+  assert_file     "smartSlurmLog/1.0.t.success" "ident: body mentioning #@pipeline mid-line runs"
+  assert_contains "note.txt" "see #@pipeline in docs" "ident: mid-line #@pipeline kept verbatim"
+
+  # (9) FUZZ: nasty-but-valid bodies round-trip BYTE-FOR-BYTE into cmd.sh and RUN.
+  # Oracle: every non-blank body line appears verbatim (grep -F) in cmd.sh (no
+  # mangling of quotes/backslashes/heredocs), the job succeeds, and ran.txt is written.
+  for bf in "$HERE"/fixtures/rap_block_body/bodies/*.sh; do
+    tag=$(basename "$bf" .sh)
+    _rbb "fz_$tag" "$bf"
+    assert_file     "smartSlurmLog/1.0.t.success" "fuzz[$tag]: job ran to success"
+    assert_contains "ran.txt" "ran"               "fuzz[$tag]: body executed to completion"
+    _bad=""
+    while IFS= read -r _ln; do
+      [ -z "${_ln//[[:space:]]/}" ] && continue
+      grep -Fq -- "$_ln" "$_CMD" || { _bad="$_ln"; break; }
+    done < "$bf"
+    [ -z "$_bad" ] && _pass "fuzz[$tag]: body copied verbatim into cmd.sh" \
+                   || _fail "fuzz[$tag]: body copied verbatim into cmd.sh" "missing line: $_bad"
+  done
+  echo
+}
+
+# ===========================================================================
+_want pipeline_tag && {
+  _begin pipeline_tag
+  rap="$SMARTSLURM_ROOT/bin/runAsPipeline"
+  if ! grep -q '#@pipeline' "$rap" 2>/dev/null; then
+    _pass "(skip) runAsPipeline has no #@pipeline support on this base"
+  else
+  # --- 1) directive sets the pipeline id; steps still convert + run -------------
+  ss_new_workspace "$WORK/pipeline_tag" >/dev/null
+  cp "$HERE"/fixtures/pipeline_tag/* .
+  ss_run_pipeline "./pipeline.sh 777" "sbatch -p short -c 1 --mem 4G -t 50:0"; rc=$?
+  assert_rc "$rc" 0 "runAsPipeline exits 0 with a #@pipeline directive present"
+  driver=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | grep -v dryrun | head -1)
+  assert_file "$driver" "converted driver produced (directive did not break conversion)"
+  assert_contains "$driver" "--pipeline=rnaseq_qc" "pipeline id resolved from #@pipeline directive"
+  assert_file "smartSlurmLog/1.0.findNumber.success"  "step 1 recognized + succeeded (directive not mis-parsed as a step)"
+  assert_file "smartSlurmLog/2.1.mergeNumber.success" "step 2 recognized + succeeded"
+  jr="$smartSlurmJobRecordDir/jobRecord.txt"
+  if [ -f "$jr" ] && awk -F, '$1=="rnaseq_qc"' "$jr" | grep -q .; then
+    _pass "jobRecord rows recorded under the directive pipeline id (rnaseq_qc)"
+  else _fail "jobRecord uses the directive pipeline id" "pipelines seen: $(awk -F, 'NR>1{print $1}' "$jr" 2>/dev/null | sort -u | tr '\n' ' ')"; fi
+
+  # --- 2) --pipeline flag overrides the #@pipeline directive --------------------
+  ss_new_workspace "$WORK/pipeline_tag_flag" >/dev/null
+  cp "$HERE"/fixtures/pipeline_tag/* .
+  SS_WF_MODE= bash "$rap" --script "./pipeline.sh 777" --pipeline flagwins \
+      --sbatch-options "sbatch -p short -c 1 --mem 4G -t 50:0" --tmp noTmp </dev/null >rap.log 2>&1
+  driver=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | grep -v dryrun | head -1)
+  if grep -q -- "--pipeline=flagwins" "$driver" 2>/dev/null && ! grep -q -- "--pipeline=rnaseq_qc" "$driver" 2>/dev/null; then
+    _pass "--pipeline flag overrides the #@pipeline directive"
+  else _fail "--pipeline flag overrides directive" "ids: $(grep -o -- '--pipeline=[^ ]*' "$driver" 2>/dev/null | sort -u | tr '\n' ' ')"; fi
+
+  # --- 3) missing directive + generic basename: warn, never hang (non-interactive) -
+  ss_new_workspace "$WORK/pipeline_tag_generic" >/dev/null
+  cp "$HERE"/fixtures/pipeline_tag/findNumber.sh "$HERE"/fixtures/pipeline_tag/numbers1.txt .
+  cat > pipeline.sh <<'PEOF'
+#!/bin/sh
+number=$1
+input=numbers1.txt
+#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 50:0
+findNumber.sh $number $input > $number.out.txt
+PEOF
+  # stdin from /dev/null forces the non-interactive path even when the suite is run
+  # from a terminal -- the prompt must never block automation/CI.
+  SS_WF_MODE= timeout 60 bash "$rap" --script "./pipeline.sh 777" \
+      --sbatch-options "sbatch -p short -c 1 --mem 4G -t 50:0" --tmp noTmp </dev/null >genrun.log 2>&1; rc=$?
+  assert_rc "$rc" 0 "non-interactive run with no #@pipeline does not hang (exits 0)"
+  if grep -qi 'no unique name' genrun.log 2>/dev/null; then
+    _pass "a generic unnamed pipeline emits the missing-name warning (non-interactive)"
+  else _fail "missing-name warning emitted" "tail: $(tail -3 genrun.log 2>/dev/null)"; fi
+  driver=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | grep -v dryrun | head -1)
+  assert_contains "$driver" "--pipeline=generic" "falls back to the 'generic' basename id when undeclared (NOT 'pipeline', which collides with the v2 header line and would drop rows)"
+  echo
+  fi
+}
+
+# ===========================================================================
+_want pipeline_fuzz && {
+  _begin pipeline_fuzz
+  rap="$SMARTSLURM_ROOT/bin/runAsPipeline"
+  if ! grep -q '#@pipeline' "$rap" 2>/dev/null; then
+    _pass "(skip) runAsPipeline has no #@pipeline support on this base"
+  else
+  base="$WORK/pipeline_fuzz"; fi_i=0
+  # fz_dir HEADERLINE : write a 1-step pipeline whose header is HEADERLINE, run it in
+  # dryrun (non-interactive), and set frc (exit code) + fid (resolved --pipeline= id).
+  fz_dir() {
+    fi_i=$((fi_i+1)); local d="$base/c$fi_i"; ss_new_workspace "$d" >/dev/null
+    cp "$HERE"/fixtures/pipeline_tag/findNumber.sh "$HERE"/fixtures/pipeline_tag/numbers1.txt .
+    { printf '#!/bin/sh\n'; printf '%s\n' "$1"; printf 'number=$1\ninput=numbers1.txt\n'
+      printf '#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0\n'
+      printf 'findNumber.sh $number $input > out.txt\n'; } > pipeline.sh
+    SS_WF_MODE= timeout 60 bash "$rap" --script "./pipeline.sh 7" \
+        --sbatch-options "sbatch -p short -c 1 --mem 2G -t 5:0" --tmp noTmp --mode dryrun </dev/null >fz.log 2>&1
+    frc=$?
+    local drv; drv=$(ls smartSlurmLog/slurmPipeLine.*.sh 2>/dev/null | head -1)
+    fid=$(grep -o -- '--pipeline=[^ ]*' "$drv" 2>/dev/null | head -1 | sed 's/--pipeline=//')
+  }
+  ok()  { [ "$frc" -eq 0 ] && [ "$fid" = "$1" ] && _pass "$2 -> id='$1'" || _fail "$2" "rc=$frc id='$fid'"; }
+  bad() { [ "$frc" -ne 0 ] && _pass "$1 -> rejected (rc=$frc)" || _fail "$1 rejected" "rc=$frc id='$fid'"; }
+  # fz_step MARKER : valid #@pipeline header + MARKER as the step line; dryrun; set frc.
+  si_i=0
+  fz_step() {
+    si_i=$((si_i+1)); local d="$base/s$si_i"; ss_new_workspace "$d" >/dev/null
+    cp "$HERE"/fixtures/pipeline_tag/findNumber.sh "$HERE"/fixtures/pipeline_tag/numbers1.txt .
+    { printf '#!/bin/sh\n#@pipeline fuzzpipe\nnumber=$1\ninput=numbers1.txt\n'; printf '%s\n' "$1"
+      printf 'findNumber.sh $number $input > out.txt\n'; } > pipeline.sh
+    SS_WF_MODE= timeout 60 bash "$rap" --script "./pipeline.sh 7" \
+        --sbatch-options "sbatch -p short -c 1 --mem 2G -t 5:0" --tmp noTmp --mode dryrun </dev/null >fz.log 2>&1
+    frc=$?
+  }
+
+  # --- good forms normalize to the expected id ----------------------------------
+  fz_dir '#@pipeline   rnaseq';        ok rnaseq  "multi-space before name"
+  fz_dir '#@pipeline=rnaseq';          ok rnaseq  "=NAME form"
+  fz_dir '#@pipeline 1step';           ok 1step   "digit-leading name with a letter (kept)"
+  fz_dir "$(printf '#@pipeline mapping\r')"; ok mapping "trailing CR stripped (not 'mapping_')"
+  fz_dir '#@pipeline rna seq';         ok rna     "second token dropped (first token only)"
+  fz_dir '#@pipeline a,b';             ok a_b     "comma sanitized to underscore"
+
+  # --- dangerous / malformed forms are rejected ---------------------------------
+  fz_dir '#@pipeline 2024';            bad "all-digit name (schema would drop its rows)"
+  grep -qi 'all-digit' "$base/c7/fz.log" 2>/dev/null && _pass "all-digit rejection names the reason" \
+      || _fail "all-digit reason in message" "$(tail -2 "$base/c7/fz.log" 2>/dev/null)"
+  fz_dir '#@pipeline legacy';          bad "reserved name 'legacy'"
+  fz_dir '#@pipeline unknown';         bad "reserved name 'unknown'"
+  fz_dir '#@pipelineFoo';              bad "malformed directive (no separator)"
+  grep -qi 'malformed' "$base/c10/fz.log" 2>/dev/null && _pass "malformed directive gives a clear error" \
+      || _fail "malformed directive message" "$(tail -2 "$base/c10/fz.log" 2>/dev/null)"
+  # header-sentinel ids: valid-looking, but the schema reads them as header lines and
+  # silently drops every row tagged with them (same class as all-digit). Must be rejected.
+  fz_dir '#@pipeline 1jobID';          bad "header-sentinel name '1jobID' (v1 header -> schema drops the row)"
+  grep -qi 'collides with a jobRecord header line' "$base/c11/fz.log" 2>/dev/null && _pass "'1jobID' rejection names the header-collision reason" \
+      || _fail "1jobID header-collision reason" "$(tail -2 "$base/c11/fz.log" 2>/dev/null)"
+  fz_dir '#@pipeline pipeline';        bad "header-sentinel name 'pipeline' (v2 header -> drops a row whose step is 'step')"
+
+  # --- bare '#@pipeline' (empty) falls back to the basename, not a crash --------
+  fz_dir '#@pipeline';                 ok generic "bare directive (no name) falls back to the 'generic' id (basename 'pipeline' is header-colliding)"
+
+  # --- the --pipeline FLAG is validated the same way ----------------------------
+  ss_new_workspace "$base/flag" >/dev/null
+  cp "$HERE"/fixtures/pipeline_tag/findNumber.sh "$HERE"/fixtures/pipeline_tag/numbers1.txt .
+  printf '#!/bin/sh\nnumber=$1\ninput=numbers1.txt\n#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0\nfindNumber.sh $number $input > out.txt\n' > pipeline.sh
+  SS_WF_MODE= timeout 60 bash "$rap" --script "./pipeline.sh 7" --pipeline 2024 \
+      --sbatch-options "sbatch -p short -c 1 --mem 2G -t 5:0" --tmp noTmp --mode dryrun </dev/null >flag.log 2>&1
+  [ $? -ne 0 ] && _pass "--pipeline flag with an all-digit name is rejected" \
+              || _fail "--pipeline all-digit rejected" "exited 0"
+
+  # --- step marker: step is a strict integer; dep is dot-joined integers ---------
+  # (dots are the dependency-join syntax ONLY; a step is never dotted.)
+  fz_step '#@1,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -eq 0 ] && _pass "step: numeric step/dep accepted" || _fail "numeric step accepted" "rc=$frc"
+  fz_step '#@foo,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: non-numeric step 'foo' rejected (was silently accepted)" || _fail "non-numeric step rejected" "rc=$frc"
+  fz_step '#@1x,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: alphanumeric step '1x' rejected" || _fail "alnum step rejected" "rc=$frc"
+  if grep -qi 'must be a positive integer' "$base/s3/fz.log" 2>/dev/null && ! grep -qi 'value too great' "$base/s3/fz.log" 2>/dev/null; then
+    _pass "step '1x' gives a clean error, not a leaked bash arithmetic error"
+  else _fail "step '1x' clean error" "$(grep -iE 'must be|value too great' "$base/s3/fz.log" 2>/dev/null | head -1)"; fi
+  fz_step '#@1.5,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: dotted step '1.5' rejected (integers only; dots are join-only)" || _fail "dotted step rejected" "rc=$frc"
+  fz_step '#@1,xy,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "dep: non-numeric dependency 'xy' rejected" || _fail "non-numeric dep rejected" "rc=$frc"
+  fz_step '#@3,1.2,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -eq 0 ] && _pass "dep: dot-joined dependency '1.2' accepted (the join syntax)" || _fail "dot-join dep accepted" "rc=$frc"
+  # leading zeros: '08'/'09' are not valid integers in bash arithmetic (leak "value too
+  # great for base") and '010' is silently read as octal -> wrong DAG index. Must reject.
+  fz_step '#@08,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: leading-zero step '08' rejected" || _fail "leading-zero step '08' rejected" "rc=$frc"
+  if grep -qi 'no leading zero' "$base/s7/fz.log" 2>/dev/null && ! grep -qi 'value too great' "$base/s7/fz.log" 2>/dev/null; then
+    _pass "step '08' gives a clean no-leading-zero error, not a leaked bash arithmetic error"
+  else _fail "step '08' clean error" "$(grep -iE 'leading zero|value too great' "$base/s7/fz.log" 2>/dev/null | head -1)"; fi
+  fz_step '#@010,0,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: leading-zero step '010' rejected (would be misread as octal 8)" || _fail "octal step '010' rejected" "rc=$frc"
+  fz_step '#@1,08,findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "dep: leading-zero dependency '08' rejected" || _fail "leading-zero dep '08' rejected" "rc=$frc"
+  # [F-1 back-compat guard] whitespace around the commas (the README's documented
+  # spacing, which stock master accepted) must still convert -- the numeric-grammar
+  # guards must trim, not reject, a leading space.
+  fz_step '#@1, 0, findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -eq 0 ] && _pass "step: space after comma accepted (README spacing, back-compat)" || _fail "spaced marker accepted" "rc=$frc"
+  fz_step '#@1 , 0 , findNumber , , input , sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -eq 0 ] && _pass "step: fully README-spaced marker accepted" || _fail "README-spaced marker accepted" "rc=$frc"
+  fz_step '#@ 08 , 0 , findNumber,,input,sbatch -p short -c 1 --mem 2G -t 5:0'
+  [ "$frc" -ne 0 ] && _pass "step: spaced leading-zero ' 08 ' still rejected (trim doesn't let bad values through)" || _fail "spaced leading-zero rejected" "rc=$frc"
+  echo
+  fi
+}
+
+# ===========================================================================
+_want legacy_curation && {
+  _begin legacy_curation
+  cur="$SMARTSLURM_ROOT/bin/jobRecordsCurate.sh"
+  if [ ! -r "$cur" ]; then
+    _pass "(skip) jobRecordsCurate.sh absent on this base"
+  else
+  ss_new_workspace "$WORK/legacy_curation" >/dev/null
+  jr="$smartSlurmJobRecordDir/jobRecord.txt"
+  csv="$smartSlurmJobRecordDir/jobRecord.curate.csv"
+  h='pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes'
+  # two pipelines that SHARE the step name "mapping" (sample sA vs sB) + a standalone
+  # free-form-flag row. All migrated as pipeline=legacy.
+  { echo "$h"
+    echo 'legacy,trim,none,sA,3001,1000,500,500,10,20,1,COMPLETED,u,,1700000001,2026-01-01,1.0.trim.sA,'
+    echo 'legacy,mapping,hg38,sA,3002,2000,8000,8000,30,60,1,COMPLETED,u,,1700000002,2026-01-01,2.1.mapping.sA,'
+    echo 'legacy,qc,none,sB,3003,1000,400,400,10,20,1,COMPLETED,u,,1700000003,2026-01-01,1.0.qc.sB,'
+    echo 'legacy,mapping,hg38,sB,3004,2000,30000,30000,30,60,1,COMPLETED,u,,1700000004,2026-01-01,2.1.mapping.sB,'
+    echo 'legacy,solo,none,,3005,1500,600,600,15,30,1,COMPLETED,u,,1700000005,2026-01-01,freeform,'
+  } > "$jr"
+
+  # --- export: sample-chain shape clustering ------------------------------------
+  bash "$cur" export "$smartSlurmJobRecordDir" >curate.log 2>&1
+  assert_file "$csv" "export wrote the curation CSV"
+  pA=$(awk -F, '$5==3001{print $1}' "$csv"); pA2=$(awk -F, '$5==3002{print $1}' "$csv")
+  pB=$(awk -F, '$5==3003{print $1}' "$csv"); pB2=$(awk -F, '$5==3004{print $1}' "$csv")
+  solo=$(awk -F, '$5==3005{print $1}' "$csv")
+  if [ -n "$pA" ] && [ "$pA" = "$pA2" ] && [ "$pB" = "$pB2" ] && [ "$pA" != "$pB" ]; then
+    _pass "export clusters by shape; the shared 'mapping' step stays separate ($pA vs $pB)"
+  else _fail "export separates the shared step by shape" "sA=$pA/$pA2 sB=$pB/$pB2"; fi
+  [ "$solo" = unknown ] && _pass "export marks the free-form-flag row 'unknown' (standalone)" \
+                        || _fail "export marks standalone row unknown" "got '$solo'"
+
+  # --- import: human renames placeholders -> real names -------------------------
+  sed -i "s/^$pA,/atacseq,/; s/^$pB,/rnaseq,/" "$csv"
+  bash "$cur" import "$csv" "$smartSlurmJobRecordDir" >import.log 2>&1
+  g1=$(awk -F, '$5==3001{print $1}' "$jr"); gm=$(awk -F, '$5==3004{print $1}' "$jr"); g5=$(awk -F, '$5==3005{print $1}' "$jr")
+  [ "$g1" = atacseq ] && _pass "import: trim(sA) re-tagged to the chosen name (atacseq)" \
+                      || _fail "import re-tags sA chain" "got '$g1'"
+  [ "$gm" = rnaseq ] && _pass "import: mapping(sB) re-tagged to rnaseq (shared step split correctly)" \
+                     || _fail "import splits the shared step" "got '$gm'"
+  [ "$g5" = legacy ] && _pass "import: standalone row left as legacy (stays in the standalone bucket)" \
+                     || _fail "import leaves standalone as legacy" "got '$g5'"
+  dat=$(( $(grep -c . "$jr") - 1 ))
+  [ "$dat" -eq 5 ] && _pass "import: no rows lost (5 data rows)" || _fail "import loses no rows" "got $dat"
+  ls "$jr".back.*.txt >/dev/null 2>&1 && _pass "import: backup created before rewrite" \
+                                      || _fail "import backs up" "no .back.*.txt"
+
+  # --- safety: refuse a non-legacy jobID; store untouched -----------------------
+  before=$(md5sum "$jr" | cut -d' ' -f1)
+  { echo "$h"; echo 'hacked,trim,none,sA,3001,1000,500,500,10,20,1,COMPLETED,u,,1700000001,2026-01-01,1.0.trim.sA,'; } > bad.csv
+  if bash "$cur" import bad.csv "$smartSlurmJobRecordDir" >bad.log 2>&1; then badrc=0; else badrc=1; fi
+  after=$(md5sum "$jr" | cut -d' ' -f1)
+  if [ "$badrc" -ne 0 ] && [ "$before" = "$after" ]; then
+    _pass "import refuses a non-legacy jobID and leaves the store untouched"
+  else _fail "import refuses non-legacy jobID" "rc=$badrc changed=$([ "$before" = "$after" ] && echo no || echo YES)"; fi
+
+  # --- manifest flow: the user edits the tiny TEMPLATE, not the full CSV ---------
+  ss_new_workspace "$WORK/legacy_curation_manifest" >/dev/null
+  jr="$smartSlurmJobRecordDir/jobRecord.txt"; man="$smartSlurmJobRecordDir/jobRecord.curate.manifest"
+  { echo "$h"
+    echo 'legacy,trim,none,sA,6001,1000,500,500,10,20,1,COMPLETED,u,,1700000001,2026-01-01,1.0.trim.sA,'
+    echo 'legacy,mapping,hg38,sA,6002,2000,8000,8000,30,60,1,COMPLETED,u,,1700000002,2026-01-01,2.1.mapping.sA,'
+    echo 'legacy,qc,none,sB,6003,1000,400,400,10,20,1,COMPLETED,u,,1700000003,2026-01-01,1.0.qc.sB,'
+    echo 'legacy,mapping,hg38,sB,6004,2000,30000,30000,30,60,1,COMPLETED,u,,1700000004,2026-01-01,2.1.mapping.sB,'
+    echo 'legacy,solo,none,,6005,1500,600,600,15,30,1,COMPLETED,u,,1700000005,2026-01-01,freeform,'
+  } > "$jr"
+  bash "$cur" export "$smartSlurmJobRecordDir" >/dev/null 2>&1
+  assert_file "$man" "export wrote the manifest template"
+  mlines=$(grep -c '^legacyPipe' "$man" 2>/dev/null)
+  [ "$mlines" -eq 2 ] && _pass "manifest has ONE line per candidate pipeline (2), not one per row" \
+                      || _fail "manifest is one line per candidate" "got $mlines lines"
+  # the user fills the newName column in the small manifest (not the big CSV)
+  sed -i 's/^\(legacyPipe1[^|]*|\)[^|]*|/\1 atacM |/; s/^\(legacyPipe2[^|]*|\)[^|]*|/\1 rnaM |/' "$man"
+  bash "$cur" import "$man" "$smartSlurmJobRecordDir" >/dev/null 2>&1
+  na=$(awk -F, 'NR>1 && $1=="atacM"' "$jr" | wc -l); nr=$(awk -F, 'NR>1 && $1=="rnaM"' "$jr" | wc -l)
+  g5=$(awk -F, '$5==6005{print $1}' "$jr")
+  if [ "${na:-0}" -gt 0 ] && [ "${nr:-0}" -gt 0 ]; then
+    _pass "manifest import assigned both candidates by jobID (atacM=$na, rnaM=$nr; shared 'mapping' split)"
+  else _fail "manifest import assigns both candidates" "atacM=$na rnaM=$nr"; fi
+  [ "$g5" = legacy ] && _pass "manifest import left the standalone row as legacy" \
+                     || _fail "manifest leaves standalone legacy" "got '$g5'"
+  # a bad name typed into the manifest is rejected (same guard as the tool/flag)
+  ss_new_workspace "$WORK/legacy_curation_manifest_bad" >/dev/null
+  jr="$smartSlurmJobRecordDir/jobRecord.txt"; man="$smartSlurmJobRecordDir/jobRecord.curate.manifest"
+  { echo "$h"; echo 'legacy,trim,none,sA,6101,1000,500,500,10,20,1,COMPLETED,u,,1700000001,2026-01-01,1.0.trim.sA,'; } > "$jr"
+  bash "$cur" export "$smartSlurmJobRecordDir" >/dev/null 2>&1
+  sed -i 's/^\(legacyPipe1[^|]*|\)[^|]*|/\1 2024 |/' "$man"
+  if bash "$cur" import "$man" "$smartSlurmJobRecordDir" >/dev/null 2>&1; then
+    _fail "manifest rejects an all-digit name" "accepted"
+  else _pass "manifest import rejects an all-digit name (same guard as the tool)"; fi
+  # header-sentinel names ('1jobID'/'pipeline'): the schema reads such a pipeline id as a
+  # header line and silently drops the row, so import must REFUSE and leave the store intact.
+  for sentinel in 1jobID pipeline; do
+    ss_new_workspace "$WORK/legacy_curation_sentinel_$sentinel" >/dev/null
+    jr="$smartSlurmJobRecordDir/jobRecord.txt"; man="$smartSlurmJobRecordDir/jobRecord.curate.manifest"
+    { echo "$h"; echo 'legacy,trim,none,sA,6201,1000,500,500,10,20,1,COMPLETED,u,,1700000001,2026-01-01,1.0.trim.sA,'; } > "$jr"
+    bash "$cur" export "$smartSlurmJobRecordDir" >/dev/null 2>&1
+    sed -i "s/^\(legacyPipe1[^|]*|\)[^|]*|/\1 $sentinel |/" "$man"
+    if bash "$cur" import "$man" "$smartSlurmJobRecordDir" >/dev/null 2>&1; then
+      _fail "manifest rejects header-sentinel name '$sentinel'" "accepted"
+    else _pass "manifest import rejects header-sentinel name '$sentinel' (schema would silently drop the row)"; fi
+    grep -q ',6201,' "$jr" && _pass "store row intact after refusing '$sentinel'" \
+      || _fail "store row intact after refusing '$sentinel'" "row 6201 missing"
+  done
+  echo
+  fi
+}
+
 ss_report
 [ "$FAILS" -eq 0 ] && exit 0 || exit 1
